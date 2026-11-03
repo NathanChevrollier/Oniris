@@ -1,6 +1,7 @@
 mod db;
 mod error;
 mod settings;
+pub mod tools;
 
 pub use db::{migrate, open_db, Migration, CORE_MIGRATIONS};
 pub use error::CoreError;

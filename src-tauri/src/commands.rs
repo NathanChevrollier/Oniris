@@ -1,9 +1,11 @@
 use crate::hotkey::{key_to_vk, HotkeyConfig};
 use crate::state::AppState;
 use crate::{fullscreen, windows};
+use oniris_core::tools::{JournalEntry, ToolBroker, ToolCall, ToolOutcome};
 use oniris_core::{save_settings, Settings};
 use std::sync::atomic::Ordering;
-use tauri::{AppHandle, Emitter, State};
+use std::sync::Arc;
+use tauri::{AppHandle, Emitter, Manager, State};
 
 #[tauri::command]
 pub fn panel_open(app: AppHandle) -> tauri::Result<()> {
@@ -56,6 +58,35 @@ pub fn settings_save(app: AppHandle, state: State<AppState>, settings: Settings)
         fullscreen::reapply(&app);
     }
     app.emit("oniris://settings", settings).map_err(|e| e.to_string())
+}
+
+/// Point d'entrée des futurs appelants (IA, MCP, UI) : ouvre le panneau et émet `oniris://confirm` si besoin.
+#[allow(dead_code)] // utilisée par les plans 2 à 5
+pub async fn dispatch_tool_call(app: &AppHandle, call: ToolCall) -> ToolOutcome {
+    let broker: Arc<ToolBroker> = app.state::<AppState>().broker.clone();
+    let outcome = broker.call(call).await;
+    if let ToolOutcome::NeedsConfirmation(p) = &outcome {
+        let _ = windows::open_panel(app);
+        let _ = app.emit("oniris://confirm", p);
+    }
+    outcome
+}
+
+#[tauri::command]
+pub async fn tool_resolve(state: State<'_, AppState>, action_id: i64, approved: bool) -> Result<ToolOutcome, String> {
+    let broker = state.broker.clone();
+    Ok(broker.resolve(action_id, approved).await)
+}
+
+#[tauri::command]
+pub async fn tool_undo(state: State<'_, AppState>, action_id: i64) -> Result<(), String> {
+    let broker = state.broker.clone();
+    broker.undo(action_id).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn journal_list(state: State<AppState>, limit: u32) -> Vec<JournalEntry> {
+    state.broker.journal(limit)
 }
 
 #[cfg(test)]

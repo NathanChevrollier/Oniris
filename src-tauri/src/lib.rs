@@ -20,7 +20,10 @@ pub fn run() {
             commands::panel_toggle,
             commands::pill_resize,
             commands::settings_get,
-            commands::settings_save
+            commands::settings_save,
+            commands::tool_resolve,
+            commands::tool_undo,
+            commands::journal_list
         ])
         .setup(|app| {
             let st = state::AppState::open()?;

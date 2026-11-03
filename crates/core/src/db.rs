@@ -14,6 +14,21 @@ pub const CORE_MIGRATIONS: &[Migration] = &[Migration {
         json TEXT NOT NULL,
         broken_json TEXT
     ) STRICT;",
+},
+Migration {
+    version: 2,
+    sql: "CREATE TABLE actions (
+        id INTEGER PRIMARY KEY,
+        ts_ms INTEGER NOT NULL,
+        tool TEXT NOT NULL,
+        args TEXT NOT NULL,
+        origin TEXT NOT NULL,
+        provenance TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('pending','done','failed','rejected','expired','undone')),
+        result TEXT,
+        undo TEXT,
+        expires_at_ms INTEGER
+    ) STRICT;",
 }];
 
 pub fn open_db(path: &Path) -> Result<Connection, CoreError> {

@@ -1,4 +1,5 @@
 mod commands;
+mod fullscreen;
 mod hotkey;
 mod state;
 mod windows;
@@ -28,6 +29,7 @@ pub fn run() {
                 app.handle().clone(),
                 Arc::new(RwLock::new(hotkey::HotkeyConfig::default())),
             );
+            fullscreen::start_watcher(app.handle().clone());
             Ok(())
         })
         .run(tauri::generate_context!())

@@ -3,8 +3,6 @@ use super::{JournalEntry, Origin, Provenance};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde_json::Value;
 
-/// Résultat provisoire d'une action réclamée : si le processus meurt en cours d'exécution, elle reste « failed ».
-pub const INTERRUPTED: &str = r#"{"error":"interrompue avant la fin"}"#;
 
 pub struct NewRow<'a> {
     pub ts: u64,
@@ -42,21 +40,26 @@ pub fn transition(c: &Connection, id: i64, from: &str, to: &str) -> rusqlite::Re
     Ok(c.execute("UPDATE actions SET status=? WHERE id=? AND status=?", params![to, id, from])? == 1)
 }
 
-/// Réclame une action en attente avant de l'exécuter (statut provisoire « failed » + marqueur).
-pub fn claim(c: &Connection, id: i64) -> rusqlite::Result<bool> {
+/// Réclame une action en attente et non expirée : seule la première approbation réussit.
+pub fn claim(c: &Connection, id: i64, now: u64) -> rusqlite::Result<bool> {
     Ok(c.execute(
-        "UPDATE actions SET status='failed', result=? WHERE id=? AND status='pending'",
-        params![INTERRUPTED, id],
+        "UPDATE actions SET status='running' WHERE id=? AND status='pending' AND expires_at_ms >= ?",
+        params![id, now as i64],
     )? == 1)
 }
 
-/// Clôture une action réclamée.
+/// Clôture une action `running` ; erreur si la ligne n'est plus dans cet état.
 pub fn finish(c: &Connection, id: i64, status: &str, result: &Value, undo: Option<&Value>) -> rusqlite::Result<()> {
-    c.execute(
-        "UPDATE actions SET status=?, result=?, undo=? WHERE id=? AND status='failed' AND result=?",
-        params![status, result.to_string(), undo.map(Value::to_string), id, INTERRUPTED],
+    let n = c.execute(
+        "UPDATE actions SET status=?, result=?, undo=? WHERE id=? AND status='running'",
+        params![status, result.to_string(), undo.map(Value::to_string), id],
     )?;
-    Ok(())
+    if n == 1 { Ok(()) } else { Err(rusqlite::Error::StatementChangedRows(n)) }
+}
+
+/// Au démarrage : une action restée `running` n'a pas de résultat connu.
+pub fn mark_interrupted(c: &Connection) {
+    let _ = c.execute("UPDATE actions SET status='interrupted' WHERE status='running'", []);
 }
 
 pub fn status(c: &Connection, id: i64) -> Option<String> {

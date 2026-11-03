@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { PendingAction, Risk } from "../lib/ipc";
 import { Card } from "../ui/Card";
 
@@ -8,6 +8,13 @@ export function ConfirmCard({ pending, onResolve }: { pending: PendingAction; on
   const refuse = useRef<HTMLButtonElement>(null);
   // Le focus démarre sur « Refuser » : Entrée n'autorise jamais par accident.
   useEffect(() => refuse.current?.focus(), [pending.action_id]);
+  // Garde-fou anti-clic réflexe : « Autoriser » reste inactif 500 ms après l'apparition d'une action.
+  const [armed, setArmed] = useState(false);
+  useEffect(() => {
+    setArmed(false);
+    const t = setTimeout(() => setArmed(true), 500);
+    return () => clearTimeout(t);
+  }, [pending.action_id]);
   const { summary, details, risk } = pending.text;
   const p = pending.provenance;
   return (
@@ -15,7 +22,7 @@ export function ConfirmCard({ pending, onResolve }: { pending: PendingAction; on
       <p>{summary}</p>
       <pre style={{ fontFamily: "ui-monospace, Consolas, monospace", whiteSpace: "pre-wrap" }}>{details}</pre>
       {typeof p !== "string" && <p>Demandé à partir de : {p.Untrusted.source}</p>}
-      <button type="button" onClick={() => onResolve(true)}>Autoriser</button>
+      <button type="button" disabled={!armed} onClick={() => onResolve(true)}>Autoriser</button>
       <button type="button" ref={refuse} onClick={() => onResolve(false)}>Refuser</button>
     </Card>
   );

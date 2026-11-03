@@ -1,9 +1,10 @@
-import { render, screen, fireEvent, cleanup } from "@testing-library/react";
-import { it, expect, vi, afterEach } from "vitest";
+import { render, screen, fireEvent, cleanup, act } from "@testing-library/react";
+import { it, expect, vi, afterEach, beforeEach } from "vitest";
 import { ConfirmCard } from "./ConfirmCard";
 import type { PendingAction } from "../lib/ipc";
 
-afterEach(cleanup);
+beforeEach(() => { vi.useFakeTimers(); });
+afterEach(() => { cleanup(); vi.useRealTimers(); });
 
 const base: PendingAction = {
   action_id: 1, tool: "shell",
@@ -26,8 +27,21 @@ it("pas de mention de provenance pour l'utilisateur, focus sur Refuser", () => {
 it("Autoriser appelle onResolve(true), Refuser onResolve(false)", () => {
   const onResolve = vi.fn();
   render(<ConfirmCard pending={base} onResolve={onResolve} />);
+  act(() => { vi.advanceTimersByTime(500); });
   fireEvent.click(screen.getByRole("button", { name: "Autoriser" }));
   expect(onResolve).toHaveBeenLastCalledWith(true);
   fireEvent.click(screen.getByRole("button", { name: "Refuser" }));
   expect(onResolve).toHaveBeenLastCalledWith(false);
+});
+
+it("Autoriser est inactif 500 ms après l'apparition d'une nouvelle action", () => {
+  const { rerender } = render(<ConfirmCard pending={base} onResolve={() => {}} />);
+  const btn = () => screen.getByRole("button", { name: "Autoriser" });
+  expect(btn()).toBeDisabled();
+  act(() => { vi.advanceTimersByTime(500); });
+  expect(btn()).toBeEnabled();
+  rerender(<ConfirmCard pending={{ ...base, action_id: 2 }} onResolve={() => {}} />);
+  expect(btn()).toBeDisabled();
+  act(() => { vi.advanceTimersByTime(500); });
+  expect(btn()).toBeEnabled();
 });

@@ -30,6 +30,7 @@ impl AppState {
         let db = Arc::new(Mutex::new(conn));
         let clock = Arc::new(|| std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64));
         let broker = Arc::new(ToolBroker::new(db.clone(), clock));
+        broker.mark_interrupted();
         broker.expire_stale();
         Ok(Self {
             panel_open: AtomicBool::new(false),

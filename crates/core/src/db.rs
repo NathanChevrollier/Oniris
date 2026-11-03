@@ -24,7 +24,7 @@ Migration {
         args TEXT NOT NULL,
         origin TEXT NOT NULL,
         provenance TEXT NOT NULL,
-        status TEXT NOT NULL CHECK (status IN ('pending','done','failed','rejected','expired','undone')),
+        status TEXT NOT NULL CHECK (status IN ('pending','running','done','failed','rejected','expired','undone','interrupted')),
         result TEXT,
         undo TEXT,
         expires_at_ms INTEGER

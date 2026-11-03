@@ -60,20 +60,34 @@ impl ToolBroker {
                 Err(e) => ToolOutcome::Failed { action_id: -1, error: e.to_string() },
             };
         }
-        // Verrou relâché pendant `run`, puis repris pour journaliser.
-        let res = tool.run(&call.args).await;
+        // Ligne `running` écrite AVANT `run` (journal fidèle même si l'app meurt), verrou relâché pendant `run`.
+        let id = match journal::insert(&self.db.lock(), NewRow {
+            ts: now, tool: &call.tool, args: &call.args, origin: &call.origin, prov: &call.provenance,
+            status: "running", result: None, undo: None, expires: None,
+        }) {
+            Ok(id) => id,
+            Err(e) => return ToolOutcome::Failed { action_id: -1, error: e.to_string() },
+        };
+        self.finish_run(id, tool.run(&call.args).await)
+    }
+
+    /// Journalise le résultat d'une action `running`. Une erreur de journal n'efface jamais un résultat obtenu.
+    fn finish_run(&self, id: i64, res: Result<ToolResult, ToolError>) -> ToolOutcome {
+        let c = self.db.lock();
         match res {
             Ok(r) => {
-                let ins = journal::insert(&self.db.lock(), NewRow {
-                    ts: now, tool: &call.tool, args: &call.args, origin: &call.origin, prov: &call.provenance,
-                    status: "done", result: Some(&r.output), undo: r.undo.as_ref(), expires: None,
-                });
-                match ins {
-                    Ok(id) => ToolOutcome::Done { action_id: id, output: r.output },
-                    Err(e) => ToolOutcome::Failed { action_id: -1, error: e.to_string() },
+                if let Err(e) = journal::finish(&c, id, "done", &r.output, r.undo.as_ref()) {
+                    eprintln!("oniris: journal de l'action {id} non mis à jour : {e}");
                 }
+                ToolOutcome::Done { action_id: id, output: r.output }
             }
-            Err(e) => self.failed(&call.tool, &call, e),
+            Err(e) => {
+                let err = e.to_string();
+                if let Err(e) = journal::finish(&c, id, "failed", &json!({ "error": err }), None) {
+                    eprintln!("oniris: journal de l'action {id} non mis à jour : {e}");
+                }
+                ToolOutcome::Failed { action_id: id, error: err }
+            }
         }
     }
 
@@ -83,7 +97,7 @@ impl ToolBroker {
         let row = {
             let c = self.db.lock();
             let claimed = if approved {
-                journal::claim(&c, action_id)
+                journal::claim(&c, action_id, (self.clock)())
             } else {
                 journal::transition(&c, action_id, "pending", "rejected")
             };
@@ -100,23 +114,13 @@ impl ToolBroker {
         if !approved {
             return ToolOutcome::Rejected { action_id };
         }
-        // Action réclamée : elle ne repassera jamais par `pending`, donc `run` part au plus une fois.
+        // Action `running` : elle ne repassera jamais par `pending`, donc `run` part au plus une fois.
         let Some(row) = row else { return fail(ToolError::NotPending) };
         let outcome = match self.tools.get(&row.tool) {
             None => Err(ToolError::UnknownTool(row.tool.clone())),
             Some(t) => t.run(&row.args).await,
         };
-        let c = self.db.lock();
-        match outcome {
-            Ok(r) => {
-                let _ = journal::finish(&c, action_id, "done", &r.output, r.undo.as_ref());
-                ToolOutcome::Done { action_id, output: r.output }
-            }
-            Err(e) => {
-                let _ = journal::finish(&c, action_id, "failed", &json!({ "error": e.to_string() }), None);
-                fail(e)
-            }
-        }
+        self.finish_run(action_id, outcome)
     }
 
     pub async fn undo(&self, action_id: i64) -> Result<(), ToolError> {
@@ -146,6 +150,11 @@ impl ToolBroker {
     pub fn expire_stale(&self) {
         journal::expire(&self.db.lock(), (self.clock)());
     }
+
+    /// À appeler une fois au démarrage, avant tout appel d'outil.
+    pub fn mark_interrupted(&self) {
+        journal::mark_interrupted(&self.db.lock());
+    }
 }
 
 #[cfg(test)]
@@ -159,7 +168,7 @@ mod tests {
     use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
     use std::sync::Arc;
 
-    struct Echo { perm: Permission, undoable: bool, runs: Arc<AtomicUsize> }
+    struct Echo { perm: Permission, undoable: bool, runs: Arc<AtomicUsize>, db: Arc<Mutex<Connection>>, during: Arc<Mutex<Vec<String>>> }
 
     #[async_trait]
     impl Tool for Echo {
@@ -171,6 +180,8 @@ mod tests {
         }
         async fn run(&self, a: &Value) -> Result<ToolResult, ToolError> {
             self.runs.fetch_add(1, Ordering::SeqCst);
+            let st: String = self.db.lock().query_row("SELECT status FROM actions ORDER BY id DESC LIMIT 1", [], |r| r.get(0)).unwrap();
+            self.during.lock().push(st);
             Ok(ToolResult { output: a.clone(), undo: self.undoable.then(|| json!({"u": 1})) })
         }
         async fn undo(&self, _: &Value) -> Result<(), ToolError> {
@@ -178,7 +189,7 @@ mod tests {
         }
     }
 
-    struct Fx { broker: ToolBroker, runs: Arc<AtomicUsize>, now: Arc<AtomicU64>, db: Arc<Mutex<Connection>>, _dir: tempfile::TempDir }
+    struct Fx { during: Arc<Mutex<Vec<String>>>, broker: ToolBroker, runs: Arc<AtomicUsize>, now: Arc<AtomicU64>, db: Arc<Mutex<Connection>>, _dir: tempfile::TempDir }
 
     fn fx(perm: Permission, undoable: bool) -> Fx {
         let dir = tempfile::tempdir().unwrap();
@@ -189,8 +200,9 @@ mod tests {
         let n = now.clone();
         let mut broker = ToolBroker::new(db.clone(), Arc::new(move || n.load(Ordering::SeqCst)));
         let runs = Arc::new(AtomicUsize::new(0));
-        broker.register(Arc::new(Echo { perm, undoable, runs: runs.clone() }));
-        Fx { broker, runs, now, db, _dir: dir }
+        let during = Arc::new(Mutex::new(vec![]));
+        broker.register(Arc::new(Echo { perm, undoable, runs: runs.clone(), db: db.clone(), during: during.clone() }));
+        Fx { during, broker, runs, now, db, _dir: dir }
     }
 
     fn call(prov: Provenance) -> ToolCall {
@@ -291,5 +303,34 @@ mod tests {
         let ToolOutcome::Failed { action_id, error } = f.broker.call(c).await else { panic!() };
         assert_eq!(error, ToolError::UnknownTool("nope".into()).to_string());
         assert_eq!(status(&f, action_id), "failed");
+    }
+
+    #[tokio::test]
+    async fn pendant_l_execution_le_journal_dit_running() {
+        let f = fx(Permission::Free, false);
+        let ToolOutcome::Done { action_id, .. } = f.broker.call(call(Provenance::User)).await else { panic!() };
+        assert_eq!(*f.during.lock(), vec!["running".to_string()]);
+        assert_eq!(status(&f, action_id), "done");
+    }
+
+    #[tokio::test]
+    async fn action_approuvee_finit_done_jamais_failed() {
+        let f = fx(Permission::Confirm, true);
+        let id = pending(f.broker.call(call(Provenance::User)).await).action_id;
+        assert!(matches!(f.broker.resolve(id, true).await, ToolOutcome::Done { .. }));
+        assert_eq!(*f.during.lock(), vec!["running".to_string()]);
+        assert_eq!(status(&f, id), "done");
+        assert!(f.broker.journal(1)[0].undoable);
+    }
+
+    #[tokio::test]
+    async fn ligne_running_devient_interrupted_au_redemarrage() {
+        let f = fx(Permission::Free, false);
+        f.db.lock().execute(
+            "INSERT INTO actions(ts_ms, tool, args, origin, provenance, status) VALUES (0,'echo','{}','\"User\"','\"User\"','running')",
+            [],
+        ).unwrap();
+        f.broker.mark_interrupted();
+        assert_eq!(status(&f, 1), "interrupted");
     }
 }

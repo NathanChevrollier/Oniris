@@ -1,6 +1,8 @@
 mod commands;
 mod fullscreen;
 mod hotkey;
+#[cfg(any(debug_assertions, feature = "perf"))]
+mod perf;
 mod state;
 mod tray;
 mod windows;
@@ -28,7 +30,11 @@ pub fn run() {
             commands::settings_save,
             commands::tool_resolve,
             commands::tool_undo,
-            commands::journal_list
+            commands::journal_list,
+            #[cfg(any(debug_assertions, feature = "perf"))]
+            perf::perf_frame,
+            #[cfg(any(debug_assertions, feature = "perf"))]
+            perf::perf_open_cycles
         ])
         .setup(|app| {
             let st = state::AppState::open()?;

@@ -19,6 +19,7 @@ tauri-plugin-autostart = "2"
 tauri-plugin-notification = "2"
 serde = { version = "1", features = ["derive"] }
 parking_lot = "0.12"
+rusqlite = { version = "0.37", features = ["bundled"] }
 windows = { version = "0.62", features = [
   "Win32_Foundation",
   "Win32_Graphics_Gdi",

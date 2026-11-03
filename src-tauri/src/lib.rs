@@ -4,8 +4,6 @@ mod hotkey;
 mod state;
 mod windows;
 
-use parking_lot::RwLock;
-use std::sync::Arc;
 use tauri::Manager;
 
 pub fn run() {
@@ -20,15 +18,16 @@ pub fn run() {
             commands::panel_open,
             commands::panel_close,
             commands::panel_toggle,
-            commands::pill_resize
+            commands::pill_resize,
+            commands::settings_get,
+            commands::settings_save
         ])
         .setup(|app| {
-            app.manage(state::AppState::default());
+            let st = state::AppState::open()?;
+            let hotkey_cfg = st.hotkey.clone();
+            app.manage(st);
             windows::show_pill(app.handle())?;
-            hotkey::start_hook(
-                app.handle().clone(),
-                Arc::new(RwLock::new(hotkey::HotkeyConfig::default())),
-            );
+            hotkey::start_hook(app.handle().clone(), hotkey_cfg);
             fullscreen::start_watcher(app.handle().clone());
             Ok(())
         })

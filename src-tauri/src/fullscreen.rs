@@ -95,6 +95,20 @@ fn apply(active: bool) {
     }
 }
 
+/// Réapplique la visibilité de la pilule selon l'état plein écran courant (après un changement de réglage).
+pub fn reapply(app: &AppHandle) {
+    if !ACTIVE.load(Ordering::SeqCst) {
+        return;
+    }
+    if let Some(pill) = app.get_webview_window("pill") {
+        let _ = if app.state::<AppState>().hide_pill_in_fullscreen.load(Ordering::SeqCst) {
+            pill.hide()
+        } else {
+            pill.show()
+        };
+    }
+}
+
 unsafe extern "system" fn on_event(
     _hook: HWINEVENTHOOK,
     event: u32,

@@ -2480,12 +2480,14 @@ name = "oniris"
 version = "0.1.0"
 dependencies = [
  "oniris-core",
+ "parking_lot",
  "serde",
  "tauri",
  "tauri-build",
  "tauri-plugin-autostart",
  "tauri-plugin-notification",
  "tauri-plugin-single-instance",
+ "windows",
 ]
 
 [[package]]

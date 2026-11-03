@@ -7,5 +7,5 @@ export default defineConfig({
   clearScreen: false,
   server: { port: 1420, strictPort: true, watch: { ignored: ["**/src-tauri/**", "**/crates/**", "**/target/**"] } },
   build: { rollupOptions: { input: { pill: "pill.html", panel: "panel.html" } } },
-  test: { environment: "jsdom", include: ["src/**/*.test.{ts,tsx}"], passWithNoTests: true },
+  test: { environment: "jsdom", include: ["src/**/*.test.{ts,tsx}"], passWithNoTests: true, setupFiles: ["src/test-setup.ts"] },
 });

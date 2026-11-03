@@ -1,0 +1,11 @@
+:root{
+  --font:"Segoe UI Variable Display","Segoe UI Variable Text","SF Pro Display",-apple-system,Inter,system-ui,sans-serif;
+  --txt:#f5f5f7; --txt2:rgba(245,245,247,.62); --txt3:rgba(245,245,247,.38);
+  --glass:rgba(22,22,28,.58); --card:rgba(255,255,255,.055); --card-h:rgba(255,255,255,.085);
+  --line:rgba(255,255,255,.09); --line2:rgba(255,255,255,.14);
+  --acc:#ff7448; --acc2:#ff3d7f; --blue:#0a84ff; --green:#30d158; --yellow:#ffd60a; --purple:#bf5af2; --teal:#64d2ff;
+  --ease:cubic-bezier(.2,.9,.25,1);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden;background:transparent}
+body{font-family:var(--font);color:var(--txt);-webkit-font-smoothing:antialiased;font-feature-settings:"tnum" 1}

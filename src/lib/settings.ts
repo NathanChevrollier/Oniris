@@ -1,3 +1,6 @@
+import { useEffect, useState } from "react";
+import { ipc, onSettings } from "./ipc";
+
 /** Miroir de `oniris_core::Settings` (noms snake_case tels que sérialisés par serde). */
 export type HotkeySetting = {
   alt: boolean;
@@ -20,3 +23,30 @@ export type Settings = {
   timeline_end_hour: number;
   reduce_motion: boolean;
 };
+
+/** Miroir de `Settings::default()` côté Rust : valeurs affichées avant la réponse de `settings_get`. */
+export const DEFAULT_SETTINGS: Settings = {
+  user_name: "",
+  hotkey: { alt: true, ctrl: false, shift: false, win: false, key: "Space" },
+  hold_threshold_ms: 250,
+  hover_open: true,
+  hover_delay_ms: 350,
+  autostart: true,
+  hide_pill_in_fullscreen: true,
+  timeline_start_hour: 8,
+  timeline_end_hour: 23,
+  reduce_motion: false,
+};
+
+/** Paramètres courants : chargés au montage, puis suivis via `oniris://settings`. */
+export function useSettings(): Settings {
+  const [s, setS] = useState(DEFAULT_SETTINGS);
+  useEffect(() => {
+    ipc.getSettings().then(setS, () => {});
+    const un = onSettings(setS);
+    return () => { un.then((f) => f()); };
+  }, []);
+  // Réglage « réduire les animations » : même effet que prefers-reduced-motion (motion.css).
+  useEffect(() => { document.documentElement.classList.toggle("reduce-motion", s.reduce_motion); }, [s.reduce_motion]);
+  return s;
+}

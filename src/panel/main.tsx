@@ -1,10 +1,6 @@
 import { createRoot } from "react-dom/client";
-import { onConfirm, toolIpc } from "../lib/ipc";
-import { ConfirmQueue } from "./ConfirmQueue";
+import { isTauri } from "../lib/ipc";
+import { Panel } from "./Panel";
 
-createRoot(document.getElementById("root")!).render(
-  <>
-    <div>panel</div>
-    <ConfirmQueue subscribe={onConfirm} resolve={toolIpc.resolve} />
-  </>,
-);
+if (!isTauri) document.documentElement.classList.add("preview");
+createRoot(document.getElementById("root")!).render(<Panel />);

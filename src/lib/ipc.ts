@@ -1,6 +1,15 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke as tauriInvoke, type InvokeArgs } from "@tauri-apps/api/core";
 import type { Settings } from "./settings";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { listen as tauriListen, type EventCallback, type UnlistenFn } from "@tauri-apps/api/event";
+
+/** Faux dans un navigateur ordinaire (aperçu `pnpm dev`, tests jsdom). */
+export const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+
+// Hors de Tauri, les appels sont inertes (promesse jamais résolue) et les écoutes ne reçoivent rien.
+const invoke = <T,>(cmd: string, args?: InvokeArgs): Promise<T> =>
+  isTauri ? tauriInvoke<T>(cmd, args) : new Promise<T>(() => {});
+const listen = <T,>(event: string, cb: EventCallback<T>): Promise<UnlistenFn> =>
+  isTauri ? tauriListen<T>(event, cb) : Promise.resolve(() => {});
 
 export type PanelState = { open: boolean; at_ms: number };
 

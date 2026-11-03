@@ -9,12 +9,13 @@ export function ConfirmCard({ pending, onResolve }: { pending: PendingAction; on
   // Le focus démarre sur « Refuser » : Entrée n'autorise jamais par accident.
   useEffect(() => refuse.current?.focus(), [pending.action_id]);
   // Garde-fou anti-clic réflexe : « Autoriser » reste inactif 500 ms après l'apparition d'une action.
-  const [armed, setArmed] = useState(false);
+  // Armé pour un identifiant précis : aucune frame où une nouvelle action hérite de l'armement de la précédente.
+  const [armedFor, setArmedFor] = useState<number | null>(null);
   useEffect(() => {
-    setArmed(false);
-    const t = setTimeout(() => setArmed(true), 500);
+    const t = setTimeout(() => setArmedFor(pending.action_id), 500);
     return () => clearTimeout(t);
   }, [pending.action_id]);
+  const armed = armedFor === pending.action_id;
   const { summary, details, risk } = pending.text;
   const p = pending.provenance;
   return (

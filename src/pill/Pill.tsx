@@ -1,0 +1,53 @@
+import { useEffect, useRef, useState } from "react";
+import { ipc, onPanelState } from "../lib/ipc";
+import { useSettings } from "../lib/settings";
+import { hhmm, useNow } from "../lib/time";
+import { Orb } from "../ui/Orb";
+import "../ui/tokens.css";
+import "../ui/glass.css";
+import "../ui/motion.css";
+import "./pill.css";
+
+export function Pill() {
+  const settings = useSettings();
+  const now = useNow(60_000);
+  const [panelOpen, setPanelOpen] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
+  const hover = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const cancelHover = () => clearTimeout(hover.current);
+
+  useEffect(() => {
+    const un = onPanelState((p) => setPanelOpen(p.open));
+    return () => { un.then((f) => f()); cancelHover(); };
+  }, []);
+
+  // La fenêtre suit la largeur du contenu : mesure débouncée, envoyée seulement si elle change.
+  useEffect(() => {
+    let last = 0;
+    let t: ReturnType<typeof setTimeout> | undefined;
+    const ro = new ResizeObserver(([e]) => {
+      const w = Math.ceil(e.borderBoxSize[0].inlineSize);
+      clearTimeout(t);
+      t = setTimeout(() => { if (w !== last) { last = w; ipc.pillResize(w); } }, 100);
+    });
+    ro.observe(root.current!);
+    return () => { ro.disconnect(); clearTimeout(t); };
+  }, []);
+
+  return (
+    <div ref={root} className={panelOpen ? "pill-root open" : "pill-root"}>
+      <button type="button" className="island" aria-label="Ouvrir le panneau Oniris"
+        onClick={() => { cancelHover(); ipc.panelToggle(); }}
+        onMouseEnter={() => {
+          if (settings.hover_open) hover.current = setTimeout(() => ipc.panelOpen(), settings.hover_delay_ms);
+        }}
+        onMouseLeave={cancelHover}>
+        <span className="time">{hhmm(now)}</span>
+        {/* emplacements remplis aux plans 3 (musique) et 4 (mails) */}
+        <span className="slot-music" hidden />
+        <span className="slot-mails" hidden />
+        <Orb state="idle" size={24} />
+      </button>
+    </div>
+  );
+}

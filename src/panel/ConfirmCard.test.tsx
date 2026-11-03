@@ -1,3 +1,4 @@
+import { useLayoutEffect } from "react";
 import { render, screen, fireEvent, cleanup, act } from "@testing-library/react";
 import { it, expect, vi, afterEach, beforeEach } from "vitest";
 import { ConfirmCard } from "./ConfirmCard";
@@ -44,4 +45,18 @@ it("Autoriser est inactif 500 ms après l'apparition d'une nouvelle action", () 
   expect(btn()).toBeDisabled();
   act(() => { vi.advanceTimersByTime(500); });
   expect(btn()).toBeEnabled();
+});
+
+it("Autoriser est inactif dès le premier rendu après un changement d'action", () => {
+  const seen: boolean[] = [];
+  // Lit le DOM pendant le commit, avant les effets passifs : c'est la frame réellement peinte.
+  function Probe({ id }: { id: number }) {
+    useLayoutEffect(() => { seen.push((screen.getByRole("button", { name: "Autoriser" }) as HTMLButtonElement).disabled); }, [id]);
+    return null;
+  }
+  const ui = (id: number) => <><ConfirmCard pending={{ ...base, action_id: id }} onResolve={() => {}} /><Probe id={id} /></>;
+  const { rerender } = render(ui(1));
+  act(() => { vi.advanceTimersByTime(500); });
+  rerender(ui(2));
+  expect(seen).toEqual([true, true]);
 });

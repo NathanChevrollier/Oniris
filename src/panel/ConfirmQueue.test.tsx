@@ -1,9 +1,10 @@
 import { render, screen, fireEvent, cleanup, act } from "@testing-library/react";
 import { it, expect, vi, afterEach } from "vitest";
 import { ConfirmQueue } from "./ConfirmQueue";
+import { usePanelStore } from "./store";
 import type { PendingAction } from "../lib/ipc";
 
-afterEach(cleanup);
+afterEach(() => { cleanup(); usePanelStore.setState({ pending: [] }); });
 const mk = (id: number, summary: string): PendingAction => ({
   action_id: id, tool: "t", text: { summary, details: "d", risk: "Low" }, provenance: "User", expires_at_ms: 0,
 });

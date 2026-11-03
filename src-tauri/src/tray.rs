@@ -54,6 +54,12 @@ fn autostart_action(desired: bool, current: bool) -> Option<bool> {
 
 /// Aligne l'entrée de démarrage automatique sur le réglage (source de vérité). Erreurs journalisées.
 pub fn sync_autostart(app: &AppHandle, enabled: bool) {
+    // Un build de dev inscrirait target/debug/oniris.exe dans la clé Run, qui survivrait au dev.
+    if cfg!(debug_assertions) {
+        static LOGGED: std::sync::Once = std::sync::Once::new();
+        LOGGED.call_once(|| eprintln!("autostart: ignoré en build de debug"));
+        return;
+    }
     let mgr = app.autolaunch();
     let current = match mgr.is_enabled() {
         Ok(c) => c,

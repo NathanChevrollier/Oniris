@@ -2480,6 +2480,7 @@ name = "oniris"
 version = "0.1.0"
 dependencies = [
  "oniris-core",
+ "serde",
  "tauri",
  "tauri-build",
  "tauri-plugin-autostart",

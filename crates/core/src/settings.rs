@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 /// `key` : "Space", "A".."Z" ou "F1".."F12".
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct HotkeySetting {
     pub alt: bool,
     pub ctrl: bool,
@@ -91,6 +92,12 @@ mod tests {
         assert_eq!(s.user_name, "Nathan");
         assert_eq!(s.hold_threshold_ms, 250);
         assert_eq!(s.timeline_end_hour, 23);
+    }
+    #[test] fn raccourci_partiel_garde_le_reste() {
+        let s: Settings = serde_json::from_str(r#"{"user_name":"Nathan","hotkey":{"alt":true}}"#).unwrap();
+        assert_eq!(s.user_name, "Nathan");
+        assert!(s.hotkey.alt);
+        assert_eq!(s.hotkey.key, "Space");
     }
     #[test] fn json_corrompu_donne_les_defauts_et_garde_une_copie() {
         let dir = tempfile::tempdir().unwrap();

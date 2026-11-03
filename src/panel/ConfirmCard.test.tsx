@@ -3,8 +3,9 @@ import { render, screen, fireEvent, cleanup, act } from "@testing-library/react"
 import { it, expect, vi, afterEach, beforeEach } from "vitest";
 import { ConfirmCard } from "./ConfirmCard";
 import type { PendingAction } from "../lib/ipc";
+import { usePanelStore } from "./store";
 
-beforeEach(() => { vi.useFakeTimers(); });
+beforeEach(() => { vi.useFakeTimers(); usePanelStore.setState({ open: true }); });
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 
 const base: PendingAction = {
@@ -59,4 +60,40 @@ it("Autoriser est inactif dès le premier rendu après un changement d'action", 
   act(() => { vi.advanceTimersByTime(500); });
   rerender(ui(2));
   expect(seen).toEqual([true, true]);
+});
+
+it("monté panneau fermé : Autoriser reste inactif, y compris juste après l'ouverture", () => {
+  usePanelStore.setState({ open: false });
+  render(<ConfirmCard pending={base} onResolve={() => {}} />);
+  const btn = () => screen.getByRole("button", { name: "Autoriser" });
+  act(() => { vi.advanceTimersByTime(5000); });
+  expect(btn()).toBeDisabled();
+  act(() => usePanelStore.setState({ open: true }));
+  expect(btn()).toBeDisabled();
+});
+
+it("Autoriser s'active 500 ms après l'ouverture du panneau", () => {
+  usePanelStore.setState({ open: false });
+  render(<ConfirmCard pending={base} onResolve={() => {}} />);
+  const btn = () => screen.getByRole("button", { name: "Autoriser" });
+  act(() => usePanelStore.setState({ open: true }));
+  act(() => { vi.advanceTimersByTime(499); });
+  expect(btn()).toBeDisabled();
+  act(() => { vi.advanceTimersByTime(1); });
+  expect(btn()).toBeEnabled();
+});
+
+it("fermer puis rouvrir désarme Autoriser pour 500 ms", () => {
+  render(<ConfirmCard pending={base} onResolve={() => {}} />);
+  const btn = () => screen.getByRole("button", { name: "Autoriser" });
+  act(() => { vi.advanceTimersByTime(500); });
+  expect(btn()).toBeEnabled();
+  act(() => usePanelStore.setState({ open: false }));
+  expect(btn()).toBeDisabled();
+  act(() => usePanelStore.setState({ open: true }));
+  expect(btn()).toBeDisabled();
+  act(() => { vi.advanceTimersByTime(499); });
+  expect(btn()).toBeDisabled();
+  act(() => { vi.advanceTimersByTime(1); });
+  expect(btn()).toBeEnabled();
 });

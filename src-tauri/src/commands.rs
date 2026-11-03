@@ -54,6 +54,7 @@ pub fn settings_save(app: AppHandle, state: State<AppState>, settings: Settings)
     let hide = settings.hide_pill_in_fullscreen;
     let changed = state.hide_pill_in_fullscreen.swap(hide, Ordering::SeqCst) != hide;
     *state.settings.write() = settings.clone();
+    crate::tray::sync_autostart(&app, settings.autostart);
     if changed {
         fullscreen::reapply(&app);
     }

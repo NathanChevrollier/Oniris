@@ -2,13 +2,18 @@ mod commands;
 mod fullscreen;
 mod hotkey;
 mod state;
+mod tray;
 mod windows;
 
 use tauri::Manager;
 
 pub fn run() {
     tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|_, _, _| {}))
+        .plugin(tauri_plugin_single_instance::init(|app, _, _| {
+            if let Err(e) = windows::open_panel(app) {
+                eprintln!("instance unique : {e}");
+            }
+        }))
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
@@ -28,8 +33,11 @@ pub fn run() {
         .setup(|app| {
             let st = state::AppState::open()?;
             let hotkey_cfg = st.hotkey.clone();
+            let autostart = st.settings.read().autostart;
             app.manage(st);
             windows::show_pill(app.handle())?;
+            tray::build(app.handle())?;
+            tray::sync_autostart(app.handle(), autostart);
             hotkey::start_hook(app.handle().clone(), hotkey_cfg);
             fullscreen::start_watcher(app.handle().clone());
             Ok(())

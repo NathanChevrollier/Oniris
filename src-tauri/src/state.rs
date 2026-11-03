@@ -9,6 +9,8 @@ use std::sync::Arc;
 pub struct AppState {
     pub panel_open: AtomicBool,
     pub hide_pill_in_fullscreen: AtomicBool,
+    /// État de « Mettre la voix en pause » (sans effet avant le plan 6).
+    pub voice_paused: AtomicBool,
     /// Seule connexion du processus.
     pub db: Arc<Mutex<Connection>>,
     pub settings: RwLock<Settings>,
@@ -34,6 +36,7 @@ impl AppState {
         broker.expire_stale();
         Ok(Self {
             panel_open: AtomicBool::new(false),
+            voice_paused: AtomicBool::new(false),
             hide_pill_in_fullscreen: AtomicBool::new(s.hide_pill_in_fullscreen),
             hotkey: Arc::new(RwLock::new(HotkeyConfig::from_setting(&s.hotkey, s.hold_threshold_ms as u64))),
             db,

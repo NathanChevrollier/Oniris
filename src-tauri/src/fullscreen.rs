@@ -9,10 +9,11 @@ use ::windows::Win32::Graphics::Gdi::{
 };
 use ::windows::Win32::UI::Accessibility::{SetWinEventHook, HWINEVENTHOOK};
 use ::windows::Win32::UI::Shell::{
-    SHQueryUserNotificationState, QUNS_BUSY, QUNS_PRESENTATION_MODE, QUNS_RUNNING_D3D_FULL_SCREEN,
+    SHQueryUserNotificationState, QUNS_PRESENTATION_MODE, QUNS_RUNNING_D3D_FULL_SCREEN,
 };
 use ::windows::Win32::UI::WindowsAndMessaging::{
-    GetClassNameW, GetForegroundWindow, GetMessageW, GetWindowRect, EVENT_OBJECT_LOCATIONCHANGE,
+    GetClassNameW, GetForegroundWindow, GetMessageW, GetWindowLongW, GetWindowRect, IsZoomed,
+    GWL_STYLE, WS_CAPTION, EVENT_OBJECT_LOCATIONCHANGE,
     EVENT_SYSTEM_FOREGROUND, MSG, OBJID_WINDOW, WINEVENT_OUTOFCONTEXT, WINEVENT_SKIPOWNPROCESS,
 };
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -41,6 +42,12 @@ pub fn is_fullscreen(foreground: Rect, monitor: Rect, is_shell_window: bool, qun
         && bottom(foreground) >= bottom(monitor)
 }
 
+/// Fenêtre à ignorer : bureau/barre des tâches, ou fenêtre maximisée classique (son cadre invisible déborde
+/// de l'écran avec une barre des tâches masquée automatiquement). Un jeu sans bordure n'a pas de légende.
+fn is_excluded_window(class_is_shell: bool, is_zoomed: bool, has_caption: bool) -> bool {
+    class_is_shell || (is_zoomed && has_caption)
+}
+
 fn rect_of(r: RECT) -> Rect {
     Rect { x: r.left, y: r.top, w: (r.right - r.left).max(0) as u32, h: (r.bottom - r.top).max(0) as u32 }
 }
@@ -53,7 +60,7 @@ fn is_shell_class(hwnd: HWND) -> bool {
 
 fn quns_busy() -> bool {
     unsafe { SHQueryUserNotificationState() }
-        .is_ok_and(|s| s == QUNS_BUSY || s == QUNS_RUNNING_D3D_FULL_SCREEN || s == QUNS_PRESENTATION_MODE)
+        .is_ok_and(|s| s == QUNS_RUNNING_D3D_FULL_SCREEN || s == QUNS_PRESENTATION_MODE)
 }
 
 fn evaluate(hwnd: HWND) -> bool {
@@ -66,7 +73,11 @@ fn evaluate(hwnd: HWND) -> bool {
             return false;
         }
     }
-    is_fullscreen(rect_of(wr), rect_of(mi.rcMonitor), is_shell_class(hwnd), quns_busy())
+    let (zoomed, caption) = unsafe {
+        (IsZoomed(hwnd).as_bool(), GetWindowLongW(hwnd, GWL_STYLE) as u32 & WS_CAPTION.0 == WS_CAPTION.0)
+    };
+    let excluded = is_excluded_window(is_shell_class(hwnd), zoomed, caption);
+    is_fullscreen(rect_of(wr), rect_of(mi.rcMonitor), excluded, quns_busy())
 }
 
 fn apply(active: bool) {
@@ -109,7 +120,9 @@ pub fn start_watcher(app: AppHandle) {
     std::thread::spawn(|| unsafe {
         let flags = WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS;
         for ev in [EVENT_SYSTEM_FOREGROUND, EVENT_OBJECT_LOCATIONCHANGE] {
-            SetWinEventHook(ev, ev, Some(HMODULE::default()), Some(on_event), 0, 0, flags);
+            if SetWinEventHook(ev, ev, Some(HMODULE::default()), Some(on_event), 0, 0, flags).is_invalid() {
+                eprintln!("oniris: SetWinEventHook a échoué pour l'événement {ev:#x}");
+            }
         }
         let mut msg = MSG::default();
         while GetMessageW(&mut msg, None, 0, 0).as_bool() {}
@@ -128,4 +141,7 @@ mod tests {
     #[test] fn mode_presentation_signale_par_windows() {
         assert!(is_fullscreen(Rect { x: 10, y: 10, w: 800, h: 600 }, M, false, true));
     }
+    #[test] fn maximisee_avec_legende_exclue() { assert!(is_excluded_window(false, true, true)); }
+    #[test] fn sans_bordure_non_exclue() { assert!(!is_excluded_window(false, true, false)); }
+    #[test] fn shell_exclue() { assert!(is_excluded_window(true, false, false)); }
 }

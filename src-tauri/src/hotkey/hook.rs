@@ -169,10 +169,10 @@ fn mask_menu() {
 }
 
 impl Hook {
-    fn feed(&mut self, ev: KeyEvent) {
-        if let Some(action) = self.classifier.feed(ev) {
-            let _ = self.tx.send(action);
-        }
+    fn feed(&mut self, ev: KeyEvent) -> Option<HotkeyAction> {
+        let action = self.classifier.feed(ev)?;
+        let _ = self.tx.send(action);
+        Some(action)
     }
 
     fn on_key(&mut self, vk: u16, down: bool) -> Decision {
@@ -309,7 +309,10 @@ pub fn start_hook(app: AppHandle, cfg: Arc<RwLock<HotkeyConfig>>) {
                     // Un Tick resté en file après le relâchement est ignoré par le classifieur (état repos).
                     HOOK.with(|h| {
                         if let Some(h) = h.borrow_mut().as_mut() {
-                            h.feed(KeyEvent::Tick { at_ms: mono_ms() });
+                            // Les ticks ne servent qu'à atteindre le seuil : plus de réveils une fois le maintien parti.
+                            if h.feed(KeyEvent::Tick { at_ms: mono_ms() }) == Some(HotkeyAction::PttStart) {
+                                let _ = KillTimer(None, h.tick_timer);
+                            }
                         }
                     });
                 }

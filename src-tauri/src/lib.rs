@@ -12,6 +12,10 @@ use tauri::Manager;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _, _| {
+            // Second lancement pendant le démarrage : état pas encore géré, rien à ouvrir.
+            if app.try_state::<state::AppState>().is_none() {
+                return;
+            }
             if let Err(e) = windows::open_panel(app) {
                 eprintln!("instance unique : {e}");
             }
@@ -46,7 +50,10 @@ pub fn run() {
             let hotkey_cfg = st.hotkey.clone();
             let autostart = st.settings.read().autostart;
             app.manage(st);
-            windows::show_pill(app.handle())?;
+            // Pas encore d'écran (session qui s'ouvre) : on continue sans pilule plutôt que d'échouer.
+            if let Err(e) = windows::show_pill(app.handle()) {
+                eprintln!("pilule : affichage au démarrage impossible : {e}");
+            }
             tray::build(app.handle())?;
             tray::sync_autostart(app.handle(), autostart);
             hotkey::start_hook(app.handle().clone(), hotkey_cfg);

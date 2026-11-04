@@ -55,7 +55,7 @@ pub async fn dispatch_tool_call(app: &AppHandle, call: ToolCall) -> ToolOutcome 
     let outcome = broker.call(call).await;
     if let ToolOutcome::NeedsConfirmation(p) = &outcome {
         let _ = windows::open_panel(app);
-        let _ = app.emit("oniris://confirm", p);
+        let _ = app.emit_to("panel", "oniris://confirm", p);
     }
     outcome
 }

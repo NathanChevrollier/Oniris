@@ -9,7 +9,7 @@ export function Card({ title, aside, span, delay, children }: {
   const style: CSSProperties | undefined = delay === undefined ? undefined : { animationDelay: `${delay}s` };
   return (
     <section className={`card s${span}`} style={style}>
-      <h3>{title}{aside && <span className="r">{aside}</span>}</h3>
+      <h3>{title}{aside != null && <span className="r">{aside}</span>}</h3>
       {children}
     </section>
   );

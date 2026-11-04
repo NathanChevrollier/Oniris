@@ -10,11 +10,10 @@
 .notes li{position:relative;display:grid;grid-template-columns:1fr auto;column-gap:10px;align-items:start;padding:6px 4px;border-radius:10px;font-size:12.5px}
 .notes li:hover{background:rgba(255,255,255,.05)}
 .notes p{margin:0;grid-column:1;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.4}
-.notes time{grid-column:2;grid-row:1;color:var(--txt3);font-size:11px;white-space:nowrap}
-.notes .pinmark{position:absolute;left:-8px;top:9px;color:var(--yellow)}
+.notes time{grid-column:2;grid-row:1;justify-self:end;color:var(--txt3);font-size:11px;white-space:nowrap}
+.notes .pinmark,.clips .pinmark{display:inline;vertical-align:-1px;margin-right:6px;color:var(--yellow)}
 .notes .acts{grid-column:2;grid-row:1;justify-self:end;display:inline-flex;gap:2px;opacity:0;background:rgba(30,30,34,.9);border-radius:8px}
 .notes li:hover time{visibility:hidden}
 .notes li:hover .acts,.notes li:focus-within .acts{opacity:1}
 .card .notes .acts button{height:22px;width:22px;padding:0;margin:0;justify-content:center;background:none;border:0;color:var(--txt3);cursor:pointer}
 .card .notes .acts button:hover:enabled,.card .notes .acts button:focus-visible{background:rgba(255,255,255,.1);color:var(--txt)}
-.nempty{margin-top:10px;font-size:12.5px;color:var(--txt3)}

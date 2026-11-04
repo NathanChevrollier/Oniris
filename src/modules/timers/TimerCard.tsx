@@ -46,7 +46,7 @@ export function TimerCard() {
         </svg>
         <div className="tmid">
           <b>{first ? mmss(first.ends_ms - at) : "--:--"}</b>
-          <small>{first ? first.label : "Aucun"}</small>
+          <small>{first ? first.label : "au repos"}</small>
         </div>
       </div>
       {others.length > 0 && (

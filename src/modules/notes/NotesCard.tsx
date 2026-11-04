@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
-import { Bell, Pin, Search, Trash2 } from "lucide-react";
+import { Bell, Feather, Pin, Search, SearchX, Trash2 } from "lucide-react";
+import { Empty } from "../../ui/Empty";
 import { Card } from "../../ui/Card";
 import { useTopic } from "../../lib/data";
 import { useNow } from "../../lib/time";
@@ -71,8 +72,7 @@ export function NotesCard() {
       <ul className="notes">
         {data.map((n) => (
           <li key={n.id}>
-            {n.pinned && <Pin size={11} className="pinmark" aria-label="Épinglée" role="img" />}
-            <p>{n.body}</p>
+            <p>{n.pinned && <Pin size={11} className="pinmark" aria-label="Épinglée" role="img" />}{n.body}</p>
             <time>{ago(n.updated_ms, now)}</time>
             <span className="acts">
               <button type="button" aria-label={`${n.pinned ? "Désépingler" : "Épingler"} ${n.body}`} onClick={() => run(notesIpc.pin(n.id, !n.pinned))}><Pin size={13} /></button>
@@ -82,7 +82,9 @@ export function NotesCard() {
           </li>
         ))}
       </ul>
-      {data.length === 0 && <p className="nempty">{applied.trim() ? "Aucune note trouvée." : "Aucune note."}</p>}
+      {data.length === 0 && (applied.trim()
+        ? <Empty icon={SearchX} tint="#ffd60a">Rien ne correspond, essaie un autre mot.</Empty>
+        : <Empty icon={Feather} tint="#ffd60a">Une idée qui passe ? Note-la, elle t'attendra ici.</Empty>)}
     </Card>
   );
 }

@@ -36,9 +36,9 @@ it("MonthGrid : un clic sélectionne le jour", async () => {
   expect(onSelect).toHaveBeenCalledWith(9);
 });
 
-it("DayList vide : « Rien de prévu »", () => {
+it("DayList vide : « Rien de prévu, journée libre. »", () => {
   render(<DayList events={[]} onDelete={() => {}} />);
-  expect(screen.getByText("Rien de prévu")).toBeInTheDocument();
+  expect(screen.getByText("Rien de prévu, journée libre.")).toBeInTheDocument();
 });
 
 function mockRead() {

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Pin, Search, Trash2 } from "lucide-react";
+import { ClipboardList, Pin, Search, SearchX, Trash2 } from "lucide-react";
+import { Empty } from "../../ui/Empty";
 import { Card } from "../../ui/Card";
 import { useTopic } from "../../lib/data";
 import { useNow } from "../../lib/time";
@@ -43,10 +44,8 @@ export function ClipboardCard() {
         {data.map((c) => (
           <li key={c.id}>
             <button type="button" className="paste" aria-label={`Coller ${label(c)}`} onClick={() => run(clipboardIpc.paste(c.id))}>
-              {c.pinned && <Pin size={11} className="pinmark" aria-label="Épinglée" role="img" />}
-              {c.kind === "image"
-                ? <img src={`data:image/png;base64,${c.thumb ?? ""}`} alt="Image copiée" />
-                : <p>{c.text}{c.truncated && "…"}</p>}
+              <p>{c.pinned && <Pin size={11} className="pinmark" aria-label="Épinglée" role="img" />}
+                {c.kind === "image" ? <img src={`data:image/png;base64,${c.thumb ?? ""}`} alt="Image copiée" /> : <>{c.text}{c.truncated && "…"}</>}</p>
               <time>{ago(c.created_ms, now)}</time>
             </button>
             <span className="acts">
@@ -56,7 +55,9 @@ export function ClipboardCard() {
           </li>
         ))}
       </ul>
-      {data.length === 0 && <p className="cempty">{applied.trim() ? "Aucune copie trouvée." : "Rien de copié pour l'instant."}</p>}
+      {data.length === 0 && (applied.trim()
+        ? <Empty icon={SearchX} tint="#64d2ff">Rien ne correspond dans tes copies.</Empty>
+        : <Empty icon={ClipboardList} tint="#64d2ff">Copie un texte ou une image : tout atterrit ici.</Empty>)}
     </Card>
   );
 }

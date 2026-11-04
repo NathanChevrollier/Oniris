@@ -23,6 +23,8 @@ body.closed .card{animation:none}
 .inner{position:relative;z-index:1;padding:22px 26px 18px;display:flex;flex-direction:column;gap:14px;
   max-height:calc(100vh - 28px);overflow:auto;scrollbar-width:none}
 .inner>*{flex-shrink:0}
+/* Écran trop court : seule la grille défile, en-tête, frise et barre de commande restent visibles. */
+.inner>.grid{flex-shrink:1;min-height:220px;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.18) transparent}
 
 /* en-tête */
 .hdr{display:grid;grid-template-columns:1fr auto 1fr;align-items:center}
@@ -50,19 +52,27 @@ body.closed .card{animation:none}
   background:color-mix(in srgb,var(--c) 28%,transparent);color:color-mix(in srgb,var(--c) 30%,#fff)}
 .tl .ev:hover{transform:translateY(-2px)}
 .tl .ev small{font-weight:400;opacity:.7}
+.tl .ev{container-type:inline-size}
+@container (max-width:150px){.tl .ev small{display:none}}
 .tl .rem{position:absolute;top:8px;width:8px;height:8px;border-radius:50%;background:var(--c);box-shadow:0 0 8px var(--c)}
 .tl .now{position:absolute;top:0;bottom:0;width:2px;background:var(--acc);box-shadow:0 0 12px var(--acc)}
 .tl .now::before{content:"";position:absolute;top:-1px;left:-4px;width:10px;height:10px;border-radius:50%;background:var(--acc)}
 
-/* emplacements « Bientôt » */
+/* emplacements « Bientôt » : la carte s'étire avec sa rangée, le contenu reste centré */
 .card{isolation:isolate}
-.soon{min-height:236px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;font-size:13px;color:var(--txt3)}
-.soon::before{content:"";position:absolute;inset:0;z-index:-1;border-radius:24px;pointer-events:none;
+.card:has(>.slot-soon){display:flex;flex-direction:column}
+.slot-soon{flex:1}
+.slot-soon{min-height:236px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;font-size:13px;color:var(--txt3)}
+.slot-soon::before{content:"";position:absolute;inset:0;z-index:-1;border-radius:24px;pointer-events:none;
   background:radial-gradient(80% 90% at 0% 0%,color-mix(in srgb,var(--tint) 16%,transparent),transparent 60%),
     radial-gradient(70% 80% at 100% 100%,color-mix(in srgb,var(--tint) 7%,transparent),transparent 60%)}
-.soon-ico{width:52px;height:52px;border-radius:16px;display:grid;place-items:center;color:var(--tint);
+.slot-soon-t{font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--txt2)}
+.slot-soon small{margin-top:-6px;font-size:12.5px;color:var(--txt3)}
+.slot-soon-ico{transition:transform .35s var(--ease);width:52px;height:52px;border-radius:16px;display:grid;place-items:center;color:var(--tint);
   background:color-mix(in srgb,var(--tint) 16%,transparent);
   box-shadow:0 12px 30px color-mix(in srgb,var(--tint) 22%,transparent),inset 0 1px 0 rgba(255,255,255,.12)}
+
+.card:hover .slot-soon-ico{transform:translateY(-3px) scale(1.04)}
 
 /* boutons des cartes (confirmation) */
 .card button{display:inline-flex;align-items:center;gap:7px;height:30px;padding:0 13px;margin:10px 8px 0 0;border-radius:999px;font:500 12.5px var(--font);

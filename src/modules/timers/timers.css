@@ -15,7 +15,7 @@
 .card .tstop{display:block;margin:0 auto 8px;background:none;border:0;padding:0;font-size:11.5px;color:var(--txt3);cursor:pointer}
 .card .tstop:hover,.card .tstop:focus-visible{color:var(--txt)}
 .tquick{display:flex;gap:6px;margin-bottom:8px}
-.card .tquick button{flex:1;margin:0;padding:5px 0;font-size:12px;cursor:pointer}
+.card .tquick button{flex:1;justify-content:center;margin:0;padding:5px 0;font-size:12px;cursor:pointer}
 .tinput{display:block;width:100%;box-sizing:border-box;padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.06);font:12.5px var(--font);color:var(--txt);outline:0;caret-color:var(--acc)}
 .tinput:focus{border-color:rgba(255,140,100,.35)}
 .tinput::placeholder{color:var(--txt3)}

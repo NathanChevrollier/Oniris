@@ -3,10 +3,22 @@ import userEvent from "@testing-library/user-event";
 import { it, expect, vi, afterEach, beforeEach } from "vitest";
 import { Panel } from "./Panel";
 import { usePanelStore } from "./store";
-import { ipc, type PendingAction } from "../lib/ipc";
+import { invoke, ipc, listen, type PendingAction } from "../lib/ipc";
+
+// Le panneau se croit dans Tauri : chaque module passe alors par `invoke` (au lieu des données factices),
+// ce qui rend les appels IPC observables. `invoke` ne répond jamais, `listen` abonne à vide.
+vi.mock("../lib/ipc", async (orig) => ({
+  ...(await orig<typeof import("../lib/ipc")>()),
+  isTauri: true,
+  invoke: vi.fn(() => new Promise(() => {})),
+  listen: vi.fn(() => Promise.resolve(() => {})),
+}));
+const invokeMock = vi.mocked(invoke);
 
 const panelClose = vi.fn();
 beforeEach(() => {
+  invokeMock.mockClear();
+  vi.mocked(listen).mockClear();
   panelClose.mockReset();
   panelClose.mockResolvedValue(undefined);
   vi.spyOn(ipc, "panelClose").mockImplementation(panelClose as never);
@@ -82,6 +94,43 @@ it("frise : une colonne par heure ; grille d'emplacements « Bientôt »", () =>
   expect(hours.at(-1)).toBe("22h");
   expect(container.querySelectorAll(".grid > .card")).toHaveLength(9);
   expect(screen.getAllByText("Bientôt")).toHaveLength(4); // agenda, notes, presse-papiers, minuteur et Ce PC ont leur carte
+});
+
+it("les 9 emplacements, dans l'ordre de la maquette (l'agenda est titré par le mois)", () => {
+  const { container } = render(<Panel />);
+  const month = new Date().toLocaleDateString("fr-FR", { month: "long" });
+  const titles = [...container.querySelectorAll(".grid > .card > h3")].map((h) => h.firstChild?.textContent);
+  expect(titles).toEqual(["En lecture", "Mails", month[0].toUpperCase() + month.slice(1), "Projets", "Ce PC", "VPS · sites", "Notes", "Presse-papiers", "Minuteur"]);
+});
+
+it("panneau fermé : ni minuterie ni appel IPC, seulement des abonnements", () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"] });
+  usePanelStore.setState({ open: false });
+  const getSettings = vi.spyOn(ipc, "getSettings");
+  render(<Panel />);
+  // Seule lecture : les réglages (`useSettings`), au montage de la fenêtre, jamais ensuite.
+  const settingsReads = getSettings.mock.calls.length;
+  act(() => { vi.advanceTimersByTime(5 * 60_000); });
+  expect(vi.getTimerCount()).toBe(0);
+  expect(invokeMock).not.toHaveBeenCalled();
+  expect(getSettings).toHaveBeenCalledTimes(settingsReads);
+  expect(vi.mocked(listen).mock.calls.map(([e]) => e)).not.toContain("oniris://system");
+});
+
+it("à l'ouverture, chaque sujet se charge après le premier rendu (dans un effet)", () => {
+  // Monté ouvert : un appel fait pendant le rendu ne trouverait pas encore le panneau dans le document.
+  const seenGrid: boolean[] = [];
+  invokeMock.mockImplementation(() => {
+    seenGrid.push(document.querySelectorAll(".panel .grid > .card").length === 9);
+    return new Promise(() => {});
+  });
+  render(<Panel />);
+  const cmds = new Set(invokeMock.mock.calls.map(([c]) => c));
+  for (const c of ["agenda_between", "agenda_month_days", "reminders_list", "notes_list", "clipboard_list", "timers_list", "weather_get"]) {
+    expect(cmds).toContain(c);
+  }
+  expect(seenGrid.length).toBe(invokeMock.mock.calls.length);
+  expect(seenGrid.every(Boolean)).toBe(true); // le DOM du panneau était déjà affiché à chaque appel
 });
 
 it("une confirmation en attente s'affiche au-dessus de la grille", () => {

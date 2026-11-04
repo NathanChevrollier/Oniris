@@ -104,3 +104,52 @@ it("état vide : invitation et bouton Importer désactivé", async () => {
   expect(await screen.findByText(/Ajoute tes sites favoris/)).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Importer" })).toBeDisabled();
 });
+
+it("le relâchement hors de la tuile termine le glisser (capture du pointeur)", async () => {
+  vi.spyOn(favoritesIpc, "list").mockResolvedValue(three);
+  const reorder = vi.spyOn(favoritesIpc, "reorder").mockResolvedValue();
+  const capture = vi.fn(), release = vi.fn();
+  Element.prototype.setPointerCapture = capture;
+  Element.prototype.releasePointerCapture = release;
+  render(<FavoritesCard />);
+  const alpha = await screen.findByRole("button", { name: "Alpha" });
+  fireEvent.pointerDown(alpha, { clientX: 25, clientY: 20, button: 0, pointerId: 7 });
+  fireEvent.pointerMove(alpha, { clientX: 60, clientY: 22, pointerId: 7 });
+  expect(capture).toHaveBeenCalledWith(7);
+  expect(alpha.closest("li")).toHaveClass("dragging");
+  fireEvent.pointerMove(alpha, { clientX: 130, clientY: 22, pointerId: 7 });
+  fireEvent.pointerUp(document.body, { clientX: 900, clientY: 900, pointerId: 7 }); // hors de la tuile
+  expect(alpha.closest("li")).not.toHaveClass("dragging");
+  expect(release).toHaveBeenCalledWith(7);
+  expect(reorder).toHaveBeenCalledWith([2, 3, 1]);
+  fireEvent.pointerMove(alpha, { clientX: 130, clientY: 22, pointerId: 7 }); // plus de glisser en cours
+  expect(alpha.closest("li")).not.toHaveClass("dragging");
+});
+
+it("annonce la nouvelle position, le menu se ferme sur Échap et au clic dehors", async () => {
+  vi.spyOn(favoritesIpc, "list").mockResolvedValue(three);
+  vi.spyOn(favoritesIpc, "reorder").mockResolvedValue();
+  render(<FavoritesCard />);
+  const beta = await screen.findByRole("button", { name: "Beta" });
+  beta.focus();
+  await userEvent.keyboard("{Alt>}{ArrowRight}{/Alt}");
+  expect(screen.getByRole("status")).toHaveTextContent("Déplacé en position 3 sur 3");
+  expect(screen.getByRole("list", { name: "Favoris" })).toBeInTheDocument();
+  fireEvent.contextMenu(beta);
+  expect(screen.getByRole("menu")).toBeInTheDocument();
+  await userEvent.keyboard("{Escape}");
+  expect(screen.queryByRole("menu")).toBeNull();
+  fireEvent.contextMenu(beta);
+  fireEvent.pointerDown(document.body);
+  expect(screen.queryByRole("menu")).toBeNull();
+});
+
+it("un renommage qui échoue affiche une erreur", async () => {
+  vi.spyOn(favoritesIpc, "list").mockResolvedValue(three);
+  vi.spyOn(favoritesIpc, "rename").mockRejectedValue("boom");
+  render(<FavoritesCard />);
+  fireEvent.contextMenu(await screen.findByRole("button", { name: "Alpha" }));
+  await userEvent.click(screen.getByRole("menuitem", { name: "Renommer" }));
+  await userEvent.type(screen.getByLabelText("Nouveau titre"), "x{Enter}");
+  expect(await screen.findByRole("alert")).toHaveTextContent("Renommage impossible");
+});

@@ -11,7 +11,7 @@ it("affiche l'emplacement fourni, « Bientôt » pour les autres, dans l'ordre",
   cleanup();
   const { container } = render(<CardGrid slots={{}} />);
   const titles = [...container.querySelectorAll(".card h3")].map((n) => n.textContent);
-  const order = ["En lecture", "Mails", "Agenda", "Projets", "Ce PC", "VPS · sites", "Notes", "Presse-papiers", "Minuteur"];
+  const order = ["En lecture", "Mails", "Agenda", "Projets", "Ce PC", "Favoris", "Notes", "Presse-papiers", "Minuteur"];
   const found = order.map((t) => titles.indexOf(t));
   expect(found.every((i) => i >= 0)).toBe(true);
   expect([...found].sort((a, b) => a - b)).toEqual(found);

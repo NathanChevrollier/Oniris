@@ -19,14 +19,15 @@ export const hostOf = (url: string) => { try { return new URL(url).hostname.repl
 
 /** Teinte stable (0-359) tirée du domaine. */
 export function hueOf(host: string) {
-  let h = 0;
-  for (const c of host) h = (h * 31 + c.charCodeAt(0)) >>> 0;
-  return h % 360;
+  let h = 2166136261; // FNV-1a, puis mélange final : les domaines proches s'étalent sur tout le cercle
+  for (const c of host) h = Math.imul(h ^ c.charCodeAt(0), 16777619) >>> 0;
+  h = Math.imul(h ^ (h >>> 15), 2246822519) >>> 0;
+  return (h ^ (h >>> 13)) % 360;
 }
 
 const move = <T,>(a: T[], from: number, to: number) => { const b = [...a]; b.splice(to, 0, b.splice(from, 1)[0]); return b; };
 
-type Drag = { id: number; x: number; y: number; active: boolean; timer: number; over: number | null };
+type Drag = { id: number; x: number; y: number; active: boolean; timer: number; over: number | null; el: HTMLElement; pid: number };
 
 export function FavoritesCard() {
   const { data } = useTopic<Favorite[]>("favorites", favoritesIpc.list, NONE);
@@ -44,6 +45,9 @@ export function FavoritesCard() {
   const drag = useRef<Drag | null>(null);
   const justDragged = useRef(false);
   const root = useRef<HTMLDivElement>(null);
+  const upRef = useRef<() => void>(() => {});
+  const [announce, setAnnounce] = useState("");
+  const [renameError, setRenameError] = useState<string | null>(null);
 
   const persist = (next: Favorite[]) => { setLocal(next); favoritesIpc.reorder(next.map((f) => f.id)).catch(() => setLocal(null)); };
 
@@ -56,12 +60,21 @@ export function FavoritesCard() {
     return null;
   };
 
-  const start = (d: Drag) => { if (drag.current === d) { d.active = true; setDragging(d.id); } };
+  const start = (d: Drag) => {
+    if (drag.current !== d || d.active) return;
+    d.active = true;
+    setDragging(d.id);
+    try { d.el.setPointerCapture?.(d.pid); } catch { /* pointeur déjà relâché */ }
+  };
+  // Le relâchement peut avoir lieu hors de la tuile (ou de la fenêtre) : on l'écoute sur la fenêtre.
+  const onWinUp = () => upRef.current();
   const down = (e: PointerEvent, id: number) => {
     if (e.button !== 0) return;
-    const d: Drag = { id, x: e.clientX, y: e.clientY, active: false, over: null, timer: 0 };
+    const d: Drag = { id, x: e.clientX, y: e.clientY, active: false, over: null, timer: 0, el: e.currentTarget as HTMLElement, pid: e.pointerId };
     d.timer = window.setTimeout(() => start(d), HOLD_MS);
     drag.current = d;
+    window.addEventListener("pointerup", onWinUp);
+    window.addEventListener("pointercancel", onWinUp);
   };
   const moved = (e: PointerEvent) => {
     const d = drag.current;
@@ -75,6 +88,9 @@ export function FavoritesCard() {
     const d = drag.current;
     if (!d) return;
     clearTimeout(d.timer);
+    window.removeEventListener("pointerup", onWinUp);
+    window.removeEventListener("pointercancel", onWinUp);
+    try { d.el.releasePointerCapture?.(d.pid); } catch { /* déjà libéré */ }
     drag.current = null;
     setDragging(null);
     setOver(null);
@@ -85,12 +101,25 @@ export function FavoritesCard() {
     if (d.over !== null && d.over !== from) persist(move(list, from, d.over));
   };
 
+  upRef.current = up;
+  useEffect(() => () => { clearTimeout(drag.current?.timer); window.removeEventListener("pointerup", onWinUp); window.removeEventListener("pointercancel", onWinUp); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // Menu : se ferme au clic en dehors et sur Échap.
+  useEffect(() => {
+    if (menu === null) return;
+    const out = (e: Event) => { if (!(e.target as Element).closest?.(".fav-menu, .fav-more")) setMenu(null); };
+    const esc = (e: globalThis.KeyboardEvent) => { if (e.key === "Escape") setMenu(null); };
+    document.addEventListener("pointerdown", out);
+    document.addEventListener("keydown", esc);
+    return () => { document.removeEventListener("pointerdown", out); document.removeEventListener("keydown", esc); };
+  }, [menu]);
+
   const key = (e: KeyboardEvent, i: number) => {
     if (!e.altKey || (e.key !== "ArrowLeft" && e.key !== "ArrowRight")) return;
     e.preventDefault();
     const to = i + (e.key === "ArrowLeft" ? -1 : 1);
     if (to < 0 || to >= list.length || list[to].category !== list[i].category) return;
     persist(move(list, i, to));
+    setAnnounce(`Déplacé en position ${to + 1} sur ${list.length}`);
   };
 
   const submit = async () => {
@@ -110,8 +139,8 @@ export function FavoritesCard() {
     return (
       <li key={f.id} data-index={i} className={`fav ${dragging === f.id ? "dragging" : ""} ${drop}`} onContextMenu={(e) => { e.preventDefault(); setMenu(f.id); }}>
         <button type="button" className="fav-btn" aria-label={f.title} onClick={() => open(f)}
-          onPointerDown={(e) => down(e, f.id)} onPointerMove={moved} onPointerUp={up} onPointerCancel={up}
-          onKeyDown={(e) => key(e, i)}>
+          onPointerDown={(e) => down(e, f.id)} onPointerMove={moved} onLostPointerCapture={up}
+          aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight" onKeyDown={(e) => key(e, i)}>
           <span className="fav-ico" style={{ "--hue": hueOf(hostOf(f.url)) } as CSSProperties}>
             {f.icon ? <img src={f.icon} alt="" draggable={false} /> : <span aria-hidden>{initials(f.title)}</span>}
           </span>
@@ -122,7 +151,7 @@ export function FavoritesCard() {
             onBlur={() => setRenaming(null)}
             onKeyDown={(e) => {
               if (e.key === "Escape") setRenaming(null);
-              if (e.key === "Enter") { const v = e.currentTarget.value.trim(); setRenaming(null); if (v) favoritesIpc.rename(f.id, v).catch(() => {}); }
+              if (e.key === "Enter") { const v = e.currentTarget.value.trim(); setRenaming(null); if (v) favoritesIpc.rename(f.id, v).then(() => setRenameError(null), () => setRenameError("Renommage impossible, réessaie.")); }
             }} />
         )}
         <button type="button" className="fav-more" aria-label={`Options de ${f.title}`} aria-haspopup="menu" onClick={() => setMenu(menu === f.id ? null : f.id)}><MoreHorizontal size={12} /></button>
@@ -148,7 +177,7 @@ export function FavoritesCard() {
         {groups.map((cat, g) => (
           <div key={cat ?? "∅"}>
             {grouped && <h4 className="fav-cat">{cat ?? "Sans catégorie"}</h4>}
-            <ul className="favs">
+            <ul className="favs" role="list" aria-label="Favoris">
               {list.filter((f) => !grouped || f.category === cat).map(tile)}
               {g === groups.length - 1 && (
                 <li><button type="button" className="fav-btn fav-add" aria-label="Ajouter un favori" onClick={() => { setAdding(!adding); clear(); }}>
@@ -165,7 +194,8 @@ export function FavoritesCard() {
           <button type="submit">Ajouter</button>
         </form>
       )}
-      {error && <p className="err" role="alert">{error}</p>}
+      {(error ?? renameError) && <p className="err" role="alert">{error ?? renameError}</p>}
+      <span className="sr-only" role="status" aria-live="polite">{announce}</span>
     </Card>
   );
 }

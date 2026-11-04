@@ -48,14 +48,27 @@ pub fn add(c: &Connection, title: &str, url: &str, category: Option<&str>, now_m
 
 /// Supprime ou restaure ; restaurer une URL entre-temps rajoutée échoue (index unique).
 pub fn set_deleted(c: &Connection, id: i64, deleted: bool) -> Result<(), CoreError> {
-    c.execute("UPDATE favorites SET deleted = ?2 WHERE id = ?1", params![id, deleted])
-        .map_err(|_| CoreError::Invalid("favori déjà présent".into()))?;
+    let n = c.execute("UPDATE favorites SET deleted = ?2 WHERE id = ?1", params![id, deleted]).map_err(|e| match e {
+        rusqlite::Error::SqliteFailure(f, _) if f.code == rusqlite::ErrorCode::ConstraintViolation => CoreError::Invalid("favori déjà présent".into()),
+        e => CoreError::Db(e),
+    })?;
+    if n == 0 {
+        return Err(CoreError::NotFound("favori introuvable".into()));
+    }
     Ok(())
 }
 
 /// La position de chaque id devient son rang dans `ids` (l'ordre relatif par catégorie suit).
+/// `ids` doit être exactement l'ensemble des favoris non supprimés, sans doublon : sinon `Invalid`, rien n'est écrit.
 pub fn reorder(c: &Connection, ids: &[i64]) -> Result<(), CoreError> {
     let tx = c.unchecked_transaction()?;
+    let mut live: Vec<i64> = list(c)?.iter().map(|f| f.id).collect();
+    let mut given = ids.to_vec();
+    live.sort_unstable();
+    given.sort_unstable();
+    if live != given {
+        return Err(CoreError::Invalid("ordre incomplet ou inconnu".into()));
+    }
     for (i, id) in ids.iter().enumerate() {
         tx.execute("UPDATE favorites SET position = ?2 WHERE id = ?1 AND deleted = 0", params![id, i as i64])?;
     }
@@ -143,6 +156,20 @@ mod tests {
         set_deleted(&c, id, true).unwrap();
         add(&c, "A bis", "https://a.com", None, 2).unwrap(); // l'URL supprimée est libre
         assert!(set_deleted(&c, id, false).is_err(), "restauration en doublon refusée");
+    }
+
+    #[test]
+    fn reorder_strict_et_set_deleted_precis() {
+        let c = db();
+        let a = add(&c, "A", "https://a.com", None, 1).unwrap();
+        let b = add(&c, "B", "https://b.com", None, 1).unwrap();
+        for bad in [vec![a], vec![a, a], vec![a, b, 999], vec![b, 999]] {
+            assert!(matches!(reorder(&c, &bad), Err(CoreError::Invalid(_))), "{bad:?}");
+        }
+        assert_eq!(list(&c).unwrap().iter().map(|f| f.id).collect::<Vec<_>>(), [a, b], "rien d'écrit");
+        assert!(matches!(set_deleted(&c, 999, true), Err(CoreError::NotFound(_))));
+        c.execute_batch("DROP TABLE favorites").unwrap();
+        assert!(matches!(set_deleted(&c, a, true), Err(CoreError::Db(_))), "autre erreur : pas masquée");
     }
 
     #[test]

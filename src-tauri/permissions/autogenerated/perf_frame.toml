@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-perf-frame"
+description = "Enables the perf_frame command without any pre-configured scope."
+commands.allow = ["perf_frame"]
+
+[[permission]]
+identifier = "deny-perf-frame"
+description = "Denies the perf_frame command without any pre-configured scope."
+commands.deny = ["perf_frame"]

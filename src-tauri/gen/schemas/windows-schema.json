@@ -177,6 +177,138 @@
       "description": "Permission identifier",
       "oneOf": [
         {
+          "description": "Enables the journal_list command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-journal-list",
+          "markdownDescription": "Enables the journal_list command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the panel_close command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-panel-close",
+          "markdownDescription": "Enables the panel_close command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the panel_open command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-panel-open",
+          "markdownDescription": "Enables the panel_open command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the panel_toggle command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-panel-toggle",
+          "markdownDescription": "Enables the panel_toggle command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the perf_frame command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-perf-frame",
+          "markdownDescription": "Enables the perf_frame command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the perf_open_cycles command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-perf-open-cycles",
+          "markdownDescription": "Enables the perf_open_cycles command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the pill_resize command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-pill-resize",
+          "markdownDescription": "Enables the pill_resize command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the settings_get command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-settings-get",
+          "markdownDescription": "Enables the settings_get command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the settings_save command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-settings-save",
+          "markdownDescription": "Enables the settings_save command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the tool_resolve command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-tool-resolve",
+          "markdownDescription": "Enables the tool_resolve command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the tool_undo command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-tool-undo",
+          "markdownDescription": "Enables the tool_undo command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the journal_list command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-journal-list",
+          "markdownDescription": "Denies the journal_list command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the panel_close command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-panel-close",
+          "markdownDescription": "Denies the panel_close command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the panel_open command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-panel-open",
+          "markdownDescription": "Denies the panel_open command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the panel_toggle command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-panel-toggle",
+          "markdownDescription": "Denies the panel_toggle command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the perf_frame command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-perf-frame",
+          "markdownDescription": "Denies the perf_frame command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the perf_open_cycles command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-perf-open-cycles",
+          "markdownDescription": "Denies the perf_open_cycles command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the pill_resize command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-pill-resize",
+          "markdownDescription": "Denies the pill_resize command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the settings_get command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-settings-get",
+          "markdownDescription": "Denies the settings_get command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the settings_save command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-settings-save",
+          "markdownDescription": "Denies the settings_save command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the tool_resolve command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-tool-resolve",
+          "markdownDescription": "Denies the tool_resolve command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the tool_undo command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-tool-undo",
+          "markdownDescription": "Denies the tool_undo command without any pre-configured scope."
+        },
+        {
           "description": "This permission set configures if your\napplication can enable or disable auto\nstarting the application on boot.\n\n#### Granted Permissions\n\nIt allows all to check, enable and\ndisable the automatic start on boot.\n\n\n#### This default permission set includes:\n\n- `allow-enable`\n- `allow-disable`\n- `allow-is-enabled`",
           "type": "string",
           "const": "autostart:default",

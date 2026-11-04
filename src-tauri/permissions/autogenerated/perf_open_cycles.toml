@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-perf-open-cycles"
+description = "Enables the perf_open_cycles command without any pre-configured scope."
+commands.allow = ["perf_open_cycles"]
+
+[[permission]]
+identifier = "deny-perf-open-cycles"
+description = "Denies the perf_open_cycles command without any pre-configured scope."
+commands.deny = ["perf_open_cycles"]

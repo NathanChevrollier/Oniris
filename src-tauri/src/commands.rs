@@ -5,7 +5,7 @@ use oniris_core::tools::{JournalEntry, ToolBroker, ToolCall, ToolOutcome};
 use oniris_core::{save_settings, Settings};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State, Webview};
 
 #[tauri::command]
 pub fn panel_open(app: AppHandle) -> tauri::Result<()> {
@@ -60,14 +60,30 @@ pub async fn dispatch_tool_call(app: &AppHandle, call: ToolCall) -> ToolOutcome 
     outcome
 }
 
+/// Approuver ou annuler une action : seulement depuis le panneau, et seulement s'il est ouvert (visible).
+fn approval_gate(label: &str, panel_open: bool) -> Result<(), String> {
+    if label == "panel" && panel_open {
+        Ok(())
+    } else {
+        Err("action refusée : seul le panneau ouvert peut approuver ou annuler".into())
+    }
+}
+
 #[tauri::command]
-pub async fn tool_resolve(state: State<'_, AppState>, action_id: i64, approved: bool) -> Result<ToolOutcome, String> {
+pub async fn tool_resolve(
+    webview: Webview,
+    state: State<'_, AppState>,
+    action_id: i64,
+    approved: bool,
+) -> Result<ToolOutcome, String> {
+    approval_gate(webview.label(), state.panel_open.load(Ordering::SeqCst))?;
     let broker = state.broker.clone();
     Ok(broker.resolve(action_id, approved).await)
 }
 
 #[tauri::command]
-pub async fn tool_undo(state: State<'_, AppState>, action_id: i64) -> Result<(), String> {
+pub async fn tool_undo(webview: Webview, state: State<'_, AppState>, action_id: i64) -> Result<(), String> {
+    approval_gate(webview.label(), state.panel_open.load(Ordering::SeqCst))?;
     let broker = state.broker.clone();
     broker.undo(action_id).await.map_err(|e| e.to_string())
 }
@@ -75,4 +91,16 @@ pub async fn tool_undo(state: State<'_, AppState>, action_id: i64) -> Result<(),
 #[tauri::command]
 pub fn journal_list(state: State<AppState>, limit: u32) -> Vec<JournalEntry> {
     state.broker.journal(limit)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn approbation_reservee_au_panneau_ouvert() {
+        assert!(approval_gate("panel", true).is_ok());
+        assert!(approval_gate("panel", false).is_err());
+        assert!(approval_gate("pill", true).is_err());
+        assert!(approval_gate("pill", false).is_err());
+    }
 }

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-panel-toggle"
+description = "Enables the panel_toggle command without any pre-configured scope."
+commands.allow = ["panel_toggle"]
+
+[[permission]]
+identifier = "deny-panel-toggle"
+description = "Denies the panel_toggle command without any pre-configured scope."
+commands.deny = ["panel_toggle"]

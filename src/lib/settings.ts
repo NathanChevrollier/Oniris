@@ -22,6 +22,8 @@ export type Settings = {
   timeline_start_hour: number;
   timeline_end_hour: number;
   reduce_motion: boolean;
+  focus_minutes: number;
+  break_minutes: number;
 };
 
 /** Miroir de `Settings::default()` côté Rust : valeurs affichées avant la réponse de `settings_get`. */
@@ -36,6 +38,8 @@ export const DEFAULT_SETTINGS: Settings = {
   timeline_start_hour: 8,
   timeline_end_hour: 23,
   reduce_motion: false,
+  focus_minutes: 25,
+  break_minutes: 5,
 };
 
 /** Paramètres courants : chargés au montage, puis suivis via `oniris://settings`. */

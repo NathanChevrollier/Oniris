@@ -1,0 +1,21 @@
+.tring{position:relative;width:96px;height:96px;margin:4px auto 8px}
+.tring svg{width:100%;height:100%;transform:rotate(-90deg)}
+.tring circle{fill:none;stroke-width:5}
+.tring .track{stroke:rgba(255,255,255,.1)}
+.tring .arc{stroke:var(--acc);stroke-linecap:round;transition:stroke-dashoffset 1s linear}
+.tmid{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:0 14px;text-align:center}
+.tmid b{font:600 17px var(--font);font-feature-settings:"tnum" 1}
+.tmid small{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10.5px;color:var(--txt3)}
+.tlist{list-style:none;margin:0 0 8px;padding:0;display:flex;flex-direction:column;gap:4px;font-size:12.5px}
+.tlist li{display:flex;align-items:center;gap:8px}
+.tlist span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tlist time{color:var(--txt3);font-feature-settings:"tnum" 1}
+.card .tlist button{width:20px;height:20px;padding:0;margin:0;display:grid;place-items:center;background:none;border:0;border-radius:50%;color:var(--txt3);cursor:pointer}
+.card .tlist button:hover:enabled,.card .tlist button:focus-visible{background:rgba(255,255,255,.1);color:var(--txt)}
+.card .tstop{display:block;margin:0 auto 8px;background:none;border:0;padding:0;font-size:11.5px;color:var(--txt3);cursor:pointer}
+.card .tstop:hover,.card .tstop:focus-visible{color:var(--txt)}
+.tquick{display:flex;gap:6px;margin-bottom:8px}
+.card .tquick button{flex:1;margin:0;padding:5px 0;font-size:12px;cursor:pointer}
+.tinput{display:block;width:100%;box-sizing:border-box;padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.06);font:12.5px var(--font);color:var(--txt);outline:0;caret-color:var(--acc)}
+.tinput:focus{border-color:rgba(255,140,100,.35)}
+.tinput::placeholder{color:var(--txt3)}

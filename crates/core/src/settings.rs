@@ -32,6 +32,8 @@ pub struct Settings {
     pub timeline_start_hour: u8,
     pub timeline_end_hour: u8,
     pub reduce_motion: bool,
+    pub focus_minutes: u16,
+    pub break_minutes: u16,
 }
 
 impl Default for Settings {
@@ -47,6 +49,8 @@ impl Default for Settings {
             timeline_start_hour: 8,
             timeline_end_hour: 23,
             reduce_motion: false,
+            focus_minutes: 25,
+            break_minutes: 5,
         }
     }
 }
@@ -90,6 +94,14 @@ impl Settings {
         if !(100..=3000).contains(&self.hover_delay_ms) {
             errs.push("délai de survol hors de 100..=3000 ms".into());
             self.hover_delay_ms = d.hover_delay_ms;
+        }
+        if !(5..=120).contains(&self.focus_minutes) {
+            errs.push("durée de focus hors de 5..=120 min".into());
+            self.focus_minutes = d.focus_minutes;
+        }
+        if !(1..=60).contains(&self.break_minutes) {
+            errs.push("durée de pause hors de 1..=60 min".into());
+            self.break_minutes = d.break_minutes;
         }
         if let Err(e) = check_hotkey(&self.hotkey) {
             errs.push(e);
@@ -152,6 +164,7 @@ mod tests {
         assert_eq!(s.user_name, "Nathan");
         assert_eq!(s.hold_threshold_ms, 250);
         assert_eq!(s.timeline_end_hour, 23);
+        assert_eq!((s.focus_minutes, s.break_minutes), (25, 5));
     }
     #[test] fn raccourci_partiel_garde_le_reste() {
         let s: Settings = serde_json::from_str(r#"{"user_name":"Nathan","hotkey":{"alt":true}}"#).unwrap();
@@ -188,6 +201,10 @@ mod tests {
         assert!(bad(|s| s.hover_delay_ms = 99));
         assert!(bad(|s| s.hover_delay_ms = 3001));
         assert!(bad(|s| s.hotkey.key = "Enter".into()));
+        assert!(bad(|s| s.focus_minutes = 4));
+        assert!(bad(|s| s.focus_minutes = 121));
+        assert!(bad(|s| s.break_minutes = 0));
+        assert!(bad(|s| s.break_minutes = 61));
         // Sans Alt/Ctrl/Win : refusé, Maj seule ne compte pas.
         assert!(bad(|s| s.hotkey = HotkeySetting { alt: false, shift: true, key: "A".into(), ..HotkeySetting::default() }));
         assert!(bad(|s| s.hotkey.alt = false));
@@ -196,17 +213,20 @@ mod tests {
         assert!(ok(HotkeySetting { alt: false, ctrl: true, key: "A".into(), ..HotkeySetting::default() }));
         assert!(ok(HotkeySetting { alt: false, win: true, ..HotkeySetting::default() }));
         assert!(Settings { timeline_end_hour: 24, hover_delay_ms: 3000, ..Settings::default() }.validate().is_ok());
+        assert!(Settings { focus_minutes: 5, break_minutes: 60, ..Settings::default() }.validate().is_ok());
+        assert!(Settings { focus_minutes: 120, break_minutes: 1, ..Settings::default() }.validate().is_ok());
     }
     #[test] fn champs_invalides_en_base_remplaces_un_par_un() {
         let dir = tempfile::tempdir().unwrap();
         let mut c = open_db(&dir.path().join("t.db")).unwrap();
         migrate(&mut c, CORE_MIGRATIONS).unwrap();
-        let json = r#"{"user_name":"Nathan","hold_threshold_ms":400,"hover_delay_ms":5,"timeline_start_hour":9,"timeline_end_hour":30,"hotkey":{"alt":false,"key":"Space"}}"#;
+        let json = r#"{"user_name":"Nathan","hold_threshold_ms":400,"hover_delay_ms":5,"focus_minutes":2,"break_minutes":10,"timeline_start_hour":9,"timeline_end_hour":30,"hotkey":{"alt":false,"key":"Space"}}"#;
         c.execute("INSERT INTO settings(id, json) VALUES (1, ?1)", [json]).unwrap();
         let s = load_settings(&c).unwrap();
         let d = Settings::default();
         assert_eq!((s.user_name.as_str(), s.hold_threshold_ms), ("Nathan", 400));
         assert_eq!(s.hover_delay_ms, d.hover_delay_ms);
+        assert_eq!((s.focus_minutes, s.break_minutes), (d.focus_minutes, 10));
         assert_eq!((s.timeline_start_hour, s.timeline_end_hour), (d.timeline_start_hour, d.timeline_end_hour));
         assert_eq!(s.hotkey, d.hotkey);
         let broken: Option<String> = c.query_row("SELECT broken_json FROM settings WHERE id = 1", [], |r| r.get(0)).unwrap();

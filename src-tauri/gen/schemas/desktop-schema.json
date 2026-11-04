@@ -201,6 +201,12 @@
           "markdownDescription": "Enables the agenda_month_days command without any pre-configured scope."
         },
         {
+          "description": "Enables the focus_start command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-focus-start",
+          "markdownDescription": "Enables the focus_start command without any pre-configured scope."
+        },
+        {
           "description": "Enables the journal_list command without any pre-configured scope.",
           "type": "string",
           "const": "allow-journal-list",
@@ -309,6 +315,24 @@
           "markdownDescription": "Enables the settings_save command without any pre-configured scope."
         },
         {
+          "description": "Enables the timers_cancel command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-timers-cancel",
+          "markdownDescription": "Enables the timers_cancel command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the timers_list command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-timers-list",
+          "markdownDescription": "Enables the timers_list command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the timers_start command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-timers-start",
+          "markdownDescription": "Enables the timers_start command without any pre-configured scope."
+        },
+        {
           "description": "Enables the tool_resolve command without any pre-configured scope.",
           "type": "string",
           "const": "allow-tool-resolve",
@@ -343,6 +367,12 @@
           "type": "string",
           "const": "deny-agenda-month-days",
           "markdownDescription": "Denies the agenda_month_days command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the focus_start command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-focus-start",
+          "markdownDescription": "Denies the focus_start command without any pre-configured scope."
         },
         {
           "description": "Denies the journal_list command without any pre-configured scope.",
@@ -451,6 +481,24 @@
           "type": "string",
           "const": "deny-settings-save",
           "markdownDescription": "Denies the settings_save command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the timers_cancel command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-timers-cancel",
+          "markdownDescription": "Denies the timers_cancel command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the timers_list command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-timers-list",
+          "markdownDescription": "Denies the timers_list command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the timers_start command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-timers-start",
+          "markdownDescription": "Denies the timers_start command without any pre-configured scope."
         },
         {
           "description": "Denies the tool_resolve command without any pre-configured scope.",

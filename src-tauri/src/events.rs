@@ -10,6 +10,9 @@ impl Events for TauriEvents {
         if topic == Topic::Reminders {
             crate::modules::reminders::reschedule_reminders(&self.0);
         }
+        if topic == Topic::Timers {
+            crate::modules::timers::reschedule_timers(&self.0);
+        }
         for label in ["panel", "pill"] {
             if let Err(e) = self.0.emit_to(label, "oniris://changed", serde_json::json!({ "topic": topic })) {
                 tracing::warn!("événement changed vers {label} : {e}");

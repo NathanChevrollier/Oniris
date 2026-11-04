@@ -4,6 +4,7 @@ mod error;
 pub mod events;
 pub mod notes;
 pub mod reminders;
+pub mod timers;
 mod settings;
 pub mod time_util;
 pub mod tools;

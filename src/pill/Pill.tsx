@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ipc, onPanelState } from "../lib/ipc";
 import { useSettings } from "../lib/settings";
 import { hhmm, useNow } from "../lib/time";
+import { PillTimer } from "../modules/timers/PillTimer";
 import { Orb } from "../ui/Orb";
 import "../ui/tokens.css";
 import "../ui/glass.css";
@@ -50,8 +51,8 @@ export function Pill() {
         }}
         onMouseLeave={cancelHover}>
         <span className="time">{hhmm(now)}</span>
-        {/* emplacements remplis aux plans 3 (musique) et 4 (mails) */}
-        <span className="slot-music" hidden />
+        {/* emplacements remplis aux plans 3 (musique) et 4 (mails) ; le minuteur occupe celui de la musique */}
+        <PillTimer />
         <span className="slot-mails" hidden />
         <Orb state="idle" size={24} />
       </button>

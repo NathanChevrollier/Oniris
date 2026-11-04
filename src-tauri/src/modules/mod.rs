@@ -2,3 +2,4 @@
 pub mod agenda;
 pub mod reminders;
 pub mod notes;
+pub mod timers;

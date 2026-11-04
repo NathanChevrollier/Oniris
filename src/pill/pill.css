@@ -8,3 +8,4 @@
 /* R7 : au repos, l'orbe de la pilule est figée (budget CPU/GPU ≈ 0 %). */
 .island .orb[data-state=idle]::before,.island .orb[data-state=idle] .glow{animation:none}
 .island .orb[data-state=idle] .glow{opacity:.75}
+.pill-timer{font-feature-settings:"tnum" 1;color:var(--acc)}

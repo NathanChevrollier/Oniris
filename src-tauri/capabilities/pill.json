@@ -10,6 +10,7 @@
     "allow-panel-close",
     "allow-panel-toggle",
     "allow-pill-resize",
-    "allow-settings-get"
+    "allow-settings-get",
+    "allow-timers-list"
   ]
 }

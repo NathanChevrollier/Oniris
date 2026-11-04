@@ -2,6 +2,7 @@ import { render, screen, cleanup, act, fireEvent } from "@testing-library/react"
 import { it, expect, vi, afterEach, beforeEach } from "vitest";
 import { Pill } from "./Pill";
 import { ipc, type PanelState } from "../lib/ipc";
+import { timersIpc } from "../modules/timers/api";
 
 let panelState: (p: PanelState) => void = () => {};
 vi.mock("../lib/ipc", async (orig) => ({
@@ -16,6 +17,7 @@ const spies = { pillResize: vi.fn(), panelOpen: vi.fn(), panelToggle: vi.fn() };
 
 beforeEach(() => {
   vi.useFakeTimers();
+  vi.spyOn(timersIpc, "list").mockResolvedValue([]); // la pilule charge ses minuteurs (données factices hors Tauri)
   vi.stubGlobal("ResizeObserver", class {
     constructor(cb: ResizeObserverCallback) { roCb = cb; }
     observe() {} unobserve() {} disconnect() {}

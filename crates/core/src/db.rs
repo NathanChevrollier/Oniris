@@ -81,6 +81,20 @@ Migration {
         INSERT INTO notes_fts(notes_fts, rowid, body) VALUES ('delete', old.id, old.body);
         INSERT INTO notes_fts(rowid, body) VALUES (new.id, new.body);
     END;",
+},
+Migration {
+    version: 6,
+    sql: "CREATE TABLE timers (
+        id INTEGER PRIMARY KEY,
+        label TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK (kind IN ('timer','focus','break')),
+        duration_ms INTEGER NOT NULL,
+        ends_ms INTEGER NOT NULL,
+        state TEXT NOT NULL CHECK (state IN ('running','done','cancelled')),
+        focus_cycle INTEGER,
+        created_ms INTEGER NOT NULL
+    ) STRICT;
+    CREATE INDEX timers_running ON timers(ends_ms) WHERE state = 'running';",
 }];
 
 pub fn open_db(path: &Path) -> Result<Connection, CoreError> {

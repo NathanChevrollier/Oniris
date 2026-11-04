@@ -25,6 +25,10 @@
     "allow-notes-pin",
     "allow-notes-delete",
     "allow-notes-to-reminder",
+    "allow-timers-list",
+    "allow-timers-start",
+    "allow-focus-start",
+    "allow-timers-cancel",
     "allow-perf-frame",
     "allow-perf-open-cycles"
   ]

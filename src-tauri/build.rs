@@ -24,6 +24,10 @@ fn main() {
         "notes_pin",
         "notes_delete",
         "notes_to_reminder",
+        "timers_list",
+        "timers_start",
+        "focus_start",
+        "timers_cancel",
         "perf_frame",
         "perf_open_cycles",
     ]);

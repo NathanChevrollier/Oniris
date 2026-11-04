@@ -1,10 +1,11 @@
 use crate::hotkey::HotkeyConfig;
-use oniris_core::tools::ToolBroker;
+use oniris_core::tools::{Tool, ToolBroker};
 use oniris_core::{migrate, open_db, load_settings, Settings, CORE_MIGRATIONS};
 use parking_lot::{Mutex, RwLock};
 use rusqlite::Connection;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
+use tauri::AppHandle;
 
 pub struct AppState {
     pub panel_open: AtomicBool,
@@ -14,15 +15,16 @@ pub struct AppState {
     /// Seule connexion du processus.
     pub db: Arc<Mutex<Connection>>,
     pub settings: RwLock<Settings>,
-    /// Seul point de passage des actions d'IRIS (aucun outil enregistré pour l'instant).
+    /// Seul point de passage des actions d'IRIS ; ses outils sont fixés dans `AppState::open`.
     pub broker: Arc<ToolBroker>,
     /// Relu par le crochet clavier à chaque touche : n'écrire que brièvement, sans E/S.
     pub hotkey: Arc<RwLock<HotkeyConfig>>,
 }
 
 impl AppState {
-    /// Ouvre `%APPDATA%\Oniris\oniris.db`, migre et charge les réglages.
-    pub fn open() -> Result<Self, Box<dyn std::error::Error>> {
+    /// Ouvre `%APPDATA%\Oniris\oniris.db`, migre, charge les réglages et construit le courtier.
+    /// `_app` : pour les outils qui en auront besoin (notifications…, plans suivants).
+    pub fn open(_app: &AppHandle) -> Result<Self, Box<dyn std::error::Error>> {
         let appdata = std::env::var_os("APPDATA").ok_or("variable APPDATA absente")?;
         let dir = std::path::Path::new(&appdata).join("Oniris");
         std::fs::create_dir_all(&dir)?;
@@ -31,7 +33,8 @@ impl AppState {
         let s = load_settings(&conn)?;
         let db = Arc::new(Mutex::new(conn));
         let clock = Arc::new(|| std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64));
-        let broker = Arc::new(ToolBroker::new(db.clone(), clock));
+        let tools: Vec<Arc<dyn Tool>> = vec![]; // les plans 2 à 5 ajoutent leurs outils ici
+        let broker = Arc::new(ToolBroker::new(db.clone(), clock, tools)?);
         broker.mark_interrupted();
         broker.expire_stale();
         Ok(Self {

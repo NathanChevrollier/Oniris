@@ -1,6 +1,7 @@
 //! Le courtier : seul point de passage des actions. Règle de confirmation portée ici, jamais par un modèle.
 use super::journal::{self, NewRow};
 use super::*;
+use crate::CoreError;
 use serde_json::json;
 use parking_lot::Mutex;
 use rusqlite::Connection;
@@ -17,12 +18,17 @@ pub struct ToolBroker {
 }
 
 impl ToolBroker {
-    pub fn new(db: Arc<Mutex<Connection>>, clock: Clock) -> Self {
-        Self { db, clock, tools: HashMap::new() }
-    }
-
-    pub fn register(&mut self, tool: Arc<dyn Tool>) {
-        self.tools.insert(tool.spec().name, tool);
+    /// Outils fixés à la construction. Deux outils du même nom : `CoreError::Invalid`, jamais de remplacement.
+    pub fn new(db: Arc<Mutex<Connection>>, clock: Clock, tools: Vec<Arc<dyn Tool>>) -> Result<Self, CoreError> {
+        let mut map = HashMap::new();
+        for t in tools {
+            let name = t.spec().name;
+            if map.contains_key(&name) {
+                return Err(CoreError::Invalid(format!("outil enregistré deux fois : {name}")));
+            }
+            map.insert(name, t);
+        }
+        Ok(Self { db, clock, tools: map })
     }
 
     pub fn specs(&self) -> Vec<ToolSpec> {
@@ -198,10 +204,10 @@ mod tests {
         let db = Arc::new(Mutex::new(c));
         let now = Arc::new(AtomicU64::new(0));
         let n = now.clone();
-        let mut broker = ToolBroker::new(db.clone(), Arc::new(move || n.load(Ordering::SeqCst)));
         let runs = Arc::new(AtomicUsize::new(0));
         let during = Arc::new(Mutex::new(vec![]));
-        broker.register(Arc::new(Echo { perm, undoable, runs: runs.clone(), db: db.clone(), during: during.clone() }));
+        let echo = Arc::new(Echo { perm, undoable, runs: runs.clone(), db: db.clone(), during: during.clone() });
+        let broker = ToolBroker::new(db.clone(), Arc::new(move || n.load(Ordering::SeqCst)), vec![echo]).unwrap();
         Fx { during, broker, runs, now, db, _dir: dir }
     }
 
@@ -280,7 +286,7 @@ mod tests {
         let f = fx(Permission::Confirm, false);
         let id = pending(f.broker.call(call(Provenance::User)).await).action_id;
         let n = Arc::new(AtomicU64::new(PENDING_TTL_MS + 1));
-        let b2 = ToolBroker::new(f.db.clone(), Arc::new(move || n.load(Ordering::SeqCst)));
+        let b2 = ToolBroker::new(f.db.clone(), Arc::new(move || n.load(Ordering::SeqCst)), vec![]).unwrap();
         b2.expire_stale();
         assert_eq!(status(&f, id), "expired");
     }
@@ -293,6 +299,16 @@ mod tests {
         assert_eq!(f.broker.undo(action_id).await, Ok(()));
         assert_eq!(status(&f, action_id), "undone");
         assert_eq!(f.broker.undo(action_id).await, Err(ToolError::NotUndoable));
+    }
+
+    #[test]
+    fn nom_d_outil_en_double_refuse() {
+        let f = fx(Permission::Free, false);
+        let echo = || -> Arc<dyn Tool> {
+            Arc::new(Echo { perm: Permission::Free, undoable: false, runs: f.runs.clone(), db: f.db.clone(), during: f.during.clone() })
+        };
+        let res = ToolBroker::new(f.db.clone(), Arc::new(|| 0), vec![echo(), echo()]);
+        assert!(matches!(res, Err(crate::CoreError::Invalid(m)) if m.contains("echo")));
     }
 
     #[tokio::test]

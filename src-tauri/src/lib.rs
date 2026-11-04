@@ -37,7 +37,7 @@ pub fn run() {
             perf::perf_open_cycles
         ])
         .setup(|app| {
-            let st = state::AppState::open()?;
+            let st = state::AppState::open(app.handle())?;
             let hotkey_cfg = st.hotkey.clone();
             let autostart = st.settings.read().autostart;
             app.manage(st);

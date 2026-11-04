@@ -80,12 +80,15 @@ pub fn open_panel(app: &AppHandle) -> tauri::Result<()> {
     apply(&win, panel_rect(primary(app)?.0))?;
     win.show()?;
     win.set_focus()?;
-    set_panel_state(app, true)
+    set_panel_state(app, true)?;
+    crate::modules::system::set_sampling(app, true);
+    Ok(())
 }
 
 pub fn close_panel(app: &AppHandle) -> tauri::Result<()> {
     window(app, "panel")?.hide()?;
     LAST_CLOSE_MS.store(now_ms(), Ordering::SeqCst);
+    crate::modules::system::set_sampling(app, false);
     set_panel_state(app, false)
 }
 

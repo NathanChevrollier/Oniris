@@ -52,6 +52,8 @@ impl AppState {
         tools.extend(oniris_core::notes::tools::all(&db, &events));
         tools.extend(oniris_core::timers::tools::all(&db, &events));
         tools.extend(oniris_core::clipboard::tools::all(&db));
+        let snapshot: oniris_core::system::tools::Snapshot = Arc::new(crate::modules::system::snapshot);
+        tools.extend(oniris_core::system::tools::all(&snapshot));
         let broker = Arc::new(ToolBroker::new(db.clone(), clock, tools)?);
         broker.mark_interrupted();
         broker.expire_stale();

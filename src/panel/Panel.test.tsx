@@ -81,7 +81,7 @@ it("frise : une colonne par heure ; grille d'emplacements « Bientôt »", () =>
   expect(hours[0]).toBe("8h");
   expect(hours.at(-1)).toBe("22h");
   expect(container.querySelectorAll(".grid > .card")).toHaveLength(9);
-  expect(screen.getAllByText("Bientôt")).toHaveLength(5); // agenda, notes, presse-papiers et minuteur ont leur carte
+  expect(screen.getAllByText("Bientôt")).toHaveLength(4); // agenda, notes, presse-papiers, minuteur et Ce PC ont leur carte
 });
 
 it("une confirmation en attente s'affiche au-dessus de la grille", () => {

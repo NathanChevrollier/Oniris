@@ -33,6 +33,7 @@
     "allow-clipboard-pin",
     "allow-clipboard-delete",
     "allow-clipboard-paste",
+    "allow-system-snapshot",
     "allow-perf-frame",
     "allow-perf-open-cycles"
   ]

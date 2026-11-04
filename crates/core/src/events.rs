@@ -3,7 +3,7 @@ use serde::Serialize;
 /// Sujet de données dont l'UI doit se rafraîchir.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize)]
 #[serde(rename_all = "lowercase")]
-pub enum Topic { Agenda, Reminders, Notes, Timers, Clipboard, Weather }
+pub enum Topic { Agenda, Reminders, Notes, Timers, Clipboard, Weather, Favorites }
 
 /// Notifie l'UI qu'un sujet a changé.
 ///

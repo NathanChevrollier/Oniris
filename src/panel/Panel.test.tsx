@@ -96,14 +96,14 @@ it("frise : une colonne par heure ; grille d'emplacements « Bientôt »", () =>
   expect(hours[0]).toBe("8h");
   expect(hours.at(-1)).toBe("22h");
   expect(container.querySelectorAll(".grid > .card")).toHaveLength(9);
-  expect(screen.getAllByText("Bientôt")).toHaveLength(4); // agenda, notes, presse-papiers, minuteur et Ce PC ont leur carte
+  expect(screen.getAllByText("Bientôt")).toHaveLength(3); // agenda, notes, presse-papiers, minuteur, Ce PC et Favoris ont leur carte
 });
 
 it("les 9 emplacements, dans l'ordre de la maquette (l'agenda est titré par le mois)", () => {
   const { container } = render(<Panel />);
   const month = new Date().toLocaleDateString("fr-FR", { month: "long" });
   const titles = [...container.querySelectorAll(".grid > .card > h3")].map((h) => h.firstChild?.textContent);
-  expect(titles).toEqual(["En lecture", "Mails", month[0].toUpperCase() + month.slice(1), "Projets", "Ce PC", "VPS · sites", "Notes", "Presse-papiers", "Minuteur"]);
+  expect(titles).toEqual(["En lecture", "Mails", month[0].toUpperCase() + month.slice(1), "Projets", "Ce PC", "Favoris", "Notes", "Presse-papiers", "Minuteur"]);
 });
 
 it("panneau fermé : ni minuterie ni appel IPC, seulement des abonnements", () => {

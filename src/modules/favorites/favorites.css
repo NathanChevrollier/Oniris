@@ -1,0 +1,25 @@
+.favs{list-style:none;margin:8px 0 0;padding:0;display:grid;grid-template-columns:repeat(4,1fr);gap:8px 4px}
+.favs li{position:relative;min-width:0}
+.card .favs .fav-btn{display:flex;flex-direction:column;align-items:center;gap:4px;width:100%;height:auto;margin:0;padding:4px 2px;border:0;border-radius:12px;background:none;color:var(--txt);font:11px/1.2 var(--font);cursor:pointer;touch-action:none;user-select:none}
+.card .favs .fav-btn:hover:enabled{background:rgba(255,255,255,.07)}
+.card .favs .fav-btn:focus-visible{outline:1px solid rgba(255,140,100,.45)}
+.fav-ico{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;overflow:hidden;font:600 14px var(--font);color:#fff;
+  background:linear-gradient(145deg,hsl(var(--hue,260) 62% 56%),hsl(calc(var(--hue,260) + 40) 62% 38%));box-shadow:inset 0 0 0 1px rgba(255,255,255,.14)}
+.fav-ico img{width:100%;height:100%;object-fit:cover;pointer-events:none}
+.fav-add .fav-ico{background:rgba(255,255,255,.07);color:var(--txt2);box-shadow:inset 0 0 0 1px var(--line)}
+.fav-t{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--txt2)}
+.fav.dragging{opacity:.5}
+.fav.drop-before::before,.fav.drop-after::after{content:"";position:absolute;top:4px;bottom:4px;width:2px;border-radius:2px;background:var(--acc)}
+.fav.drop-before::before{left:-3px}
+.fav.drop-after::after{right:-3px}
+.card .favs .fav-more{position:absolute;top:0;right:0;width:18px;height:18px;margin:0;padding:0;justify-content:center;border-radius:999px;background:rgba(30,30,34,.9);border:0;color:var(--txt2);opacity:0;cursor:pointer}
+.favs li:hover .fav-more,.favs li:focus-within .fav-more{opacity:1}
+.fav-menu{position:absolute;z-index:5;top:20px;right:0;display:flex;flex-direction:column;min-width:96px;padding:4px;border-radius:12px;background:rgba(34,34,40,.96);border:1px solid var(--line2)}
+.card .fav-menu button{height:26px;margin:0;padding:0 10px;border-radius:8px;background:none;border:0;justify-content:flex-start;font:12px var(--font);color:var(--txt);cursor:pointer}
+.card .fav-menu button:hover,.card .fav-menu button:focus-visible{background:rgba(255,255,255,.1);outline:0}
+.fav-rename{width:100%;margin-top:2px;padding:2px 4px;border-radius:6px;border:1px solid var(--line);background:rgba(255,255,255,.08);color:var(--txt);font:11px var(--font);outline:0}
+.fav-cat{margin:10px 0 0;font:600 10.5px var(--font);letter-spacing:.04em;text-transform:uppercase;color:var(--txt3)}
+.fav-form{display:flex;flex-direction:column;gap:6px;margin-top:10px}
+.fav-form input{padding:6px 10px;border-radius:12px;border:1px solid var(--line);background:rgba(255,255,255,.06);color:var(--txt);font:12.5px var(--font);outline:0}
+.fav-form input:focus{border-color:rgba(255,140,100,.35)}
+.fav-form button{align-self:flex-start;margin-top:0}

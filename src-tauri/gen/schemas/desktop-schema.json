@@ -225,6 +225,42 @@
           "markdownDescription": "Enables the clipboard_pin command without any pre-configured scope."
         },
         {
+          "description": "Enables the favorites_add command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-favorites-add",
+          "markdownDescription": "Enables the favorites_add command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the favorites_delete command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-favorites-delete",
+          "markdownDescription": "Enables the favorites_delete command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the favorites_list command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-favorites-list",
+          "markdownDescription": "Enables the favorites_list command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the favorites_open command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-favorites-open",
+          "markdownDescription": "Enables the favorites_open command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the favorites_rename command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-favorites-rename",
+          "markdownDescription": "Enables the favorites_rename command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the favorites_reorder command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-favorites-reorder",
+          "markdownDescription": "Enables the favorites_reorder command without any pre-configured scope."
+        },
+        {
           "description": "Enables the focus_start command without any pre-configured scope.",
           "type": "string",
           "const": "allow-focus-start",
@@ -439,6 +475,42 @@
           "type": "string",
           "const": "deny-clipboard-pin",
           "markdownDescription": "Denies the clipboard_pin command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the favorites_add command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-favorites-add",
+          "markdownDescription": "Denies the favorites_add command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the favorites_delete command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-favorites-delete",
+          "markdownDescription": "Denies the favorites_delete command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the favorites_list command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-favorites-list",
+          "markdownDescription": "Denies the favorites_list command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the favorites_open command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-favorites-open",
+          "markdownDescription": "Denies the favorites_open command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the favorites_rename command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-favorites-rename",
+          "markdownDescription": "Denies the favorites_rename command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the favorites_reorder command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-favorites-reorder",
+          "markdownDescription": "Denies the favorites_reorder command without any pre-configured scope."
         },
         {
           "description": "Denies the focus_start command without any pre-configured scope.",

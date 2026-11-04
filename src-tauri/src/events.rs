@@ -20,6 +20,9 @@ pub struct TauriEvents(pub AppHandle);
 
 impl Events for TauriEvents {
     fn changed(&self, topic: Topic) {
+        if topic == Topic::Favorites {
+            crate::modules::favorites::refresh(&self.0);
+        }
         for (t, key, next_fn) in RESCHEDULE {
             if t == topic {
                 reschedule(&self.0, key, next_fn);
@@ -39,7 +42,7 @@ mod tests {
     #[test]
     fn la_pilule_n_ecoute_que_les_minuteurs() {
         assert_eq!(windows_for(Topic::Timers), ["panel", "pill"]);
-        for t in [Topic::Agenda, Topic::Reminders, Topic::Notes, Topic::Clipboard, Topic::Weather] {
+        for t in [Topic::Agenda, Topic::Reminders, Topic::Notes, Topic::Clipboard, Topic::Weather, Topic::Favorites] {
             assert_eq!(windows_for(t), ["panel"], "{t:?}");
         }
     }

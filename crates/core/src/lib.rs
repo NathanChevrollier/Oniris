@@ -5,6 +5,7 @@ pub mod clipboard;
 mod db;
 mod error;
 pub mod events;
+pub mod favorites;
 pub mod kv;
 pub mod notes;
 pub mod reminders;

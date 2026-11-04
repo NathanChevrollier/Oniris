@@ -132,6 +132,22 @@ Migration {
         last_ms INTEGER NOT NULL,
         PRIMARY KEY (kind, key)
     ) STRICT;",
+},
+Migration {
+    version: 11,
+    // icon_tried_ms : dernière tentative de récupération du favicon (fenêtre de nouvel essai, tâche 6).
+    sql: "CREATE TABLE favorites (
+        id INTEGER PRIMARY KEY,
+        title TEXT NOT NULL,
+        url TEXT NOT NULL,
+        category TEXT,
+        position INTEGER NOT NULL,
+        icon TEXT,
+        icon_tried_ms INTEGER,
+        deleted INTEGER NOT NULL DEFAULT 0,
+        created_ms INTEGER NOT NULL
+    ) STRICT;
+    CREATE UNIQUE INDEX favorites_url ON favorites(url) WHERE deleted = 0;",
 }];
 
 pub fn open_db(path: &Path) -> Result<Connection, CoreError> {

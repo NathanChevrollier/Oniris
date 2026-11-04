@@ -90,12 +90,15 @@ fn command_items() -> Vec<Item> {
         .collect()
 }
 
-/// Sources hors index, une ligne par source (favoris : tâche 5, projets : tâche 7).
+/// Sources hors index, une ligne par source (projets : tâche 7).
 /// Les applications ne sont pas copiées : seul l'`Arc` de l'inventaire est cloné.
-fn extras(apps: &Inventory, db: &Db, q: &str, scope: Option<ItemKind>) -> Vec<Arc<Vec<Item>>> {
+fn extras(apps: &Inventory, favorites: &Arc<Vec<Item>>, db: &Db, q: &str, scope: Option<ItemKind>) -> Vec<Arc<Vec<Item>>> {
     let mut v = Vec::new();
     if wants(scope, ItemKind::App) {
         v.push(apps.items.read().clone());
+    }
+    if wants(scope, ItemKind::Favorite) {
+        v.push(favorites.clone());
     }
     if wants(scope, ItemKind::Note) {
         v.push(Arc::new(note_items(db, q)));
@@ -136,8 +139,9 @@ fn route(kind: ItemKind, key: &str) -> Result<Route, ToolError> {
         ItemKind::App => Route::Tool("apps.launch", json!({ "key": key })),
         ItemKind::Note => Route::Ui(Opened::Note),
         ItemKind::Command => Route::Ui(Opened::Command),
-        // shortcut: favoris et projets pas encore ouvrables, à router dans les tâches 5 et 7.
-        ItemKind::Favorite | ItemKind::Project => return Err(ToolError::BadArgs("bientôt".into())),
+        ItemKind::Favorite => Route::Tool("favorites.open", json!({ "id": key.parse::<i64>().map_err(|_| ToolError::BadArgs("favori inconnu".into()))? })),
+        // shortcut: projets pas encore ouvrables, à router dans la tâche 7.
+        ItemKind::Project => return Err(ToolError::BadArgs("bientôt".into())),
     })
 }
 
@@ -159,7 +163,8 @@ pub async fn search_query(app: AppHandle, q: String, scope: Option<String>, req:
         if st.search_req.load(Ordering::SeqCst) > req {
             return SearchResult { req, hits: Vec::new(), indexing };
         }
-        let extra = extras(&st.apps, &st.db, &q, scope);
+        let favs = st.favorites.read().clone();
+        let extra = extras(&st.apps, &favs, &st.db, &q, scope);
         let empty = FileIndex::new();
         let index = st.indexer.get().map(|i| i.index.read());
         let hits = run(index.as_deref().unwrap_or(&empty), &extra, &st.usage.read(), &q, scope, now_ms());
@@ -235,7 +240,7 @@ mod tests {
         ix.insert(r"C:\u\vacances.jpg", false);
         let usage = UsageMap::new();
 
-        let extra = extras(&apps, &db, "rapport", None);
+        let extra = extras(&apps, &Arc::default(), &db, "rapport", None);
         let h = run(&ix, &extra, &usage, "rapport", None, 1);
         assert_eq!(kinds(&h), [ItemKind::File, ItemKind::Dir, ItemKind::App, ItemKind::Note]);
         let note = h.iter().find(|h| h.item.kind == ItemKind::Note).unwrap();
@@ -244,7 +249,7 @@ mod tests {
         assert!(!h.iter().any(|h| h.item.title.contains("pain") || h.item.key.contains("vacances")));
 
         // Commandes « / » : présentes dans la recherche universelle.
-        let h = run(&ix, &extras(&apps, &db, "minut", None), &usage, "minut", None, 1);
+        let h = run(&ix, &extras(&apps, &Arc::default(), &db, "minut", None), &usage, "minut", None, 1);
         assert_eq!(h[0].item.kind, ItemKind::Command);
         assert_eq!(h[0].item.key, "minuteur");
     }
@@ -259,11 +264,22 @@ mod tests {
         ix.insert(r"C:\u\rapport.pdf", false);
         ix.insert(r"C:\u\rapports", true);
         let usage = UsageMap::new();
-        let go = |s: ItemKind| run(&ix, &extras(&apps, &db, "rapport", Some(s)), &usage, "rapport", Some(s), 1);
+        let go = |s: ItemKind| run(&ix, &extras(&apps, &Arc::default(), &db, "rapport", Some(s)), &usage, "rapport", Some(s), 1);
         assert_eq!(kinds(&go(ItemKind::File)), [ItemKind::File, ItemKind::Dir], "f : fichiers et dossiers");
         assert_eq!(kinds(&go(ItemKind::App)), [ItemKind::App]);
         assert_eq!(kinds(&go(ItemKind::Note)), [ItemKind::Note]);
         assert!(go(ItemKind::Project).is_empty(), "projets : tâche 7");
+    }
+
+    #[test]
+    fn les_favoris_sont_cherchables_et_filtres_par_portee() {
+        let db = db();
+        let favs = Arc::new(vec![Item { kind: ItemKind::Favorite, key: "4".into(), title: "Nexus".into(), subtitle: "nexus.example.com".into() }]);
+        let (apps, ix, usage) = (Inventory::default(), FileIndex::new(), UsageMap::new());
+        let h = run(&ix, &extras(&apps, &favs, &db, "nexus", None), &usage, "nexus", None, 1);
+        assert_eq!(kinds(&h), [ItemKind::Favorite]);
+        let h = run(&ix, &extras(&apps, &favs, &db, "nexus", Some(ItemKind::App)), &usage, "nexus", Some(ItemKind::App), 1);
+        assert!(h.is_empty());
     }
 
     #[test]
@@ -276,9 +292,9 @@ mod tests {
         search::bump(&mut usage, ItemKind::App, "a.lnk", 1);
         search::bump(&mut usage, ItemKind::App, "disparue.lnk", 1);
         let ix = FileIndex::new();
-        let h = run(&ix, &extras(&apps, &db, "", None), &usage, "", None, 2);
+        let h = run(&ix, &extras(&apps, &Arc::default(), &db, "", None), &usage, "", None, 2);
         assert_eq!(h.len(), 2, "app inconnue de l'inventaire ignorée");
-        let h = run(&ix, &extras(&apps, &db, "", Some(ItemKind::App)), &usage, "", Some(ItemKind::App), 2);
+        let h = run(&ix, &extras(&apps, &Arc::default(), &db, "", Some(ItemKind::App)), &usage, "", Some(ItemKind::App), 2);
         assert_eq!(h.iter().map(|h| h.item.title.as_str()).collect::<Vec<_>>(), ["Firefox"]);
     }
 
@@ -309,9 +325,9 @@ mod tests {
         assert_eq!(tool(ItemKind::App, "a.lnk"), ("apps.launch", json!({"key": "a.lnk"})));
         assert!(matches!(route(ItemKind::Note, "3"), Ok(Route::Ui(Opened::Note))));
         assert!(matches!(route(ItemKind::Command, "focus"), Ok(Route::Ui(Opened::Command))));
-        for k in [ItemKind::Favorite, ItemKind::Project] {
-            assert!(matches!(route(k, "x"), Err(ToolError::BadArgs(m)) if m == "bientôt"));
-        }
+        assert!(matches!(route(ItemKind::Project, "x"), Err(ToolError::BadArgs(m)) if m == "bientôt"));
+        assert_eq!(tool(ItemKind::Favorite, "7"), ("favorites.open", json!({"id": 7})));
+        assert!(route(ItemKind::Favorite, "abc").is_err());
     }
 
     #[test]

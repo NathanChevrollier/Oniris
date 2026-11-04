@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-favorites-add"
+description = "Enables the favorites_add command without any pre-configured scope."
+commands.allow = ["favorites_add"]
+
+[[permission]]
+identifier = "deny-favorites-add"
+description = "Denies the favorites_add command without any pre-configured scope."
+commands.deny = ["favorites_add"]

@@ -36,6 +36,8 @@ pub struct AppState {
     pub apps: Arc<oniris_core::apps::Inventory>,
     /// Copie mémoire de la table `usage`, chargée à l'ouverture : la frappe ne lit jamais la base.
     pub usage: RwLock<oniris_core::search::UsageMap>,
+    /// Entrées de recherche des favoris, reconstruites sur `Topic::Favorites` (la frappe ne lit jamais la base).
+    pub favorites: RwLock<Arc<Vec<oniris_core::search::Item>>>,
     /// Plus récent numéro de requête reçu par `search_query` (les plus anciennes abandonnent).
     pub search_req: AtomicU32,
     /// Garde le journal fichier vivant (vidage à la fermeture).
@@ -53,6 +55,7 @@ impl AppState {
         migrate(&mut conn, CORE_MIGRATIONS)?;
         let s = load_settings(&conn)?;
         let usage = oniris_core::search::load(&conn)?;
+        let favorites = oniris_core::favorites::items(&conn);
         let db = Arc::new(Mutex::new(conn));
         let clock = Arc::new(|| oniris_core::time_util::now_ms() as u64);
         let events: Arc<dyn Events> = Arc::new(crate::events::TauriEvents(app.clone()));
@@ -74,6 +77,7 @@ impl AppState {
             crate::modules::indexer::effective_roots(&s.search_roots, &s.projects_roots, dirs::home_dir())
         });
         tools.extend(oniris_core::apps::tools::all(&opener, roots, &apps));
+        tools.extend(oniris_core::favorites::tools::all(&db, &events, &opener));
         let broker = Arc::new(ToolBroker::new(db.clone(), clock, tools)?);
         broker.mark_interrupted();
         broker.expire_stale();
@@ -88,6 +92,7 @@ impl AppState {
             indexer: OnceLock::new(),
             apps,
             usage: RwLock::new(usage),
+            favorites: RwLock::new(Arc::new(favorites)),
             search_req: AtomicU32::new(0),
             http: oniris_core::weather::client()
                 .inspect_err(|e| tracing::error!("météo : client HTTP impossible, météo indisponible : {e}"))

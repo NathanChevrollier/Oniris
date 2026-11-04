@@ -2,6 +2,7 @@
 pub mod agenda;
 pub mod apps;
 pub mod clipboard;
+pub mod favorites;
 pub mod indexer;
 pub mod reminders;
 pub mod search;

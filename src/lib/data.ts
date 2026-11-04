@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { listen } from "./ipc";
 import { usePanelStore } from "../panel/store";
 
-export type Topic = "agenda" | "reminders" | "notes" | "timers" | "clipboard" | "weather";
+export type Topic = "agenda" | "reminders" | "notes" | "timers" | "clipboard" | "weather" | "favorites";
 
 /** Données d'un sujet : chargées à la première ouverture, rechargées sur `oniris://changed` (panneau ouvert) ou à la réouverture si périmées. */
 export function useTopic<T>(topic: Topic, fetcher: () => Promise<T>, initial: T, key?: string): { data: T; reload: () => void } {

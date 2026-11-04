@@ -56,6 +56,10 @@ pub fn run() {
             modules::timers::timers_start,
             modules::timers::focus_start,
             modules::timers::timers_cancel,
+            modules::clipboard::clipboard_list,
+            modules::clipboard::clipboard_pin,
+            modules::clipboard::clipboard_delete,
+            modules::clipboard::clipboard_paste,
             #[cfg(any(debug_assertions, feature = "perf"))]
             perf::perf_frame,
             #[cfg(any(debug_assertions, feature = "perf"))]
@@ -76,6 +80,7 @@ pub fn run() {
             let _ = app.state::<state::AppState>().scheduler.set(scheduler::Scheduler::start(app.handle().clone()));
             modules::reminders::start(app.handle());
             modules::timers::start(app.handle());
+            modules::clipboard::start(app.handle());
             // Pas encore d'écran (session qui s'ouvre) : on continue sans pilule plutôt que d'échouer.
             if let Err(e) = windows::show_pill(app.handle()) {
                 tracing::error!("pilule : affichage au démarrage impossible : {e}");

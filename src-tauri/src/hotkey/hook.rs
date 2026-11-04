@@ -143,7 +143,7 @@ fn current_modifiers() -> Modifiers {
     }
 }
 
-fn key(vk: u16, flags: KEYBD_EVENT_FLAGS) -> INPUT {
+pub(crate) fn key(vk: u16, flags: KEYBD_EVENT_FLAGS) -> INPUT {
     INPUT {
         r#type: INPUT_KEYBOARD,
         Anonymous: INPUT_0 {

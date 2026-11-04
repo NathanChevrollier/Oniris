@@ -2,6 +2,8 @@ pub mod classifier;
 mod hook;
 
 pub use hook::start_hook;
+/// Frappe marquée `ONIRIS_MARK` (ignorée par notre crochet), pour nos injections.
+pub(crate) use hook::key as marked_key;
 pub use oniris_core::key_to_vk;
 
 /// Raccourci global : modificateurs exacts + touche principale (code VK) et seuil du maintien.

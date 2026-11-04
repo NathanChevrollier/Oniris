@@ -28,6 +28,10 @@ fn main() {
         "timers_start",
         "focus_start",
         "timers_cancel",
+        "clipboard_list",
+        "clipboard_pin",
+        "clipboard_delete",
+        "clipboard_paste",
         "perf_frame",
         "perf_open_cycles",
     ]);

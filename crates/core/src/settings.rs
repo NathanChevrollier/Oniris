@@ -34,6 +34,9 @@ pub struct Settings {
     pub reduce_motion: bool,
     pub focus_minutes: u16,
     pub break_minutes: u16,
+    pub clipboard_enabled: bool,
+    pub clipboard_retention_days: u16,
+    pub clipboard_max_items: u16,
 }
 
 impl Default for Settings {
@@ -51,6 +54,9 @@ impl Default for Settings {
             reduce_motion: false,
             focus_minutes: 25,
             break_minutes: 5,
+            clipboard_enabled: true,
+            clipboard_retention_days: 7,
+            clipboard_max_items: 200,
         }
     }
 }
@@ -102,6 +108,14 @@ impl Settings {
         if !(1..=60).contains(&self.break_minutes) {
             errs.push("durée de pause hors de 1..=60 min".into());
             self.break_minutes = d.break_minutes;
+        }
+        if !(1..=90).contains(&self.clipboard_retention_days) {
+            errs.push("conservation du presse-papiers hors de 1..=90 jours".into());
+            self.clipboard_retention_days = d.clipboard_retention_days;
+        }
+        if !(20..=1000).contains(&self.clipboard_max_items) {
+            errs.push("taille de l'historique du presse-papiers hors de 20..=1000".into());
+            self.clipboard_max_items = d.clipboard_max_items;
         }
         if let Err(e) = check_hotkey(&self.hotkey) {
             errs.push(e);
@@ -165,6 +179,7 @@ mod tests {
         assert_eq!(s.hold_threshold_ms, 250);
         assert_eq!(s.timeline_end_hour, 23);
         assert_eq!((s.focus_minutes, s.break_minutes), (25, 5));
+        assert_eq!((s.clipboard_enabled, s.clipboard_retention_days, s.clipboard_max_items), (true, 7, 200));
     }
     #[test] fn raccourci_partiel_garde_le_reste() {
         let s: Settings = serde_json::from_str(r#"{"user_name":"Nathan","hotkey":{"alt":true}}"#).unwrap();
@@ -205,6 +220,12 @@ mod tests {
         assert!(bad(|s| s.focus_minutes = 121));
         assert!(bad(|s| s.break_minutes = 0));
         assert!(bad(|s| s.break_minutes = 61));
+        assert!(bad(|s| s.clipboard_retention_days = 0));
+        assert!(bad(|s| s.clipboard_retention_days = 91));
+        assert!(bad(|s| s.clipboard_max_items = 19));
+        assert!(bad(|s| s.clipboard_max_items = 1001));
+        assert!(Settings { clipboard_retention_days: 1, clipboard_max_items: 20, ..Settings::default() }.validate().is_ok());
+        assert!(Settings { clipboard_retention_days: 90, clipboard_max_items: 1000, ..Settings::default() }.validate().is_ok());
         // Sans Alt/Ctrl/Win : refusé, Maj seule ne compte pas.
         assert!(bad(|s| s.hotkey = HotkeySetting { alt: false, shift: true, key: "A".into(), ..HotkeySetting::default() }));
         assert!(bad(|s| s.hotkey.alt = false));
@@ -220,7 +241,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let mut c = open_db(&dir.path().join("t.db")).unwrap();
         migrate(&mut c, CORE_MIGRATIONS).unwrap();
-        let json = r#"{"user_name":"Nathan","hold_threshold_ms":400,"hover_delay_ms":5,"focus_minutes":2,"break_minutes":10,"timeline_start_hour":9,"timeline_end_hour":30,"hotkey":{"alt":false,"key":"Space"}}"#;
+        let json = r#"{"user_name":"Nathan","clipboard_retention_days":0,"clipboard_max_items":50,"hold_threshold_ms":400,"hover_delay_ms":5,"focus_minutes":2,"break_minutes":10,"timeline_start_hour":9,"timeline_end_hour":30,"hotkey":{"alt":false,"key":"Space"}}"#;
         c.execute("INSERT INTO settings(id, json) VALUES (1, ?1)", [json]).unwrap();
         let s = load_settings(&c).unwrap();
         let d = Settings::default();
@@ -229,6 +250,7 @@ mod tests {
         assert_eq!((s.focus_minutes, s.break_minutes), (d.focus_minutes, 10));
         assert_eq!((s.timeline_start_hour, s.timeline_end_hour), (d.timeline_start_hour, d.timeline_end_hour));
         assert_eq!(s.hotkey, d.hotkey);
+        assert_eq!((s.clipboard_retention_days, s.clipboard_max_items), (d.clipboard_retention_days, 50));
         let broken: Option<String> = c.query_row("SELECT broken_json FROM settings WHERE id = 1", [], |r| r.get(0)).unwrap();
         assert_eq!(broken, None);
     }

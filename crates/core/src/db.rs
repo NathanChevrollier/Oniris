@@ -95,6 +95,21 @@ Migration {
         created_ms INTEGER NOT NULL
     ) STRICT;
     CREATE INDEX timers_running ON timers(ends_ms) WHERE state = 'running';",
+},
+Migration {
+    version: 7,
+    sql: "CREATE TABLE clipboard (
+        id INTEGER PRIMARY KEY,
+        kind TEXT NOT NULL CHECK (kind IN ('text','image')),
+        text TEXT,
+        truncated INTEGER NOT NULL DEFAULT 0,
+        png BLOB,
+        thumb BLOB,
+        hash TEXT NOT NULL,
+        pinned INTEGER NOT NULL DEFAULT 0,
+        created_ms INTEGER NOT NULL
+    ) STRICT;
+    CREATE UNIQUE INDEX clipboard_hash ON clipboard(hash);",
 }];
 
 pub fn open_db(path: &Path) -> Result<Connection, CoreError> {

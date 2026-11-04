@@ -1,4 +1,5 @@
 pub mod agenda;
+pub mod clipboard;
 mod db;
 mod error;
 pub mod events;

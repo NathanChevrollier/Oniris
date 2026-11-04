@@ -48,6 +48,7 @@ impl AppState {
         tools.extend(oniris_core::reminders::tools::all(&db, &events));
         tools.extend(oniris_core::notes::tools::all(&db, &events));
         tools.extend(oniris_core::timers::tools::all(&db, &events));
+        tools.extend(oniris_core::clipboard::tools::all(&db));
         let broker = Arc::new(ToolBroker::new(db.clone(), clock, tools)?);
         broker.mark_interrupted();
         broker.expire_stale();

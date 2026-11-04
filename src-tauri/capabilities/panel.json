@@ -29,6 +29,10 @@
     "allow-timers-start",
     "allow-focus-start",
     "allow-timers-cancel",
+    "allow-clipboard-list",
+    "allow-clipboard-pin",
+    "allow-clipboard-delete",
+    "allow-clipboard-paste",
     "allow-perf-frame",
     "allow-perf-open-cycles"
   ]

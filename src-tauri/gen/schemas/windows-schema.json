@@ -201,6 +201,30 @@
           "markdownDescription": "Enables the agenda_month_days command without any pre-configured scope."
         },
         {
+          "description": "Enables the clipboard_delete command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-clipboard-delete",
+          "markdownDescription": "Enables the clipboard_delete command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the clipboard_list command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-clipboard-list",
+          "markdownDescription": "Enables the clipboard_list command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the clipboard_paste command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-clipboard-paste",
+          "markdownDescription": "Enables the clipboard_paste command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the clipboard_pin command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-clipboard-pin",
+          "markdownDescription": "Enables the clipboard_pin command without any pre-configured scope."
+        },
+        {
           "description": "Enables the focus_start command without any pre-configured scope.",
           "type": "string",
           "const": "allow-focus-start",
@@ -367,6 +391,30 @@
           "type": "string",
           "const": "deny-agenda-month-days",
           "markdownDescription": "Denies the agenda_month_days command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the clipboard_delete command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-clipboard-delete",
+          "markdownDescription": "Denies the clipboard_delete command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the clipboard_list command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-clipboard-list",
+          "markdownDescription": "Denies the clipboard_list command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the clipboard_paste command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-clipboard-paste",
+          "markdownDescription": "Denies the clipboard_paste command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the clipboard_pin command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-clipboard-pin",
+          "markdownDescription": "Denies the clipboard_pin command without any pre-configured scope."
         },
         {
           "description": "Denies the focus_start command without any pre-configured scope.",

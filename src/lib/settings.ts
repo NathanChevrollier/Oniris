@@ -24,6 +24,11 @@ export type Settings = {
   reduce_motion: boolean;
   focus_minutes: number;
   break_minutes: number;
+  clipboard_enabled: boolean;
+  /** 1..=90 */
+  clipboard_retention_days: number;
+  /** 20..=1000 */
+  clipboard_max_items: number;
 };
 
 /** Miroir de `Settings::default()` côté Rust : valeurs affichées avant la réponse de `settings_get`. */
@@ -40,6 +45,9 @@ export const DEFAULT_SETTINGS: Settings = {
   reduce_motion: false,
   focus_minutes: 25,
   break_minutes: 5,
+  clipboard_enabled: true,
+  clipboard_retention_days: 7,
+  clipboard_max_items: 200,
 };
 
 /** Paramètres courants : chargés au montage, puis suivis via `oniris://settings`. */

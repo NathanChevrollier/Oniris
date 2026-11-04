@@ -1,31 +1,43 @@
 use super::ItemKind;
 use crate::CoreError;
-use rusqlite::{params, Connection};
+use super::frecency;
+use rusqlite::{params, Connection, OptionalExtension};
 use std::collections::HashMap;
 
-/// (kind, key) -> (nombre d'usages, dernier usage en ms).
-pub type UsageMap = HashMap<(ItemKind, String), (u32, i64)>;
+/// (kind, key) -> (score amorti, dernier usage en ms). Le score est celui connu à `last_ms` :
+/// la lecture applique `frecency(score, last_ms, now)`.
+pub type UsageMap = HashMap<(ItemKind, String), (f64, i64)>;
+
+/// Nouveau score après un usage à `now` : `score * decay(now - last_ms) + 1`.
+pub fn bumped(score: f64, last_ms: i64, now: i64) -> f64 {
+    frecency(score, last_ms, now) + 1.0
+}
 
 pub fn record(c: &Connection, kind: ItemKind, key: &str, now: i64) -> Result<(), CoreError> {
+    let prev: Option<(f64, i64)> = c
+        .query_row("SELECT score, last_ms FROM usage WHERE kind = ?1 AND key = ?2", params![kind.as_str(), key], |r| {
+            Ok((r.get(0)?, r.get(1)?))
+        })
+        .optional()?;
+    let score = prev.map_or(1.0, |(s, t)| bumped(s, t, now));
     c.execute(
-        "INSERT INTO usage(kind, key, count, last_ms) VALUES (?1, ?2, 1, ?3)
-         ON CONFLICT(kind, key) DO UPDATE SET count = count + 1, last_ms = ?3",
-        params![kind.as_str(), key, now],
+        "INSERT INTO usage(kind, key, score, last_ms) VALUES (?1, ?2, ?3, ?4)
+         ON CONFLICT(kind, key) DO UPDATE SET score = ?3, last_ms = ?4",
+        params![kind.as_str(), key, score, now],
     )?;
     Ok(())
 }
 
 /// Même mise à jour sur la copie mémoire.
 pub fn bump(map: &mut UsageMap, kind: ItemKind, key: &str, now: i64) {
-    let e = map.entry((kind, key.to_string())).or_insert((0, now));
-    e.0 = e.0.saturating_add(1);
-    e.1 = now;
+    let e = map.entry((kind, key.to_string())).or_insert((0.0, now));
+    *e = (bumped(e.0, e.1, now), now);
 }
 
 pub fn load(c: &Connection) -> Result<UsageMap, CoreError> {
-    let mut st = c.prepare("SELECT kind, key, count, last_ms FROM usage")?;
+    let mut st = c.prepare("SELECT kind, key, score, last_ms FROM usage")?;
     let rows = st.query_map([], |r| {
-        Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, u32>(2)?, r.get::<_, i64>(3)?))
+        Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, f64>(2)?, r.get::<_, i64>(3)?))
     })?;
     let mut m = UsageMap::new();
     for row in rows {
@@ -58,12 +70,16 @@ mod tests {
         record(&c, ItemKind::App, "b", 30).unwrap();
         record(&c, ItemKind::Note, "c", 5).unwrap();
         let m = load(&c).unwrap();
-        assert_eq!(m[&(ItemKind::File, "a".into())], (2, 20));
+        let (s, t) = m[&(ItemKind::File, "a".into())];
+        assert_eq!(t, 20);
+        assert!((s - 2.0).abs() < 1e-6, "{s}"); // 10 ms d'écart : décroissance négligeable
         assert_eq!(prune(&c, 2).unwrap(), 1);
         assert_eq!(load(&c).unwrap().len(), 2);
         let mut m = UsageMap::new();
         bump(&mut m, ItemKind::App, "b", 7);
         bump(&mut m, ItemKind::App, "b", 9);
-        assert_eq!(m[&(ItemKind::App, "b".into())], (2, 9));
+        let (s, t) = m[&(ItemKind::App, "b".into())];
+        assert_eq!(t, 9);
+        assert!((s - 2.0).abs() < 1e-6);
     }
 }

@@ -50,8 +50,13 @@ impl FileIndex {
         let prefix = prefix.trim_end_matches(is_sep);
         let before = self.entries.len();
         self.entries.retain(|e| {
-            let p: &str = &e.path;
-            !(p.starts_with(prefix) && (p.len() == prefix.len() || p[prefix.len()..].starts_with(is_sep)))
+            // Windows ignore la casse : comparaison ASCII sans allocation.
+            let p = e.path.as_bytes();
+            let n = prefix.len();
+            let under = p.len() >= n
+                && p[..n].eq_ignore_ascii_case(prefix.as_bytes())
+                && (p.len() == n || p[n] == b'/' || p[n] == b'\\');
+            !under
         });
         before - self.entries.len()
     }
@@ -82,6 +87,15 @@ mod tests {
         assert_eq!(i.remove_prefix("C:\\a"), 4);
         assert_eq!(i.len(), 1);
         assert_eq!(i.entries[0].path.as_ref(), "C:\\ab");
+    }
+
+    #[test]
+    fn remove_prefix_insensible_a_la_casse() {
+        let mut i = FileIndex::new();
+        i.insert("C:\\Users\\Natha\\x.txt", false);
+        i.insert("C:\\Users\\NathaN", true);
+        assert_eq!(i.remove_prefix("c:\\users\\natha"), 1);
+        assert_eq!(i.len(), 1);
     }
 
     #[test]

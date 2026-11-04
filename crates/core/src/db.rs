@@ -128,7 +128,7 @@ Migration {
     sql: "CREATE TABLE usage (
         kind TEXT NOT NULL,
         key TEXT NOT NULL,
-        count INTEGER NOT NULL,
+        score REAL NOT NULL,
         last_ms INTEGER NOT NULL,
         PRIMARY KEY (kind, key)
     ) STRICT;",

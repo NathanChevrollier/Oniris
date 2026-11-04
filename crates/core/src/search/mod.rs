@@ -5,7 +5,7 @@ mod usage;
 
 pub use index::FileIndex;
 pub use rank::{frecency, query, query_at, Hit, FRECENCY_WEIGHT};
-pub use usage::{bump, load, prune, record, UsageMap};
+pub use usage::{bump, bumped, load, prune, record, UsageMap};
 
 use serde::Serialize;
 

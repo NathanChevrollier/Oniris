@@ -5,9 +5,10 @@ use nucleo_matcher::{Config, Matcher, Utf32Str};
 use std::cmp::Reverse;
 use std::collections::{BinaryHeap, HashMap};
 
-/// Points de score par unité de fréquence. Un score nucleo de nom exact vaut ~300-600 (poids 2
-/// inclus) : 20 par usage récent fait gagner un favori fréquent (>= ~10 usages) sur un flou voisin.
-pub const FRECENCY_WEIGHT: f64 = 20.0;
+/// Bonus d'usage = `FRECENCY_WEIGHT * ln(1 + frecency)` : le logarithme borne l'effet d'un usage
+/// intensif (il ne peut pas écraser le score flou) ; un usage récent unique vaut ~28 points,
+/// 10 usages récents ~96, 100 ~185. Un score nucleo de nom (poids 2 inclus) vaut quelques centaines.
+pub const FRECENCY_WEIGHT: f64 = 40.0;
 const HALF_LIFE_MS: f64 = 7.0 * 86_400_000.0;
 /// Poids du score sur le nom face au chemin complet (poids 1).
 const NAME_WEIGHT: u32 = 2;
@@ -23,10 +24,14 @@ pub struct Hit {
     pub score: u32,
 }
 
-/// `count` décroissant avec une demi-vie de 7 jours.
-pub fn frecency(count: u32, last_ms: i64, now: i64) -> f64 {
+/// Score d'usage amorti (demi-vie de 7 jours) : `score` tel qu'il était à `last_ms`, ramené à `now`.
+pub fn frecency(score: f64, last_ms: i64, now: i64) -> f64 {
     let age = (now - last_ms).max(0) as f64;
-    count as f64 * 0.5f64.powf(age / HALF_LIFE_MS)
+    score * 0.5f64.powf(age / HALF_LIFE_MS)
+}
+
+fn bonus_of(score: f64, last_ms: i64, now: i64) -> f32 {
+    (FRECENCY_WEIGHT * frecency(score, last_ms, now).ln_1p()) as f32
 }
 
 fn file_item(e: &Entry) -> Item {
@@ -69,27 +74,41 @@ pub fn query_at(index: &FileIndex, extra: &[Item], usage: &UsageMap, q: &str, li
     let mut matcher = Matcher::new(Config::DEFAULT.match_paths());
     let mut buf = Vec::new();
     let mut heap = Heap::with_capacity(limit + 1);
-    let bonus = |kind: ItemKind, key: &str| -> u32 {
-        usage.get(&(kind, key.to_string())).map_or(0, |&(n, t)| (frecency(n, t, now) * FRECENCY_WEIGHT) as u32)
+    // Bonus fichiers/dossiers précalculés, cherchés par &str : aucune allocation dans le scan.
+    let file_bonus: HashMap<&str, f32> = usage
+        .iter()
+        .filter(|((k, _), _)| matches!(k, ItemKind::File | ItemKind::Dir))
+        .map(|((_, key), &(s, t))| (key.as_str(), bonus_of(s, t, now)))
+        .collect();
+    let extra_bonus = |kind: ItemKind, key: &str| -> u32 {
+        usage.get(&(kind, key.to_string())).map_or(0, |&(s, t)| bonus_of(s, t, now) as u32)
     };
     let prefix = |name: &str| -> u32 {
         // Requête multi-mots : pas de notion de préfixe unique.
         let ok = !q.contains(' ') && name.get(..q.len()).is_some_and(|p| p.eq_ignore_ascii_case(q));
         if ok { PREFIX_BONUS } else { 0 }
     };
+    // Atomes ancrés (^foo) ou négatifs (!foo) : le chemin ne dit rien du nom, on note les deux.
+    let independent = q.split_whitespace().any(|w| w.starts_with('^') || w.starts_with('!'));
     // Un Matcher par fil (jamais partagé) ; l'index est découpé en tranches.
     let scan = |off: usize, chunk: &[Entry]| -> Heap {
         let mut matcher = Matcher::new(Config::DEFAULT.match_paths());
         let mut buf = Vec::new();
         let mut heap = Heap::with_capacity(limit + 1);
         for (i, e) in chunk.iter().enumerate() {
-            // Le nom est un suffixe du chemin : si le chemin échoue, le nom aussi.
-            let Some(path_score) = pattern.score(Utf32Str::new(&e.path, &mut buf), &mut matcher) else { continue };
             let name = e.name();
-            let name_score =
-                pattern.score(Utf32Str::new(name, &mut buf), &mut matcher).map_or(0, |s| s * NAME_WEIGHT + prefix(name));
-            let kind = if e.is_dir { ItemKind::Dir } else { ItemKind::File };
-            let total = name_score + path_score + if usage.is_empty() { 0 } else { bonus(kind, &e.path) };
+            let path_score = pattern.score(Utf32Str::new(&e.path, &mut buf), &mut matcher);
+            // Sans atome ancré/négatif, le nom est un suffixe du chemin : chemin raté => nom raté.
+            if path_score.is_none() && !independent {
+                continue;
+            }
+            let name_score = pattern.score(Utf32Str::new(name, &mut buf), &mut matcher);
+            if path_score.is_none() && name_score.is_none() {
+                continue;
+            }
+            let total = name_score.map_or(0, |s| s * NAME_WEIGHT + prefix(name))
+                + path_score.unwrap_or(0)
+                + file_bonus.get(&*e.path).map_or(0, |&b| b as u32);
             push(&mut heap, limit, total, off + i);
         }
         heap
@@ -116,7 +135,7 @@ pub fn query_at(index: &FileIndex, extra: &[Item], usage: &UsageMap, q: &str, li
         if t.is_none() && s.is_none() {
             continue;
         }
-        let total = t.map_or(0, |t| t * NAME_WEIGHT + prefix(&it.title)) + s.unwrap_or(0) + bonus(it.kind, &it.key);
+        let total = t.map_or(0, |t| t * NAME_WEIGHT + prefix(&it.title)) + s.unwrap_or(0) + extra_bonus(it.kind, &it.key);
         push(&mut heap, limit, total, base + j);
     }
     let mut best: Vec<_> = heap.into_iter().map(|Reverse((s, Reverse(i)))| (s, i)).collect();
@@ -129,14 +148,14 @@ pub fn query_at(index: &FileIndex, extra: &[Item], usage: &UsageMap, q: &str, li
         .collect()
 }
 
-/// Requête vide : éléments connus les mieux placés par fréquence récente.
-/// Les fichiers/dossiers viennent de la table d'usage telle quelle (existence non revérifiée).
+/// Requête vide : éléments d'usage classés par le même score que celui renvoyé (bonus de fréquence).
+/// Les fichiers/dossiers viennent de la table d'usage telle quelle : leur existence n'est PAS vérifiée.
 fn recent(extra: &[Item], usage: &UsageMap, limit: usize, now: i64) -> Vec<Hit> {
     let known: HashMap<(ItemKind, &str), &Item> = extra.iter().map(|i| ((i.kind, i.key.as_str()), i)).collect();
-    let mut v: Vec<_> = usage.iter().collect();
-    v.sort_by(|a, b| b.1 .1.cmp(&a.1 .1).then(a.0.cmp(b.0)));
+    let mut v: Vec<_> = usage.iter().map(|(k, &(s, t))| (k, bonus_of(s, t, now) as u32)).collect();
+    v.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(b.0)));
     v.into_iter()
-        .filter_map(|((kind, key), &(n, t))| {
+        .filter_map(|((kind, key), score)| {
             let item = match kind {
                 ItemKind::File | ItemKind::Dir => {
                     let name_start = key.rfind(SEPS).map_or(0, |i| i + 1);
@@ -144,7 +163,7 @@ fn recent(extra: &[Item], usage: &UsageMap, limit: usize, now: i64) -> Vec<Hit> 
                 }
                 _ => (*known.get(&(*kind, key.as_str()))?).clone(),
             };
-            Some(Hit { item, score: (frecency(n, t, now) * FRECENCY_WEIGHT) as u32 })
+            Some(Hit { item, score })
         })
         .take(limit)
         .collect()
@@ -174,11 +193,38 @@ mod tests {
         let i = idx(&[
             ("C:\\Users\\n\\Projets\\oniris-old\\readme.md", false),
             ("C:\\Users\\n\\Projets\\Oniris", true),
+            ("C:\\Users\\n\\Projets\\archive\\oniris-old.md", false),
         ]);
         let h = query_at(&i, &[], &UsageMap::new(), "oniris", 10, NOW);
         assert_eq!(keys(&h)[0], "C:\\Users\\n\\Projets\\Oniris");
         assert_eq!(h[0].item.kind, ItemKind::Dir);
-        assert_eq!(h.len(), 2);
+        assert_eq!(h.len(), 3);
+    }
+
+    #[test]
+    fn atome_ancre_trouve_le_nom() {
+        let i = idx(&[("C:\\Users\\n\\Projets\\Oniris", true), ("C:\\Users\\n\\Projets\\vieux-oniris", true)]);
+        let h = query_at(&i, &[], &UsageMap::new(), "^oniris", 10, NOW);
+        assert_eq!(keys(&h), ["C:\\Users\\n\\Projets\\Oniris"]);
+    }
+
+    #[test]
+    fn usage_ancien_massif_ne_depasse_pas_usage_recent_modeste() {
+        let key = "C:\\a".to_string();
+        let mut vieux = UsageMap::new();
+        for _ in 0..500 {
+            crate::search::bump(&mut vieux, ItemKind::File, &key, NOW - 365 * DAY);
+        }
+        crate::search::bump(&mut vieux, ItemKind::File, &key, NOW);
+        let mut recent = UsageMap::new();
+        for d in [6, 5, 4, 3, 2] {
+            crate::search::bump(&mut recent, ItemKind::File, &key, NOW - d * DAY);
+        }
+        let f = |m: &UsageMap| {
+            let &(s, t) = &m[&(ItemKind::File, key.clone())];
+            bonus_of(s, t, NOW)
+        };
+        assert!(f(&vieux) < f(&recent), "{} vs {}", f(&vieux), f(&recent));
     }
 
     #[test]
@@ -203,28 +249,28 @@ mod tests {
 
     #[test]
     fn frecency_decroit_demi_vie_7_jours() {
-        let f0 = frecency(8, NOW, NOW);
+        let f0 = frecency(8.0, NOW, NOW);
         assert!((f0 - 8.0).abs() < 1e-9);
-        assert!((frecency(8, NOW - 7 * DAY, NOW) - 4.0).abs() < 1e-9);
-        assert!(frecency(8, NOW - 30 * DAY, NOW) < 0.5);
+        assert!((frecency(8.0, NOW - 7 * DAY, NOW) - 4.0).abs() < 1e-9);
+        assert!(frecency(8.0, NOW - 30 * DAY, NOW) < 0.5);
         // dernier usage dans le futur (horloge) : pas d'amplification
-        assert!((frecency(8, NOW + DAY, NOW) - 8.0).abs() < 1e-9);
+        assert!((frecency(8.0, NOW + DAY, NOW) - 8.0).abs() < 1e-9);
     }
 
     #[test]
     fn element_frequent_devant_score_flou_legerement_meilleur() {
-        let i = idx(&[("C:\\x\\notes", true), ("C:\\x\\nxoxtxexs", true)]);
+        let i = idx(&[("C:\\x\\notes", true), ("C:\\x\\note-s", true)]);
         let mut u = UsageMap::new();
         let base = query_at(&i, &[], &u, "notes", 10, NOW);
         assert_eq!(keys(&base)[0], "C:\\x\\notes");
-        u.insert((ItemKind::Dir, "C:\\x\\nxoxtxexs".into()), (30, NOW));
+        u.insert((ItemKind::Dir, "C:\\x\\note-s".into()), (30.0, NOW));
         let h = query_at(&i, &[], &u, "nts", 10, NOW);
         assert_eq!(h.len(), 2);
         let h = query_at(&i, &[], &u, "notes", 10, NOW);
-        assert_eq!(keys(&h)[0], "C:\\x\\nxoxtxexs");
+        assert_eq!(keys(&h)[0], "C:\\x\\note-s");
         // plus ancien : la fréquence a décru, le meilleur score flou revient devant
         let mut old = UsageMap::new();
-        old.insert((ItemKind::Dir, "C:\\x\\nxoxtxexs".into()), (30, NOW - 60 * DAY));
+        old.insert((ItemKind::Dir, "C:\\x\\note-s".into()), (30.0, NOW - 60 * DAY));
         assert_eq!(keys(&query_at(&i, &[], &old, "notes", 10, NOW))[0], "C:\\x\\notes");
     }
 
@@ -233,10 +279,10 @@ mod tests {
         let i = idx(&[("C:\\a\\vieux", false), ("C:\\a\\recent", false)]);
         let extra = vec![Item { kind: ItemKind::App, key: "app1".into(), title: "Calc".into(), subtitle: String::new() }];
         let mut u = UsageMap::new();
-        u.insert((ItemKind::File, "C:\\a\\vieux".into()), (1, NOW - 5 * DAY));
-        u.insert((ItemKind::File, "C:\\a\\recent".into()), (1, NOW - DAY));
-        u.insert((ItemKind::App, "app1".into()), (1, NOW));
-        u.insert((ItemKind::App, "disparu".into()), (1, NOW)); // inconnu : ignoré
+        u.insert((ItemKind::File, "C:\\a\\vieux".into()), (1.0, NOW - 5 * DAY));
+        u.insert((ItemKind::File, "C:\\a\\recent".into()), (1.0, NOW - DAY));
+        u.insert((ItemKind::App, "app1".into()), (1.0, NOW));
+        u.insert((ItemKind::App, "disparu".into()), (1.0, NOW)); // inconnu : ignoré
         let h = query_at(&i, &extra, &u, "  ", 10, NOW);
         assert_eq!(keys(&h), ["app1", "C:\\a\\recent", "C:\\a\\vieux"]);
         assert_eq!(query_at(&i, &extra, &u, "", 2, NOW).len(), 2);
@@ -256,6 +302,17 @@ mod tests {
     #[test]
     #[ignore]
     fn search_perf() {
+        perf(false);
+    }
+
+    /// Même mesure avec 5000 usages pointant dans l'index.
+    #[test]
+    #[ignore]
+    fn search_perf_usage() {
+        perf(true);
+    }
+
+    fn perf(with_usage: bool) {
         let mut seed = 0x9E3779B97F4A7C15u64;
         let mut rnd = move |n: usize| {
             seed ^= seed << 13;
@@ -282,7 +339,13 @@ mod tests {
             i.insert(&p, false);
         }
         assert_eq!(i.len(), 300_000);
-        let usage = UsageMap::new();
+        let mut usage = UsageMap::new();
+        if with_usage {
+            for e in i.entries.iter().step_by(60).take(5000) {
+                usage.insert((ItemKind::File, e.path.to_string()), (3.0, NOW - DAY));
+            }
+            assert_eq!(usage.len(), 5000);
+        }
         let qs = ["rap", "fac", "onr", "ind", "bud", "pho", "wid", "not", "set", "vac"];
         let mut times = Vec::new();
         for k in 0..20 {
@@ -293,7 +356,7 @@ mod tests {
         }
         times.sort_by(|a, b| a.partial_cmp(b).unwrap());
         let median = times[10];
-        println!("search_perf : 300000 entrées, médiane {median:.1} ms, min {:.1}, max {:.1}", times[0], times[19]);
+        println!("search_perf (usage={with_usage}) : 300000 entrées, médiane {median:.1} ms, min {:.1}, max {:.1}", times[0], times[19]);
         assert!(median < 50.0, "médiane {median} ms");
     }
 }

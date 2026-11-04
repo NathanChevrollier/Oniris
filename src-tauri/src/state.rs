@@ -30,6 +30,8 @@ pub struct AppState {
     pub events: Arc<dyn Events>,
     /// Rempli dans `setup` après `manage` (il a besoin de l'`AppHandle`).
     pub scheduler: OnceLock<Arc<Scheduler>>,
+    /// Rempli au démarrage par `modules::indexer::start` (sur un autre fil) ; `None` avant.
+    pub indexer: OnceLock<crate::modules::indexer::Indexer>,
     /// Garde le journal fichier vivant (vidage à la fermeture).
     pub _log_guard: Option<tracing_appender::non_blocking::WorkerGuard>,
 }
@@ -67,6 +69,7 @@ impl AppState {
             hotkey: Arc::new(RwLock::new(HotkeyConfig::from_setting(&s.hotkey, s.hold_threshold_ms as u64))),
             events,
             scheduler: OnceLock::new(),
+            indexer: OnceLock::new(),
             http: oniris_core::weather::client()
                 .inspect_err(|e| tracing::error!("météo : client HTTP impossible, météo indisponible : {e}"))
                 .ok(),

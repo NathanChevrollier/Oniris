@@ -33,6 +33,7 @@ fn main() {
         "clipboard_delete",
         "clipboard_paste",
         "weather_get",
+        "index_status",
         "perf_frame",
         "perf_open_cycles",
     ]);

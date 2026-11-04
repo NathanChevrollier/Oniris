@@ -42,6 +42,7 @@ pub fn settings_save(app: AppHandle, settings: Settings) -> Result<(), String> {
 pub fn apply_settings(app: &AppHandle, mut settings: Settings) -> Result<(), String> {
     let state = app.state::<AppState>();
     settings.weather_city = settings.weather_city.trim().to_string();
+    settings.normalize_roots();
     settings.validate()?;
     save_settings(&state.db.lock(), &settings).map_err(|e| e.to_string())?;
     let cfg = HotkeyConfig::from_setting(&settings.hotkey, settings.hold_threshold_ms as u64);

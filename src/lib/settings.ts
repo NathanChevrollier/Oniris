@@ -31,6 +31,10 @@ export type Settings = {
   clipboard_max_items: number;
   /** Ville de la météo, 80 caractères au plus ; vide = météo désactivée. */
   weather_city: string;
+  /** Dossiers indexés par la recherche (vide = dossier utilisateur) ; 20 chemins absolus au plus, 260 caractères. */
+  search_roots: string[];
+  /** Dossiers de projets, indexés en plus ; mêmes limites. */
+  projects_roots: string[];
 };
 
 /** Miroir de `Settings::default()` côté Rust : valeurs affichées avant la réponse de `settings_get`. */
@@ -51,6 +55,8 @@ export const DEFAULT_SETTINGS: Settings = {
   clipboard_retention_days: 7,
   clipboard_max_items: 200,
   weather_city: "",
+  search_roots: [],
+  projects_roots: [],
 };
 
 /** Paramètres courants : chargés au montage, puis suivis via `oniris://settings`. */

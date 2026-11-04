@@ -61,6 +61,7 @@ pub fn run() {
             modules::clipboard::clipboard_delete,
             modules::clipboard::clipboard_paste,
             modules::weather::weather_get,
+            modules::indexer::index_status,
             #[cfg(any(debug_assertions, feature = "perf"))]
             perf::perf_frame,
             #[cfg(any(debug_assertions, feature = "perf"))]
@@ -88,6 +89,8 @@ pub fn run() {
             modules::timers::start(app.handle());
             modules::clipboard::start(app.handle());
             modules::weather::load(app.handle());
+            let h = app.handle().clone();
+            tauri::async_runtime::spawn_blocking(move || modules::indexer::start(&h));
             tray::build(app.handle())?;
             tray::sync_autostart(app.handle(), autostart);
             hotkey::start_hook(app.handle().clone(), hotkey_cfg);

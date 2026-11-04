@@ -231,6 +231,12 @@
           "markdownDescription": "Enables the focus_start command without any pre-configured scope."
         },
         {
+          "description": "Enables the index_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-index-status",
+          "markdownDescription": "Enables the index_status command without any pre-configured scope."
+        },
+        {
           "description": "Enables the journal_list command without any pre-configured scope.",
           "type": "string",
           "const": "allow-journal-list",
@@ -427,6 +433,12 @@
           "type": "string",
           "const": "deny-focus-start",
           "markdownDescription": "Denies the focus_start command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the index_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-index-status",
+          "markdownDescription": "Denies the index_status command without any pre-configured scope."
         },
         {
           "description": "Denies the journal_list command without any pre-configured scope.",

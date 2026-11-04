@@ -39,6 +39,10 @@ pub struct Settings {
     pub clipboard_max_items: u16,
     /// Ville de la météo : vide = météo désactivée (aucune requête). 80 caractères au plus.
     pub weather_city: String,
+    /// Dossiers indexés par la recherche : vide = dossier utilisateur. 20 chemins absolus au plus (260 caractères).
+    pub search_roots: Vec<String>,
+    /// Dossiers où chercher des projets, indexés en plus de `search_roots`. Mêmes limites.
+    pub projects_roots: Vec<String>,
 }
 
 impl Default for Settings {
@@ -60,6 +64,8 @@ impl Default for Settings {
             clipboard_retention_days: 7,
             clipboard_max_items: 200,
             weather_city: String::new(),
+            search_roots: Vec::new(),
+            projects_roots: Vec::new(),
         }
     }
 }
@@ -87,7 +93,35 @@ fn check_hotkey(h: &HotkeySetting) -> Result<(), String> {
     Ok(())
 }
 
+const MAX_ROOTS: usize = 20;
+const MAX_ROOT_LEN: usize = 260;
+
+/// Valide une liste de dossiers (déjà normalisée) ; l'erreur nomme le champ.
+fn check_roots(roots: &[String], field: &str) -> Result<(), String> {
+    if roots.len() > MAX_ROOTS {
+        return Err(format!("{field} : {MAX_ROOTS} dossiers au plus"));
+    }
+    if roots.iter().any(|r| r.chars().count() > MAX_ROOT_LEN || !std::path::Path::new(r).is_absolute()) {
+        return Err(format!("{field} : chemins absolus de {MAX_ROOT_LEN} caractères au plus"));
+    }
+    Ok(())
+}
+
 impl Settings {
+    /// Rogne les dossiers, retire les vides et les doublons (casse ignorée, comme Windows). Sans erreur possible.
+    pub fn normalize_roots(&mut self) {
+        for list in [&mut self.search_roots, &mut self.projects_roots] {
+            let mut seen: Vec<String> = Vec::new();
+            for r in list.drain(..) {
+                let r = r.trim().to_string();
+                if !r.is_empty() && !seen.iter().any(|s| s.eq_ignore_ascii_case(&r)) {
+                    seen.push(r);
+                }
+            }
+            *list = seen;
+        }
+    }
+
     /// Remet à son défaut chaque champ invalide (les heures de la frise vont ensemble) ; renvoie les erreurs.
     fn fix(&mut self) -> Vec<String> {
         let d = Settings::default();
@@ -124,6 +158,15 @@ impl Settings {
         if self.weather_city.chars().count() > 80 {
             errs.push("ville de la météo : 80 caractères au plus".into());
             self.weather_city = d.weather_city.clone();
+        }
+        self.normalize_roots();
+        if let Err(e) = check_roots(&self.search_roots, "dossiers de recherche") {
+            errs.push(e);
+            self.search_roots = d.search_roots.clone();
+        }
+        if let Err(e) = check_roots(&self.projects_roots, "dossiers de projets") {
+            errs.push(e);
+            self.projects_roots = d.projects_roots.clone();
         }
         if let Err(e) = check_hotkey(&self.hotkey) {
             errs.push(e);
@@ -237,6 +280,15 @@ mod tests {
         let mut s = Settings { weather_city: "  Paris ".into(), ..Settings::default() };
         assert!(s.fix().is_empty());
         assert_eq!(s.weather_city, "Paris");
+        fn roots(n: usize) -> Vec<String> { (0..n).map(|i| format!("C:\\p{i}")).collect() }
+        assert!(bad(|s| s.search_roots = roots(21)));
+        assert!(bad(|s| s.projects_roots = roots(21)));
+        assert!(bad(|s| s.search_roots = vec!["relatif\\dossier".into()]));
+        assert!(bad(|s| s.projects_roots = vec![format!("C:\\{}", "d".repeat(258))]));
+        assert!(Settings { search_roots: roots(20), projects_roots: vec![format!("C:\\{}", "d".repeat(257))], ..Settings::default() }.validate().is_ok());
+        let mut s = Settings { search_roots: vec![" C:\\a ".into(), "c:\\A".into(), "  ".into()], ..Settings::default() };
+        assert!(s.fix().is_empty());
+        assert_eq!(s.search_roots, vec!["C:\\a".to_string()]);
         assert!(Settings { clipboard_retention_days: 1, clipboard_max_items: 20, ..Settings::default() }.validate().is_ok());
         assert!(Settings { clipboard_retention_days: 90, clipboard_max_items: 1000, ..Settings::default() }.validate().is_ok());
         // Sans Alt/Ctrl/Win : refusé, Maj seule ne compte pas.

@@ -32,9 +32,7 @@ fn main() {
         "clipboard_pin",
         "clipboard_delete",
         "clipboard_paste",
-        "system_snapshot",
         "weather_get",
-        "weather_refresh",
         "perf_frame",
         "perf_open_cycles",
     ]);

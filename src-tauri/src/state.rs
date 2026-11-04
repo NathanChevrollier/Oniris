@@ -18,15 +18,15 @@ pub struct AppState {
     pub voice_paused: AtomicBool,
     /// Seule connexion du processus.
     pub db: Db,
-    /// Client HTTP partagé (météo) : délai 8 s, agent générique.
-    pub http: reqwest::Client,
+    /// Client HTTP partagé (météo) : délai 8 s, agent générique. `None` s'il n'a pas pu être construit :
+    /// la météo est alors indisponible, mais l'app démarre.
+    pub http: Option<reqwest::Client>,
     pub settings: RwLock<Settings>,
     /// Seul point de passage des actions d'IRIS ; ses outils sont fixés dans `AppState::open`.
     pub broker: Arc<ToolBroker>,
     /// Relu par le crochet clavier à chaque touche : n'écrire que brièvement, sans E/S.
     pub hotkey: Arc<RwLock<HotkeyConfig>>,
     /// Notifie panneau et pilule qu'un sujet de données a changé.
-    #[allow(dead_code)] // les outils en gardent un clone ; le champ servira aux commandes qui notifient hors outil
     pub events: Arc<dyn Events>,
     /// Rempli dans `setup` après `manage` (il a besoin de l'`AppHandle`).
     pub scheduler: OnceLock<Arc<Scheduler>>,
@@ -67,7 +67,9 @@ impl AppState {
             hotkey: Arc::new(RwLock::new(HotkeyConfig::from_setting(&s.hotkey, s.hold_threshold_ms as u64))),
             events,
             scheduler: OnceLock::new(),
-            http: oniris_core::weather::client()?,
+            http: oniris_core::weather::client()
+                .inspect_err(|e| tracing::error!("météo : client HTTP impossible, météo indisponible : {e}"))
+                .ok(),
             _log_guard: None,
             db,
             broker,

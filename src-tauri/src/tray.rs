@@ -94,7 +94,6 @@ pub fn sync_autostart(app: &AppHandle, enabled: bool) {
     }
 }
 
-#[allow(dead_code)] // utilisée par les rappels et sondes (plans suivants)
 pub fn notify(app: &AppHandle, title: &str, body: &str) {
     if let Err(e) = app.notification().builder().title(title).body(body).show() {
         tracing::error!("notification: {e}");

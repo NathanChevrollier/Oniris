@@ -26,10 +26,8 @@ it("PcCard masque GPU et VRAM quand ils valent null", () => {
   usePanelStore.setState({ open: true });
   let push: (s: SystemStatus) => void = () => {};
   vi.spyOn(systemIpc, "subscribe").mockImplementation((cb) => { push = cb; return () => {}; });
-  const snap = vi.spyOn(systemIpc, "snapshot");
   render(<PcCard />);
   expect(screen.getByRole("meter", { name: "GPU" })).toBeInTheDocument();
-  expect(snap).not.toHaveBeenCalled(); // pas d'appel supplémentaire à l'ouverture
   act(() => push({ ...FAKE_STATUS, gpu_pct: null, vram_used_mb: null, vram_total_mb: null }));
   expect(screen.queryByRole("meter", { name: "GPU" })).toBeNull();
   expect(screen.queryByRole("meter", { name: "VRAM" })).toBeNull();

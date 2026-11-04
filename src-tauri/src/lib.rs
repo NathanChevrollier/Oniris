@@ -60,9 +60,7 @@ pub fn run() {
             modules::clipboard::clipboard_pin,
             modules::clipboard::clipboard_delete,
             modules::clipboard::clipboard_paste,
-            modules::system::system_snapshot,
             modules::weather::weather_get,
-            modules::weather::weather_refresh,
             #[cfg(any(debug_assertions, feature = "perf"))]
             perf::perf_frame,
             #[cfg(any(debug_assertions, feature = "perf"))]

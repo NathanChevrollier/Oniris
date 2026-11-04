@@ -1,4 +1,4 @@
-import { invoke, isTauri, listen } from "../../lib/ipc";
+import { isTauri, listen } from "../../lib/ipc";
 
 /** Miroir de `oniris_core::system::SystemStatus` (GPU/VRAM `null` quand PDH est indisponible). */
 export type SystemStatus = {
@@ -14,7 +14,6 @@ export const FAKE_STATUS: SystemStatus = {
 };
 
 export const systemIpc = {
-  snapshot: (): Promise<SystemStatus> => isTauri ? invoke("system_snapshot") : Promise.resolve(FAKE_STATUS),
   /** `oniris://system` n'est émis que panneau ouvert : s'abonner seulement à ce moment. Retourne la désinscription. */
   subscribe: (cb: (s: SystemStatus) => void): (() => void) => {
     if (!isTauri) cb(FAKE_STATUS); // aperçu navigateur

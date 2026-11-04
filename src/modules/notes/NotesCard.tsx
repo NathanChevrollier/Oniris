@@ -12,6 +12,8 @@ import "./notes.css";
 const UNAVAILABLE = "Notes indisponibles, réessaie.";
 const DEBOUNCE_MS = 150;
 const NONE: Note[] = [];
+/** Libellé lisible par un lecteur d'écran : la note entière serait lue à chaque bouton. */
+const label = (n: Note) => n.body.slice(0, 80);
 
 /** « à l'instant », « 5 min », « 3 h », « hier », « 12 nov. ». */
 export function ago(ms: number, now: Date): string {
@@ -68,9 +70,9 @@ export function NotesCard() {
             <p>{n.pinned && <Pin size={11} className="pinmark" aria-label="Épinglée" role="img" />}{n.body}</p>
             <time>{ago(n.updated_ms, now)}</time>
             <span className="acts">
-              <button type="button" aria-label={`${n.pinned ? "Désépingler" : "Épingler"} ${n.body}`} onClick={() => run(notesIpc.pin(n.id, !n.pinned))}><Pin size={13} /></button>
-              <button type="button" aria-label={`En rappel : ${n.body}`} onClick={() => run(notesIpc.toReminder(n.id))}><Bell size={13} /></button>
-              <button type="button" aria-label={`Supprimer ${n.body}`} onClick={() => run(notesIpc.remove(n.id))}><Trash2 size={13} /></button>
+              <button type="button" aria-label={`${n.pinned ? "Désépingler" : "Épingler"} ${label(n)}`} onClick={() => run(notesIpc.pin(n.id, !n.pinned))}><Pin size={13} /></button>
+              <button type="button" aria-label={`En rappel : ${label(n)}`} onClick={() => run(notesIpc.toReminder(n.id))}><Bell size={13} /></button>
+              <button type="button" aria-label={`Supprimer ${label(n)}`} onClick={() => run(notesIpc.remove(n.id))}><Trash2 size={13} /></button>
             </span>
           </li>
         ))}

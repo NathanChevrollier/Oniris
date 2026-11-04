@@ -84,3 +84,17 @@ it("clé changée panneau ouvert : recharge ; panneau fermé : périmé jusqu'à
   await setOpen(true);
   await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(3));
 });
+
+it("échec du chargement : réessayé à la réouverture suivante", async () => {
+  usePanelStore.setState({ open: true });
+  fetcher.mockReset();
+  fetcher.mockRejectedValueOnce(new Error("ipc")).mockResolvedValue("v");
+  const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+  const { result } = renderHook(() => useTopic("notes", fetcher, "init"));
+  await waitFor(() => expect(warn).toHaveBeenCalled());
+  await setOpen(false);
+  await setOpen(true);
+  await waitFor(() => expect(result.current.data).toBe("v"));
+  expect(fetcher).toHaveBeenCalledTimes(2);
+  warn.mockRestore();
+});

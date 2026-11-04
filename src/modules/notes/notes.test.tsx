@@ -65,3 +65,12 @@ it("affiche l'erreur quand l'enregistrement échoue", async () => {
   await userEvent.type(screen.getByRole("textbox", { name: "Nouvelle note" }), "x{Enter}");
   expect(await screen.findByRole("alert")).toHaveTextContent("Notes indisponibles");
 });
+
+it("les libellés des boutons coupent le texte de la note à 80 caractères", async () => {
+  const long = "x".repeat(300);
+  vi.spyOn(notesIpc, "list").mockResolvedValue([{ id: 3, body: long, pinned: false, created_ms: 1, updated_ms: Date.now() }]);
+  render(<NotesCard />);
+  expect(await screen.findByRole("button", { name: `Supprimer ${"x".repeat(80)}` })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: `Épingler ${"x".repeat(80)}` })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: `En rappel : ${"x".repeat(80)}` })).toBeInTheDocument();
+});

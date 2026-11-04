@@ -24,7 +24,10 @@ export function useTopic<T>(topic: Topic, fetcher: () => Promise<T>, initial: T,
     const id = ++req.current;
     f.current().then(
       (v) => { if (req.current === id) setData(v); },
-      (e) => console.warn("[oniris] chargement", topic, e),
+      (e) => {
+        if (req.current === id) stale.current = true; // la prochaine ouverture réessaie
+        console.warn("[oniris] chargement", topic, e);
+      },
     );
   }, [topic]);
 

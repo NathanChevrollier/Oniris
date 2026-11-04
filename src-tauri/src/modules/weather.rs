@@ -127,11 +127,12 @@ async fn do_refresh(app: &AppHandle) -> Result<Option<Weather>, CoreError> {
     if city.is_empty() {
         return Ok(None);
     }
+    let http = state.http.as_ref().ok_or_else(|| CoreError::Invalid("client HTTP indisponible".into()))?;
     let cached: Option<Place> = kv::get(&state.db.lock(), PLACE_KEY)
         .ok()
         .flatten()
         .and_then(|(j, _)| serde_json::from_str(&j).ok());
-    let (place, w) = weather::fetch(&state.http, &city, cached).await?;
+    let (place, w) = weather::fetch(http, &city, cached).await?;
     if state.settings.read().weather_city != city {
         return Ok(None); // ville changée pendant la requête : résultat périmé
     }
@@ -154,12 +155,6 @@ pub fn weather_get(state: tauri::State<AppState>) -> Result<WeatherState, String
         None => None,
     };
     Ok(WeatherState { weather, error: *LAST_ERR.lock() })
-}
-
-/// Actualisation manuelle, sans tenir compte des 30 min.
-#[tauri::command]
-pub async fn weather_refresh(app: AppHandle) -> Result<Option<Weather>, String> {
-    refresh(&app).await
 }
 
 #[cfg(test)]

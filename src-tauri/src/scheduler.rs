@@ -95,7 +95,6 @@ impl Scheduler {
     }
 
     /// Remplace l'échéance de `key` (`None` la retire) et réveille la tâche.
-    #[allow(dead_code)] // appelé par les modules à partir de la tâche 3
     pub fn set(&self, key: &'static str, at_ms: Option<u64>) {
         {
             let mut e = self.shared.entries.lock();
@@ -108,7 +107,6 @@ impl Scheduler {
     }
 
     /// Le gestionnaire doit être court et lancer tout travail lourd (il bloque la boucle).
-    #[allow(dead_code)] // appelé par les modules à partir de la tâche 3
     pub fn on_due(&self, key: &'static str, f: Handler) {
         self.handlers.lock().insert(key, f);
         self.shared.notify.notify_one(); // rejoue une échéance parquée faute de gestionnaire

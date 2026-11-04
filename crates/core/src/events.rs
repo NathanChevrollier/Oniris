@@ -6,6 +6,9 @@ use serde::Serialize;
 pub enum Topic { Agenda, Reminders, Notes, Timers, Clipboard, Weather }
 
 /// Notifie l'UI qu'un sujet a changé.
+///
+/// Ne jamais appeler `changed` en tenant le verrou de la base : les implémentations peuvent le prendre
+/// (côté Tauri, la reprogrammation relit la prochaine échéance). Lier d'abord le résultat avec `let`.
 pub trait Events: Send + Sync { fn changed(&self, topic: Topic); }
 
 /// Implémentation vide, pour les tests.

@@ -34,6 +34,8 @@ it("anneau du premier minuteur avec mm:ss et libellé, autres minuteurs annulabl
   expect(container.querySelector("svg circle.arc")).not.toBeNull();
   await userEvent.click(screen.getByRole("button", { name: "Annuler Pâtes" }));
   expect(cancel).toHaveBeenCalledWith(2);
+  await userEvent.click(screen.getByRole("button", { name: "Arrêter Thé" }));
+  expect(cancel).toHaveBeenLastCalledWith(1);
 });
 
 it("le champ libre lance un minuteur et affiche l'échec", async () => {

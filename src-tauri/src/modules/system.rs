@@ -72,11 +72,6 @@ pub fn snapshot() -> SystemStatus {
     s.sample()
 }
 
-#[tauri::command]
-pub async fn system_snapshot() -> Result<SystemStatus, String> {
-    tauri::async_runtime::spawn_blocking(snapshot).await.map_err(|e| e.to_string())
-}
-
 /// Désactive PDH après `limit` échecs de lecture consécutifs (une erreur isolée ne coupe pas le GPU de la session).
 struct FailureCounter { consecutive: u32, limit: u32 }
 

@@ -244,7 +244,7 @@ fn record_loop(app: AppHandle, rx: Receiver<Captured>) {
     }
 }
 
-struct Formats { own: u32, exclude: u32, history: u32, cloud: u32 }
+struct Formats { own: u32, exclude: u32, viewer_ignore: u32, history: u32, cloud: u32 }
 
 /// `None` si un format n'a pas pu être enregistré : plus rien n'est lu ni écrit (échec fermé, journalisé une fois).
 fn formats() -> Option<&'static Formats> {
@@ -254,11 +254,12 @@ fn formats() -> Option<&'static Formats> {
             Formats {
                 own: RegisterClipboardFormatW(w!("Oniris.Self")),
                 exclude: RegisterClipboardFormatW(w!("ExcludeClipboardContentFromMonitorProcessing")),
+                viewer_ignore: RegisterClipboardFormatW(w!("Clipboard Viewer Ignore")),
                 history: RegisterClipboardFormatW(w!("CanIncludeInClipboardHistory")),
                 cloud: RegisterClipboardFormatW(w!("CanUploadToCloudClipboard")),
             }
         };
-        if [f.own, f.exclude, f.history, f.cloud].contains(&0) {
+        if [f.own, f.exclude, f.viewer_ignore, f.history, f.cloud].contains(&0) {
             tracing::error!("presse-papiers : formats d'exclusion non enregistrés, historique désactivé");
             return None;
         }
@@ -351,7 +352,7 @@ unsafe fn read_open_clipboard() -> Option<Captured> {
     let dword = |fmt: u32| has(fmt).then(|| unsafe {
         with_data(fmt, |b| b.get(..4).map(|d| u32::from_le_bytes([d[0], d[1], d[2], d[3]]))).unwrap_or(0)
     });
-    let flags = ClipFlags { exclude_monitor: has(f.exclude), history_allowed: dword(f.history), cloud_allowed: dword(f.cloud) };
+    let flags = ClipFlags { exclude_monitor: has(f.exclude), viewer_ignore: has(f.viewer_ignore), history_allowed: dword(f.history), cloud_allowed: dword(f.cloud) };
     if !should_record(&flags) {
         tracing::info!("presse-papiers : copie exclue par sa source");
         return None;

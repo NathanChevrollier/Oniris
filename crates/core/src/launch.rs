@@ -36,15 +36,18 @@ pub fn safe_vscode_claude_uri(s: &str) -> Option<String> {
 }
 
 /// Extensions qui exécutent du code : réservées à `files.run` (confirmation).
-pub(crate) const EXECUTABLE: [&str; 29] = [
+pub(crate) const EXECUTABLE: &[&str] = &[
     "exe", "bat", "cmd", "com", "ps1", "psm1", "vbs", "vbe", "js", "jse", "wsf", "wsh", "hta", "msi", "msp", "scr", "cpl", "jar", "reg", "lnk", "url", "pif", "application",
-    "appref-ms", "msc", "gadget", "inf", "scf", "chm",
+    "appref-ms", "msc", "gadget", "inf", "scf", "chm", "py", "pyw", "ps1xml", "wsc", "xll", "sh", "jnlp", "diagcab", "search-ms", "library-ms", "settingcontent-ms", "docm",
+    "xlsm", "pptm", "dotm", "xltm", "xlam", "ppam",
 ];
 
-/// Le fichier (nom canonique, suffixe de flux `:stream` ôté) a-t-il une extension exécutable ?
+/// Le fichier (nom canonique ; tout nom contenant `:` est un flux ADS, refusé) a-t-il une extension exécutable ?
 pub fn is_executable(p: &Path) -> bool {
     let name = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-    let name = name.split(':').next().unwrap_or("");
+    if name.contains(':') {
+        return true; // flux ADS : jamais ouvert par files.open
+    }
     name.rsplit_once('.').is_some_and(|(_, ext)| EXECUTABLE.contains(&ext.trim().to_lowercase().as_str()))
 }
 
@@ -120,10 +123,10 @@ mod tests {
 
     #[test]
     fn extensions_executables() {
-        for n in ["a.exe", "A.EXE", "a.Lnk", "x.appref-ms", "a.chm", "a.exe:stream", "a.ps1"] {
+        for n in ["a.exe", "A.EXE", "a.Lnk", "x.appref-ms", "a.chm", "a.exe:stream", "a.txt:s.exe", "a.txt:stream", "a.ps1", "a.py", "a.SH", "a.docm", "a.xlsm", "a.pptm", "a.dotm", "a.xltm", "a.xlam", "a.ppam", "a.pyw", "a.ps1xml", "a.wsc", "a.xll", "a.jnlp", "a.diagcab", "a.search-ms", "a.library-ms", "a.settingcontent-ms"] {
             assert!(is_executable(Path::new(n)), "{n}");
         }
-        for n in ["a.txt", "exe", "a.exe.txt", "a.txt:stream", "a.txt:s.exe"] {
+        for n in ["a.txt", "exe", "a.exe.txt", "a.docx"] {
             assert!(!is_executable(Path::new(n)), "{n}");
         }
     }

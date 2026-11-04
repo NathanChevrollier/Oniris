@@ -7,6 +7,7 @@ import { Header } from "./Header";
 import { Timeline, type TimelineItem } from "./Timeline";
 import { useTopic } from "../lib/data";
 import { AgendaCard } from "../modules/agenda/AgendaCard";
+import { NotesCard } from "../modules/notes/NotesCard";
 import { useNow } from "../lib/time";
 import { agendaIpc, dayBounds, dayKey, type AgendaEvent } from "../modules/agenda/api";
 import { remindersIpc, type Reminder } from "../modules/reminders/api";
@@ -63,7 +64,7 @@ export function Panel({ onCommand = logCommand }: { onCommand?: (text: string) =
           </div>
           <Timeline startHour={settings.timeline_start_hour} endHour={settings.timeline_end_hour} items={[...items, ...dots]} />
           <ConfirmQueue subscribe={onConfirm} resolve={toolIpc.resolve} />
-          <CardGrid slots={{ agenda: <AgendaCard /> }} />
+          <CardGrid slots={{ agenda: <AgendaCard />, notes: <NotesCard /> }} />
           <CommandBar onSubmit={onCommand} />
           <div className="handle" />
         </div>

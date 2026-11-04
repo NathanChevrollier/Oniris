@@ -47,6 +47,11 @@ pub fn run() {
             modules::reminders::reminders_create,
             modules::reminders::reminders_complete,
             modules::reminders::reminders_delete,
+            modules::notes::notes_list,
+            modules::notes::notes_create,
+            modules::notes::notes_pin,
+            modules::notes::notes_delete,
+            modules::notes::notes_to_reminder,
             #[cfg(any(debug_assertions, feature = "perf"))]
             perf::perf_frame,
             #[cfg(any(debug_assertions, feature = "perf"))]

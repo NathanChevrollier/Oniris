@@ -59,6 +59,28 @@ Migration {
         created_ms INTEGER NOT NULL
     ) STRICT;
     CREATE INDEX reminders_due ON reminders(due_ms) WHERE done = 0 AND deleted = 0 AND notified = 0;",
+},
+Migration {
+    version: 5,
+    sql: "CREATE TABLE notes (
+        id INTEGER PRIMARY KEY,
+        body TEXT NOT NULL,
+        pinned INTEGER NOT NULL DEFAULT 0,
+        deleted INTEGER NOT NULL DEFAULT 0,
+        created_ms INTEGER NOT NULL,
+        updated_ms INTEGER NOT NULL
+    ) STRICT;
+    CREATE VIRTUAL TABLE notes_fts USING fts5(body, content='notes', content_rowid='id', tokenize='unicode61 remove_diacritics 2');
+    CREATE TRIGGER notes_ai AFTER INSERT ON notes BEGIN
+        INSERT INTO notes_fts(rowid, body) VALUES (new.id, new.body);
+    END;
+    CREATE TRIGGER notes_ad AFTER DELETE ON notes BEGIN
+        INSERT INTO notes_fts(notes_fts, rowid, body) VALUES ('delete', old.id, old.body);
+    END;
+    CREATE TRIGGER notes_au AFTER UPDATE OF body ON notes BEGIN
+        INSERT INTO notes_fts(notes_fts, rowid, body) VALUES ('delete', old.id, old.body);
+        INSERT INTO notes_fts(rowid, body) VALUES (new.id, new.body);
+    END;",
 }];
 
 pub fn open_db(path: &Path) -> Result<Connection, CoreError> {

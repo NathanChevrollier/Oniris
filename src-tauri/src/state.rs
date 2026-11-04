@@ -46,6 +46,7 @@ impl AppState {
         let mut tools: Vec<Arc<dyn Tool>> = vec![]; // les plans 2 à 5 ajoutent leurs outils ici
         tools.extend(oniris_core::agenda::tools::all(&db, &events));
         tools.extend(oniris_core::reminders::tools::all(&db, &events));
+        tools.extend(oniris_core::notes::tools::all(&db, &events));
         let broker = Arc::new(ToolBroker::new(db.clone(), clock, tools)?);
         broker.mark_interrupted();
         broker.expire_stale();

@@ -19,6 +19,11 @@ fn main() {
         "reminders_create",
         "reminders_complete",
         "reminders_delete",
+        "notes_list",
+        "notes_create",
+        "notes_pin",
+        "notes_delete",
+        "notes_to_reminder",
         "perf_frame",
         "perf_open_cycles",
     ]);

@@ -27,7 +27,7 @@ struct IdArgs { id: i64 }
 struct CompleteArgs { id: i64, done: bool }
 
 /// Texte et échéance : un jour sans heure donne 9 h ; sans date, pas d'échéance.
-fn split(text: &str) -> (String, Option<i64>) {
+pub(crate) fn split(text: &str) -> (String, Option<i64>) {
     match parse_when(text, Local::now()) {
         Some(w) => {
             let title = if w.rest.trim().is_empty() { text.trim().to_string() } else { w.rest.clone() };

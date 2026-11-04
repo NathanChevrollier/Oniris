@@ -2,6 +2,7 @@ pub mod agenda;
 mod db;
 mod error;
 pub mod events;
+pub mod notes;
 pub mod reminders;
 mod settings;
 pub mod time_util;

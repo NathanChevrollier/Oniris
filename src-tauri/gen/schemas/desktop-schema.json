@@ -207,6 +207,36 @@
           "markdownDescription": "Enables the journal_list command without any pre-configured scope."
         },
         {
+          "description": "Enables the notes_create command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-notes-create",
+          "markdownDescription": "Enables the notes_create command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the notes_delete command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-notes-delete",
+          "markdownDescription": "Enables the notes_delete command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the notes_list command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-notes-list",
+          "markdownDescription": "Enables the notes_list command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the notes_pin command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-notes-pin",
+          "markdownDescription": "Enables the notes_pin command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the notes_to_reminder command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-notes-to-reminder",
+          "markdownDescription": "Enables the notes_to_reminder command without any pre-configured scope."
+        },
+        {
           "description": "Enables the panel_close command without any pre-configured scope.",
           "type": "string",
           "const": "allow-panel-close",
@@ -319,6 +349,36 @@
           "type": "string",
           "const": "deny-journal-list",
           "markdownDescription": "Denies the journal_list command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the notes_create command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-notes-create",
+          "markdownDescription": "Denies the notes_create command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the notes_delete command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-notes-delete",
+          "markdownDescription": "Denies the notes_delete command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the notes_list command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-notes-list",
+          "markdownDescription": "Denies the notes_list command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the notes_pin command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-notes-pin",
+          "markdownDescription": "Denies the notes_pin command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the notes_to_reminder command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-notes-to-reminder",
+          "markdownDescription": "Denies the notes_to_reminder command without any pre-configured scope."
         },
         {
           "description": "Denies the panel_close command without any pre-configured scope.",

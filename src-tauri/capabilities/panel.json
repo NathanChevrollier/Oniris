@@ -20,6 +20,11 @@
     "allow-reminders-create",
     "allow-reminders-complete",
     "allow-reminders-delete",
+    "allow-notes-list",
+    "allow-notes-create",
+    "allow-notes-pin",
+    "allow-notes-delete",
+    "allow-notes-to-reminder",
     "allow-perf-frame",
     "allow-perf-open-cycles"
   ]

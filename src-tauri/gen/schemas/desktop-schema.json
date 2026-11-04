@@ -339,12 +339,6 @@
           "markdownDescription": "Enables the settings_save command without any pre-configured scope."
         },
         {
-          "description": "Enables the system_snapshot command without any pre-configured scope.",
-          "type": "string",
-          "const": "allow-system-snapshot",
-          "markdownDescription": "Enables the system_snapshot command without any pre-configured scope."
-        },
-        {
           "description": "Enables the timers_cancel command without any pre-configured scope.",
           "type": "string",
           "const": "allow-timers-cancel",
@@ -379,12 +373,6 @@
           "type": "string",
           "const": "allow-weather-get",
           "markdownDescription": "Enables the weather_get command without any pre-configured scope."
-        },
-        {
-          "description": "Enables the weather_refresh command without any pre-configured scope.",
-          "type": "string",
-          "const": "allow-weather-refresh",
-          "markdownDescription": "Enables the weather_refresh command without any pre-configured scope."
         },
         {
           "description": "Denies the agenda_between command without any pre-configured scope.",
@@ -549,12 +537,6 @@
           "markdownDescription": "Denies the settings_save command without any pre-configured scope."
         },
         {
-          "description": "Denies the system_snapshot command without any pre-configured scope.",
-          "type": "string",
-          "const": "deny-system-snapshot",
-          "markdownDescription": "Denies the system_snapshot command without any pre-configured scope."
-        },
-        {
           "description": "Denies the timers_cancel command without any pre-configured scope.",
           "type": "string",
           "const": "deny-timers-cancel",
@@ -589,12 +571,6 @@
           "type": "string",
           "const": "deny-weather-get",
           "markdownDescription": "Denies the weather_get command without any pre-configured scope."
-        },
-        {
-          "description": "Denies the weather_refresh command without any pre-configured scope.",
-          "type": "string",
-          "const": "deny-weather-refresh",
-          "markdownDescription": "Denies the weather_refresh command without any pre-configured scope."
         },
         {
           "description": "This permission set configures if your\napplication can enable or disable auto\nstarting the application on boot.\n\n#### Granted Permissions\n\nIt allows all to check, enable and\ndisable the automatic start on boot.\n\n\n#### This default permission set includes:\n\n- `allow-enable`\n- `allow-disable`\n- `allow-is-enabled`",

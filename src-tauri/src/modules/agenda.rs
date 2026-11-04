@@ -7,7 +7,7 @@ use oniris_core::tools::ToolOutcome;
 use serde_json::json;
 use tauri::{AppHandle, State};
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn agenda_between(state: State<AppState>, from_ms: i64, to_ms: i64) -> Result<Vec<Event>, String> {
     agenda::between(&state.db.lock(), from_ms, to_ms).map_err(|e| e.to_string())
 }
@@ -18,7 +18,7 @@ fn month_start_ms(year: i32, month: u32) -> Option<i64> {
     Some(Local.from_local_datetime(&d).earliest()?.timestamp_millis())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn agenda_month_days(state: State<AppState>, year: i32, month: u32) -> Result<Vec<u32>, String> {
     let (ny, nm) = if month == 12 { (year + 1, 1) } else { (year, month + 1) };
     let (Some(from), Some(to)) = (month_start_ms(year, month), month_start_ms(ny, nm)) else {

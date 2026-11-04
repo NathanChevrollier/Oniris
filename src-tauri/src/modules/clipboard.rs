@@ -161,7 +161,7 @@ fn utf16_text(bytes: &[u8]) -> String {
 // ---------- Commandes ----------
 
 /// Requête vide : entrées récentes ; sinon textes contenant la requête.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn clipboard_list(state: State<AppState>, query: String) -> Result<Vec<ClipItem>, String> {
     let list = clipboard::search(&state.db.lock(), &query, LIST_LIMIT).map_err(|e| e.to_string())?;
     Ok(list.into_iter().map(ClipItem::from).collect())
@@ -169,14 +169,14 @@ pub fn clipboard_list(state: State<AppState>, query: String) -> Result<Vec<ClipI
 
 // Épingler et supprimer écrivent directement : par le courtier, le journal des actions garderait le contenu
 // (undo d'une suppression) hors de portée de la purge.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn clipboard_pin(state: State<AppState>, id: i64, pinned: bool) -> Result<(), String> {
     clipboard::set_pinned(&state.db.lock(), id, pinned).map_err(|e| e.to_string())?;
     state.events.changed(Topic::Clipboard);
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn clipboard_delete(state: State<AppState>, id: i64) -> Result<(), String> {
     clipboard::delete(&state.db.lock(), id).map_err(|e| e.to_string())?;
     tracing::info!("presse-papiers : entrée {id} supprimée");

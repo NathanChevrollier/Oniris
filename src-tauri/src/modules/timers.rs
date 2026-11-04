@@ -16,7 +16,7 @@ use tauri::{AppHandle, Manager, State};
 
 const KEY: &str = "timers";
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn timers_list(state: State<AppState>) -> Result<Vec<Timer>, String> {
     timers::running(&state.db.lock()).map_err(|e| e.to_string())
 }

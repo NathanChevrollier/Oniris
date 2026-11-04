@@ -84,6 +84,7 @@ pub fn run() {
             modules::reminders::start(app.handle());
             modules::timers::start(app.handle());
             modules::clipboard::start(app.handle());
+            modules::weather::load(app.handle());
             // Pas encore d'écran (session qui s'ouvre) : on continue sans pilule plutôt que d'échouer.
             if let Err(e) = windows::show_pill(app.handle()) {
                 tracing::error!("pilule : affichage au démarrage impossible : {e}");
@@ -96,4 +97,34 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("erreur au lancement d'Oniris");
+}
+
+#[cfg(test)]
+mod tests {
+    /// Une commande synchrone tourne sur le fil principal (celui des fenêtres) : toute commande qui verrouille
+    /// la base doit être `#[tauri::command(async)]` ou `async fn`. Même règle pour l'ouverture du panneau.
+    #[test]
+    fn la_base_n_est_jamais_verrouillee_sur_le_fil_principal() {
+        let sources = [
+            ("commands.rs", include_str!("commands.rs")),
+            ("agenda.rs", include_str!("modules/agenda.rs")),
+            ("clipboard.rs", include_str!("modules/clipboard.rs")),
+            ("notes.rs", include_str!("modules/notes.rs")),
+            ("reminders.rs", include_str!("modules/reminders.rs")),
+            ("system.rs", include_str!("modules/system.rs")),
+            ("timers.rs", include_str!("modules/timers.rs")),
+            ("weather.rs", include_str!("modules/weather.rs")),
+        ];
+        let touches_db = |body: &str| body.contains("db.lock") || body.contains(".journal(");
+        for (file, src) in sources {
+            for cmd in src.split("#[tauri::command]").skip(1) {
+                let body = &cmd[..cmd.find("\n}").unwrap_or(cmd.len())];
+                let head = body.trim_start().lines().next().unwrap_or("");
+                assert!(!(head.starts_with("pub fn") && touches_db(body)), "{file} : commande synchrone qui touche la base : {head}");
+            }
+        }
+        let weather = include_str!("modules/weather.rs");
+        let open = weather.split("pub fn on_panel_open").nth(1).expect("on_panel_open");
+        assert!(!touches_db(&open[..open.find("\n}").unwrap()]), "on_panel_open ne doit pas verrouiller la base");
+    }
 }

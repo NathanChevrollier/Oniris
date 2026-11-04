@@ -9,7 +9,7 @@ use tauri::{AppHandle, State};
 const LIMIT: usize = 50;
 
 /// Requête vide : notes récentes ; sinon recherche par préfixe.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn notes_list(state: State<AppState>, query: String) -> Result<Vec<Note>, String> {
     notes::search(&state.db.lock(), &query, LIMIT).map_err(|e| e.to_string())
 }

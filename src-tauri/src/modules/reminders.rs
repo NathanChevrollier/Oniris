@@ -19,7 +19,7 @@ use tauri::{AppHandle, Manager, State};
 
 const KEY: &str = "reminders";
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn reminders_list(state: State<AppState>) -> Result<Vec<Reminder>, String> {
     reminders::list_today(&state.db.lock(), Local::now().timestamp_millis()).map_err(|e| e.to_string())
 }

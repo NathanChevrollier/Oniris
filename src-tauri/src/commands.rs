@@ -27,12 +27,12 @@ pub fn pill_resize(app: AppHandle, width: f64) -> tauri::Result<()> {
     windows::place_pill(&app, width)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn settings_get(state: State<AppState>) -> Settings {
     state.settings.read().clone()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn settings_save(app: AppHandle, state: State<AppState>, settings: Settings) -> Result<(), String> {
     let mut settings = settings;
     settings.weather_city = settings.weather_city.trim().to_string();
@@ -97,7 +97,7 @@ pub async fn tool_undo(webview: Webview, state: State<'_, AppState>, action_id: 
     broker.undo(action_id).await.map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn journal_list(state: State<AppState>, limit: u32) -> Vec<JournalEntry> {
     state.broker.journal(limit)
 }

@@ -13,6 +13,9 @@ use tauri::{AppHandle, Manager};
 
 /// Dernier échec (ms), 0 si aucun : en mémoire seulement, un redémarrage permet de réessayer.
 static LAST_FAIL_MS: AtomicI64 = AtomicI64::new(0);
+/// Dernière météo réussie (ms), 0 si aucune : copie en mémoire de la date du cache, pour que l'ouverture
+/// du panneau (fil principal) ne verrouille jamais la base. Lue au démarrage (`load`), mise à jour à chaque succès.
+static LAST_OK_MS: AtomicI64 = AtomicI64::new(0);
 /// Une seule actualisation à la fois.
 static BUSY: AtomicBool = AtomicBool::new(false);
 /// Ville changée pendant une actualisation : elle doit être refaite une fois pour la nouvelle ville.
@@ -50,15 +53,21 @@ pub struct WeatherState { pub weather: Option<Weather>, pub error: Option<&'stat
 
 fn now_ms() -> i64 { chrono::Utc::now().timestamp_millis() }
 
-/// Appelé par `windows::open_panel` : lance une actualisation si la ville est réglée et les données trop vieilles.
+/// À appeler dans `setup`, état géré : reprend la date de la dernière météo en cache.
+pub fn load(app: &AppHandle) {
+    let last_ok = kv::get(&app.state::<AppState>().db.lock(), LAST_KEY).ok().flatten().map_or(0, |(_, ms)| ms);
+    LAST_OK_MS.store(last_ok, Ordering::SeqCst);
+}
+
+/// Appelé par `windows::open_panel` (fil principal) : lance une actualisation si la ville est réglée et les
+/// données trop vieilles. Ne verrouille pas la base (test `la_base_n_est_jamais_verrouillee_sur_le_fil_principal`).
 pub fn on_panel_open(app: &AppHandle) {
     let state = app.state::<AppState>();
     if state.settings.read().weather_city.is_empty() {
         return;
     }
-    let last_ok = kv::get(&state.db.lock(), LAST_KEY).ok().flatten().map(|(_, ms)| ms);
-    let fail = LAST_FAIL_MS.load(Ordering::SeqCst);
-    if weather::should_refresh(last_ok, (fail != 0).then_some(fail), now_ms()) {
+    let (ok, fail) = (LAST_OK_MS.load(Ordering::SeqCst), LAST_FAIL_MS.load(Ordering::SeqCst));
+    if weather::should_refresh((ok != 0).then_some(ok), (fail != 0).then_some(fail), now_ms()) {
         spawn_refresh(app);
     }
 }
@@ -81,6 +90,7 @@ pub fn city_changed(app: &AppHandle, city: &str) {
         let _ = kv::delete(&db, PLACE_KEY);
         let _ = kv::delete(&db, LAST_KEY);
     }
+    LAST_OK_MS.store(0, Ordering::SeqCst);
     LAST_FAIL_MS.store(0, Ordering::SeqCst);
     *LAST_ERR.lock() = None;
     state.events.changed(Topic::Weather);
@@ -131,13 +141,14 @@ async fn do_refresh(app: &AppHandle) -> Result<Option<Weather>, CoreError> {
         let now = now_ms();
         kv::set(&db, PLACE_KEY, &serde_json::to_string(&place)?, now)?;
         kv::set(&db, LAST_KEY, &serde_json::to_string(&w)?, now)?;
+        LAST_OK_MS.store(now, Ordering::SeqCst);
     }
     state.events.changed(Topic::Weather);
     Ok(Some(w))
 }
 
 /// Cache uniquement : aucune requête.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn weather_get(state: tauri::State<AppState>) -> Result<WeatherState, String> {
     let weather = match kv::get(&state.db.lock(), LAST_KEY).map_err(|e| e.to_string())? {
         Some((json, _)) => Some(serde_json::from_str(&json).map_err(|e| e.to_string())?),

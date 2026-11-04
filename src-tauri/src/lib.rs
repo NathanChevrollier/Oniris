@@ -2,6 +2,7 @@ mod commands;
 mod events;
 mod fullscreen;
 mod hotkey;
+mod launch;
 mod logging;
 mod modules;
 #[cfg(any(debug_assertions, feature = "perf"))]
@@ -89,6 +90,7 @@ pub fn run() {
             modules::timers::start(app.handle());
             modules::clipboard::start(app.handle());
             modules::weather::load(app.handle());
+            modules::apps::start(app.handle());
             let h = app.handle().clone();
             tauri::async_runtime::spawn_blocking(move || modules::indexer::start(&h));
             tray::build(app.handle())?;

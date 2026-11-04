@@ -1,4 +1,6 @@
 pub mod agenda;
+pub mod apps;
+pub mod launch;
 pub mod clipboard;
 mod db;
 mod error;

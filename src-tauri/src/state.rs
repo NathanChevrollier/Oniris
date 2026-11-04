@@ -6,7 +6,7 @@ use oniris_core::{migrate, open_db, load_settings, Db, Settings, CORE_MIGRATIONS
 use parking_lot::{Mutex, RwLock};
 use std::sync::atomic::{AtomicBool, AtomicIsize};
 use std::sync::{Arc, OnceLock};
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 
 pub struct AppState {
     pub panel_open: AtomicBool,
@@ -32,6 +32,8 @@ pub struct AppState {
     pub scheduler: OnceLock<Arc<Scheduler>>,
     /// Rempli au démarrage par `modules::indexer::start` (sur un autre fil) ; `None` avant.
     pub indexer: OnceLock<crate::modules::indexer::Indexer>,
+    /// Applications du menu Démarrer (rempli par `modules::apps`).
+    pub apps: Arc<oniris_core::apps::Inventory>,
     /// Garde le journal fichier vivant (vidage à la fermeture).
     pub _log_guard: Option<tracing_appender::non_blocking::WorkerGuard>,
 }
@@ -58,6 +60,15 @@ impl AppState {
         let snapshot: oniris_core::system::tools::Snapshot = Arc::new(crate::modules::system::snapshot);
         tools.extend(oniris_core::system::tools::all(&snapshot));
         tools.extend(oniris_core::weather::tools::all(&db));
+        let apps = Arc::new(oniris_core::apps::Inventory::default());
+        let opener: Arc<dyn oniris_core::launch::Opener> = Arc::new(crate::launch::RealOpener);
+        let handle = app.clone();
+        let roots: oniris_core::apps::tools::Roots = Arc::new(move || {
+            let st = handle.state::<AppState>();
+            let s = st.settings.read();
+            crate::modules::indexer::effective_roots(&s.search_roots, &s.projects_roots, dirs::home_dir())
+        });
+        tools.extend(oniris_core::apps::tools::all(&opener, roots, &apps));
         let broker = Arc::new(ToolBroker::new(db.clone(), clock, tools)?);
         broker.mark_interrupted();
         broker.expire_stale();
@@ -70,6 +81,7 @@ impl AppState {
             events,
             scheduler: OnceLock::new(),
             indexer: OnceLock::new(),
+            apps,
             http: oniris_core::weather::client()
                 .inspect_err(|e| tracing::error!("météo : client HTTP impossible, météo indisponible : {e}"))
                 .ok(),

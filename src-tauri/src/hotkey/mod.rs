@@ -2,6 +2,7 @@ pub mod classifier;
 mod hook;
 
 pub use hook::start_hook;
+pub use oniris_core::key_to_vk;
 
 /// Raccourci global : modificateurs exacts + touche principale (code VK) et seuil du maintien.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -25,20 +26,6 @@ impl Default for HotkeyConfig {
             vk: 0x20,
             threshold_ms: 250,
         }
-    }
-}
-
-/// "Space", "A"-"Z", "F1"-"F12" vers un code VK ; `None` si inconnue.
-pub fn key_to_vk(key: &str) -> Option<u16> {
-    let b = key.as_bytes();
-    match key {
-        "Space" => Some(0x20),
-        _ if b.len() == 1 && b[0].is_ascii_uppercase() => Some(b[0] as u16),
-        _ => match key.strip_prefix('F')?.parse::<u16>() {
-            // exclut "F01" et "F+1", acceptés par parse
-            Ok(n @ 1..=12) if key[1..].bytes().all(|c| c.is_ascii_digit()) && !key[1..].starts_with('0') => Some(0x70 + n - 1),
-            _ => None,
-        },
     }
 }
 

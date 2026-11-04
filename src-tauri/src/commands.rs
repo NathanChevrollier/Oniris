@@ -1,4 +1,4 @@
-use crate::hotkey::{key_to_vk, HotkeyConfig};
+use crate::hotkey::HotkeyConfig;
 use crate::state::AppState;
 use crate::{fullscreen, windows};
 use oniris_core::tools::{JournalEntry, ToolBroker, ToolCall, ToolOutcome};
@@ -32,22 +32,9 @@ pub fn settings_get(state: State<AppState>) -> Settings {
     state.settings.read().clone()
 }
 
-fn validate(s: &Settings) -> Result<(), String> {
-    if s.timeline_start_hour >= s.timeline_end_hour || s.timeline_end_hour > 24 {
-        return Err("plage horaire invalide : début < fin <= 24".into());
-    }
-    if !(100..=1000).contains(&s.hold_threshold_ms) {
-        return Err("seuil de maintien hors de 100..=1000 ms".into());
-    }
-    if key_to_vk(&s.hotkey.key).is_none() {
-        return Err(format!("touche inconnue : {}", s.hotkey.key));
-    }
-    Ok(())
-}
-
 #[tauri::command]
 pub fn settings_save(app: AppHandle, state: State<AppState>, settings: Settings) -> Result<(), String> {
-    validate(&settings)?;
+    settings.validate()?;
     save_settings(&state.db.lock(), &settings).map_err(|e| e.to_string())?;
     let cfg = HotkeyConfig::from_setting(&settings.hotkey, settings.hold_threshold_ms as u64);
     *state.hotkey.write() = cfg;
@@ -88,22 +75,4 @@ pub async fn tool_undo(state: State<'_, AppState>, action_id: i64) -> Result<(),
 #[tauri::command]
 pub fn journal_list(state: State<AppState>, limit: u32) -> Vec<JournalEntry> {
     state.broker.journal(limit)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn validation() {
-        assert!(validate(&Settings::default()).is_ok());
-        let bad = |f: fn(&mut Settings)| { let mut s = Settings::default(); f(&mut s); validate(&s).is_err() };
-        assert!(bad(|s| s.timeline_start_hour = 23));
-        assert!(bad(|s| s.timeline_end_hour = 25));
-        assert!(bad(|s| s.hold_threshold_ms = 99));
-        assert!(bad(|s| s.hold_threshold_ms = 1001));
-        assert!(bad(|s| s.hotkey.key = "Enter".into()));
-        let mut ok = Settings::default();
-        ok.timeline_end_hour = 24;
-        assert!(validate(&ok).is_ok());
-    }
 }

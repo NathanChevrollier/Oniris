@@ -5,7 +5,7 @@ pub mod tools;
 
 pub use db::{migrate, open_db, Migration, CORE_MIGRATIONS};
 pub use error::CoreError;
-pub use settings::{load_settings, save_settings, HotkeySetting, Settings};
+pub use settings::{key_to_vk, load_settings, save_settings, HotkeySetting, Settings};
 
 #[cfg(test)]
 mod tests {

@@ -51,13 +51,73 @@ impl Default for Settings {
     }
 }
 
+/// "Space", "A"-"Z", "F1"-"F12" vers un code VK ; `None` si inconnue.
+pub fn key_to_vk(key: &str) -> Option<u16> {
+    let b = key.as_bytes();
+    match key {
+        "Space" => Some(0x20),
+        _ if b.len() == 1 && b[0].is_ascii_uppercase() => Some(b[0] as u16),
+        _ => match key.strip_prefix('F')?.parse::<u16>() {
+            // exclut "F01" et "F+1", acceptés par parse
+            Ok(n @ 1..=12) if key[1..].bytes().all(|c| c.is_ascii_digit()) && !key[1..].starts_with('0') => Some(0x70 + n - 1),
+            _ => None,
+        },
+    }
+}
+
+fn check_hotkey(h: &HotkeySetting) -> Result<(), String> {
+    let vk = key_to_vk(&h.key).ok_or_else(|| format!("touche inconnue : {}", h.key))?;
+    // Sans Alt/Ctrl/Win, le crochet avalerait la touche à chaque frappe ordinaire : F1-F12 seulement.
+    if !(h.alt || h.ctrl || h.win) && !(0x70..=0x7B).contains(&vk) {
+        return Err("raccourci sans Alt, Ctrl ni Win : réservé aux touches F1 à F12".into());
+    }
+    Ok(())
+}
+
+impl Settings {
+    /// Remet à son défaut chaque champ invalide (les heures de la frise vont ensemble) ; renvoie les erreurs.
+    fn fix(&mut self) -> Vec<String> {
+        let d = Settings::default();
+        let mut errs = Vec::new();
+        if self.timeline_start_hour >= self.timeline_end_hour || self.timeline_end_hour > 24 {
+            errs.push("plage horaire invalide : début < fin <= 24".to_string());
+            (self.timeline_start_hour, self.timeline_end_hour) = (d.timeline_start_hour, d.timeline_end_hour);
+        }
+        if !(100..=1000).contains(&self.hold_threshold_ms) {
+            errs.push("seuil de maintien hors de 100..=1000 ms".into());
+            self.hold_threshold_ms = d.hold_threshold_ms;
+        }
+        if !(100..=3000).contains(&self.hover_delay_ms) {
+            errs.push("délai de survol hors de 100..=3000 ms".into());
+            self.hover_delay_ms = d.hover_delay_ms;
+        }
+        if let Err(e) = check_hotkey(&self.hotkey) {
+            errs.push(e);
+            self.hotkey = d.hotkey;
+        }
+        errs
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        let errs = self.clone().fix();
+        if errs.is_empty() { Ok(()) } else { Err(errs.join(" ; ")) }
+    }
+}
+
 /// Ligne absente : défauts insérés. JSON illisible : copié dans `broken_json`, remplacé par les défauts.
+/// Champ invalide (même validation que l'enregistrement) : ce champ seul reprend son défaut.
 pub fn load_settings(conn: &Connection) -> Result<Settings, CoreError> {
     let row: Option<String> =
         conn.query_row("SELECT json FROM settings WHERE id = 1", [], |r| r.get(0)).optional()?;
     match row {
-        Some(json) => match serde_json::from_str(&json) {
-            Ok(s) => Ok(s),
+        Some(json) => match serde_json::from_str::<Settings>(&json) {
+            Ok(mut s) => {
+                let errs = s.fix();
+                if !errs.is_empty() {
+                    eprintln!("oniris: réglages corrigés au chargement : {}", errs.join(" ; "));
+                }
+                Ok(s)
+            }
             Err(_) => {
                 let d = Settings::default();
                 conn.execute(
@@ -117,6 +177,40 @@ mod tests {
         assert_eq!(load_settings(&c).unwrap(), Settings::default());
         let n: i64 = c.query_row("SELECT count(*) FROM settings", [], |r| r.get(0)).unwrap();
         assert_eq!(n, 1);
+    }
+    #[test] fn validation() {
+        assert!(Settings::default().validate().is_ok());
+        let bad = |f: fn(&mut Settings)| { let mut s = Settings::default(); f(&mut s); s.validate().is_err() };
+        assert!(bad(|s| s.timeline_start_hour = 23));
+        assert!(bad(|s| s.timeline_end_hour = 25));
+        assert!(bad(|s| s.hold_threshold_ms = 99));
+        assert!(bad(|s| s.hold_threshold_ms = 1001));
+        assert!(bad(|s| s.hover_delay_ms = 99));
+        assert!(bad(|s| s.hover_delay_ms = 3001));
+        assert!(bad(|s| s.hotkey.key = "Enter".into()));
+        // Sans Alt/Ctrl/Win : refusé, Maj seule ne compte pas.
+        assert!(bad(|s| s.hotkey = HotkeySetting { alt: false, shift: true, key: "A".into(), ..HotkeySetting::default() }));
+        assert!(bad(|s| s.hotkey.alt = false));
+        let ok = |h: HotkeySetting| Settings { hotkey: h, ..Settings::default() }.validate().is_ok();
+        assert!(ok(HotkeySetting { alt: false, key: "F5".into(), ..HotkeySetting::default() }));
+        assert!(ok(HotkeySetting { alt: false, ctrl: true, key: "A".into(), ..HotkeySetting::default() }));
+        assert!(ok(HotkeySetting { alt: false, win: true, ..HotkeySetting::default() }));
+        assert!(Settings { timeline_end_hour: 24, hover_delay_ms: 3000, ..Settings::default() }.validate().is_ok());
+    }
+    #[test] fn champs_invalides_en_base_remplaces_un_par_un() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut c = open_db(&dir.path().join("t.db")).unwrap();
+        migrate(&mut c, CORE_MIGRATIONS).unwrap();
+        let json = r#"{"user_name":"Nathan","hold_threshold_ms":400,"hover_delay_ms":5,"timeline_start_hour":9,"timeline_end_hour":30,"hotkey":{"alt":false,"key":"Space"}}"#;
+        c.execute("INSERT INTO settings(id, json) VALUES (1, ?1)", [json]).unwrap();
+        let s = load_settings(&c).unwrap();
+        let d = Settings::default();
+        assert_eq!((s.user_name.as_str(), s.hold_threshold_ms), ("Nathan", 400));
+        assert_eq!(s.hover_delay_ms, d.hover_delay_ms);
+        assert_eq!((s.timeline_start_hour, s.timeline_end_hour), (d.timeline_start_hour, d.timeline_end_hour));
+        assert_eq!(s.hotkey, d.hotkey);
+        let broken: Option<String> = c.query_row("SELECT broken_json FROM settings WHERE id = 1", [], |r| r.get(0)).unwrap();
+        assert_eq!(broken, None);
     }
     #[test] fn aller_retour() {
         let dir = tempfile::tempdir().unwrap();

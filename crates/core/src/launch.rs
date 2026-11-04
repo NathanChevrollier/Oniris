@@ -11,15 +11,21 @@ pub trait Opener: Send + Sync {
 /// URL http, https ou mailto, sans caractère de contrôle ni identifiants (hameçonnage) ; schéma en minuscules.
 pub fn safe_url(s: &str) -> Option<String> {
     let s = s.trim();
-    if s.chars().any(char::is_control) {
+    if s.len() > MAX_URL || s.chars().any(char::is_control) {
         return None;
     }
     let u = url::Url::parse(s).ok()?;
     if !matches!(u.scheme(), "http" | "https" | "mailto") || !u.username().is_empty() || u.password().is_some() {
         return None;
     }
+    // mailto : ni pièce jointe ni en-têtes arbitraires.
+    if u.scheme() == "mailto" && u.query_pairs().any(|(k, _)| !["subject", "body", "cc", "bcc"].contains(&k.to_lowercase().as_str())) {
+        return None;
+    }
     Some(u.into())
 }
+
+const MAX_URL: usize = 2048;
 
 const VSCODE_CLAUDE: &str = "vscode://anthropic.claude-code/open?";
 
@@ -29,16 +35,37 @@ pub fn safe_vscode_claude_uri(s: &str) -> Option<String> {
     q.chars().all(|c| c.is_ascii_graphic() && c != '#').then(|| s.to_string())
 }
 
-fn plain(p: &Path) -> String {
-    let s = p.to_string_lossy();
-    s.strip_prefix(r"\\?\").unwrap_or(&s).to_lowercase()
+/// Extensions qui exécutent du code : réservées à `files.run` (confirmation).
+pub(crate) const EXECUTABLE: [&str; 29] = [
+    "exe", "bat", "cmd", "com", "ps1", "psm1", "vbs", "vbe", "js", "jse", "wsf", "wsh", "hta", "msi", "msp", "scr", "cpl", "jar", "reg", "lnk", "url", "pif", "application",
+    "appref-ms", "msc", "gadget", "inf", "scf", "chm",
+];
+
+/// Le fichier (nom canonique, suffixe de flux `:stream` ôté) a-t-il une extension exécutable ?
+pub fn is_executable(p: &Path) -> bool {
+    let name = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let name = name.split(':').next().unwrap_or("");
+    name.rsplit_once('.').is_some_and(|(_, ext)| EXECUTABLE.contains(&ext.trim().to_lowercase().as_str()))
 }
 
-/// Chemin existant, une fois canonique (sans `..` ni lien) dans l'une des racines (insensible à la casse).
-pub fn safe_path(p: &Path, allowed_roots: &[PathBuf]) -> bool {
-    let Ok(c) = std::fs::canonicalize(p) else { return false };
-    let c = PathBuf::from(plain(&c));
-    allowed_roots.iter().filter_map(|r| std::fs::canonicalize(r).ok()).any(|r| c.starts_with(plain(&r)))
+fn plain(p: &Path) -> String {
+    let s = p.to_string_lossy();
+    s.strip_prefix(r"\\?\").unwrap_or(&s).to_string()
+}
+
+/// Chemin absolu existant, une fois canonique (sans `..` ni lien) dans l'une des racines (insensible à la casse).
+/// Renvoie ce chemin canonique (préfixe `\\?\` ôté) : c'est lui qu'il faut ouvrir, jamais l'entrée.
+pub fn safe_path(p: &Path, allowed_roots: &[PathBuf]) -> Option<PathBuf> {
+    if !p.is_absolute() {
+        return None;
+    }
+    let c = PathBuf::from(plain(&std::fs::canonicalize(p).ok()?));
+    let lc = PathBuf::from(c.to_string_lossy().to_lowercase());
+    allowed_roots
+        .iter()
+        .filter_map(|r| std::fs::canonicalize(r).ok())
+        .any(|r| lc.starts_with(plain(&r).to_lowercase()))
+        .then_some(c)
 }
 
 #[cfg(test)]
@@ -82,11 +109,30 @@ mod tests {
         std::fs::write(root.join("sub").join("a.txt"), "x").unwrap();
         std::fs::write(other.join("b.txt"), "x").unwrap();
         let roots = vec![root.clone()];
-        assert!(safe_path(&root.join("sub").join("a.txt"), &roots));
-        assert!(safe_path(&root.join("SUB").join("A.TXT"), &roots), "insensible à la casse");
-        assert!(!safe_path(&other.join("b.txt"), &roots), "hors racine");
-        assert!(!safe_path(&root.join("sub").join("..").join("..").join("autre").join("b.txt"), &roots), "évasion par ..");
-        assert!(!safe_path(&root.join("absent.txt"), &roots), "inexistant");
-        assert!(!safe_path(&root.join("sub").join("a.txt"), &[]));
+        assert_eq!(safe_path(&root.join("sub").join("a.txt"), &roots).unwrap().file_name().unwrap(), "a.txt");
+        assert!(safe_path(Path::new("a.txt"), &roots).is_none(), "relatif");
+        assert!(safe_path(&root.join("SUB").join("A.TXT"), &roots).is_some(), "insensible à la casse");
+        assert!(safe_path(&other.join("b.txt"), &roots).is_none(), "hors racine");
+        assert!(safe_path(&root.join("sub").join("..").join("..").join("autre").join("b.txt"), &roots).is_none(), "évasion par ..");
+        assert!(safe_path(&root.join("absent.txt"), &roots).is_none(), "inexistant");
+        assert!(safe_path(&root.join("sub").join("a.txt"), &[]).is_none());
+    }
+
+    #[test]
+    fn extensions_executables() {
+        for n in ["a.exe", "A.EXE", "a.Lnk", "x.appref-ms", "a.chm", "a.exe:stream", "a.ps1"] {
+            assert!(is_executable(Path::new(n)), "{n}");
+        }
+        for n in ["a.txt", "exe", "a.exe.txt", "a.txt:stream", "a.txt:s.exe"] {
+            assert!(!is_executable(Path::new(n)), "{n}");
+        }
+    }
+
+    #[test]
+    fn mailto_et_longueur() {
+        assert!(safe_url("mailto:a@b.fr?subject=Salut&body=x&cc=c@d.fr").is_some());
+        assert!(safe_url("mailto:a@b.fr?attach=c:/secret.txt").is_none());
+        assert!(safe_url("mailto:a@b.fr?Subject=x&headers=y").is_none());
+        assert!(safe_url(&format!("https://a.com/{}", "x".repeat(2048))).is_none());
     }
 }

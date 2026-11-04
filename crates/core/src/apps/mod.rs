@@ -9,12 +9,13 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicI64, Ordering};
 
 pub const MAX_AGE_MS: i64 = 6 * 3600 * 1000;
-const EXCLUDED: [&str; 10] = ["uninstall", "désinstaller", "help", "aide", "read me", "readme", "manual", "documentation", "website", "site web"];
+const EXCLUDED: [&str; 6] = ["uninstall", "désinstaller", "désinstallation", "help", "aide", "readme"];
 const MAX_DEPTH: usize = 8;
 
 fn excluded(title: &str) -> bool {
     let t = title.to_lowercase();
-    EXCLUDED.iter().any(|e| t.contains(e))
+    let words: Vec<&str> = t.split(|c: char| !c.is_alphanumeric()).filter(|w| !w.is_empty()).collect();
+    words.iter().any(|w| EXCLUDED.contains(w)) || words.windows(2).any(|w| w == ["read", "me"])
 }
 
 fn walk(dir: &Path, depth: usize, out: &mut Vec<PathBuf>) {
@@ -32,13 +33,15 @@ fn walk(dir: &Path, depth: usize, out: &mut Vec<PathBuf>) {
     }
 }
 
-/// Raccourcis `.lnk` de `dirs` (récursif), sans doublon de titre ni outils de désinstallation/aide ; triés par titre.
+/// Raccourcis `.lnk` de `dirs` (récursif ; en cas de doublon de titre, le premier dossier gagne), sans doublon de titre ni outils de désinstallation/aide ; triés par titre.
 pub fn scan(dirs: &[PathBuf]) -> Vec<Item> {
     let mut files = vec![];
     for d in dirs {
-        walk(d, 0, &mut files);
+        let mut f = vec![];
+        walk(d, 0, &mut f);
+        f.sort();
+        files.extend(f);
     }
-    files.sort();
     let mut seen = HashSet::new();
     let mut items: Vec<Item> = files
         .into_iter()
@@ -92,12 +95,27 @@ mod tests {
             (&b, "Read me.lnk"),
             (&a, "Aide Baz.lnk"),
             (&a, "notes.txt"),
-            (&b, "Site Web Foo.lnk"),
+            (&a, "Tomb Raider.lnk"),
+            (&b, "Helpdesk.lnk"),
+            (&b, "Aide de Foo.lnk"),
         ] {
             std::fs::write(d.join(n), "").unwrap();
         }
         let titles: Vec<_> = scan(&[a, b]).into_iter().map(|i| i.title).collect();
-        assert_eq!(titles, ["Code", "Firefox"]);
+        assert_eq!(titles, ["Code", "Firefox", "Helpdesk", "Tomb Raider"]);
+    }
+
+    #[test]
+    fn le_premier_dossier_gagne_les_doublons() {
+        let t = tempfile::tempdir().unwrap();
+        let (user, common) = (t.path().join("user"), t.path().join("common"));
+        std::fs::create_dir_all(&user).unwrap();
+        std::fs::create_dir_all(&common).unwrap();
+        std::fs::write(user.join("App.lnk"), "").unwrap();
+        std::fs::write(common.join("App.lnk"), "").unwrap();
+        let items = scan(&[user.clone(), common]);
+        assert_eq!(items.len(), 1);
+        assert!(items[0].key.starts_with(&*user.to_string_lossy()));
     }
 
     #[test]

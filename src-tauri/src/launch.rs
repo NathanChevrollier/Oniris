@@ -1,10 +1,11 @@
 //! Ouverture réelle de fichiers, liens et processus (jamais appelée par les tests : R8).
-use oniris_core::launch::Opener;
+use oniris_core::launch::{safe_url, safe_vscode_claude_uri, Opener};
 use std::os::windows::ffi::OsStrExt;
 use std::os::windows::process::CommandExt;
 use std::path::Path;
 use std::process::{Child, Command};
 use windows::core::{w, PCWSTR};
+use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_APARTMENTTHREADED, COINIT_DISABLE_OLE1DDE};
 use windows::Win32::UI::Shell::ShellExecuteW;
 use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
 
@@ -16,8 +17,15 @@ const DETACHED_PROCESS: u32 = 0x0000_0008;
 fn shell_open(target: std::ffi::OsString) {
     let spawned = std::thread::Builder::new().name("oniris-open".into()).spawn(move || {
         let wide: Vec<u16> = target.encode_wide().chain(Some(0)).collect();
-        // SAFETY: `wide` est terminée par un nul et vit pendant l'appel.
-        let r = unsafe { ShellExecuteW(None, w!("open"), PCWSTR(wide.as_ptr()), PCWSTR::null(), PCWSTR::null(), SW_SHOWNORMAL) };
+        // SAFETY: `wide` est terminée par un nul et vit pendant l'appel ; COM est initialisé puis libéré sur ce fil.
+        let r = unsafe {
+            let com = CoInitializeEx(None, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE).is_ok();
+            let r = ShellExecuteW(None, w!("open"), PCWSTR(wide.as_ptr()), PCWSTR::null(), PCWSTR::null(), SW_SHOWNORMAL);
+            if com {
+                CoUninitialize();
+            }
+            r
+        };
         if (r.0 as isize) <= 32 {
             tracing::warn!("ouverture refusée (code {})", r.0 as isize);
         }
@@ -60,10 +68,17 @@ pub struct RealOpener;
 
 impl Opener for RealOpener {
     fn open_path(&self, p: &Path) {
-        open_path(p);
+        if p.is_absolute() {
+            open_path(p);
+        } else {
+            tracing::warn!("ouverture refusée : chemin non absolu");
+        }
     }
     fn open_url(&self, u: &str) {
-        open_url(u);
+        match safe_url(u).or_else(|| safe_vscode_claude_uri(u)) {
+            Some(u) => open_url(&u),
+            None => tracing::warn!("ouverture refusée : lien non sûr"),
+        }
     }
     fn spawn_detached(&self, program: &str, args: &[String], cwd: Option<&Path>) -> std::io::Result<()> {
         spawn_detached(program, args, cwd).map(drop)

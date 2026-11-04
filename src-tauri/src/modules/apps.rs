@@ -10,9 +10,17 @@ use windows::Win32::UI::Shell::{FOLDERID_CommonPrograms, FOLDERID_Programs, SHGe
 
 static SCANNING: AtomicBool = AtomicBool::new(false);
 
-/// Menus Démarrer (commun puis utilisateur) via les dossiers connus, pas de chemin en dur.
+/// Libère `SCANNING` même si le balayage panique.
+struct ScanGuard;
+impl Drop for ScanGuard {
+    fn drop(&mut self) {
+        SCANNING.store(false, Ordering::SeqCst);
+    }
+}
+
+/// Menus Démarrer (utilisateur d'abord : il gagne les doublons) via les dossiers connus, pas de chemin en dur.
 fn start_menu_dirs() -> Vec<PathBuf> {
-    [&FOLDERID_CommonPrograms, &FOLDERID_Programs]
+    [&FOLDERID_Programs, &FOLDERID_CommonPrograms]
         .into_iter()
         .filter_map(|id| unsafe {
             let p = SHGetKnownFolderPath(id, KF_FLAG_DEFAULT, None).ok()?;
@@ -30,10 +38,10 @@ pub fn refresh(app: &AppHandle) {
     }
     let app = app.clone();
     let spawned = std::thread::Builder::new().name("oniris-apps".into()).spawn(move || {
+        let _guard = ScanGuard;
         let items = apps::scan(&start_menu_dirs());
         tracing::info!("applications : {} entrées", items.len());
         app.state::<AppState>().apps.set(items, now_ms());
-        SCANNING.store(false, Ordering::SeqCst);
     });
     if let Err(e) = spawned {
         SCANNING.store(false, Ordering::SeqCst);

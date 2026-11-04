@@ -3,16 +3,14 @@
 use super::{get, insert, search, set_deleted, set_pinned, Note};
 use crate::events::{Events, Topic};
 use crate::reminders;
-use crate::tools::helpers::{bad, failed, low, parse, spec};
+use crate::tools::helpers::{bad, failed, low, parse, spec, IdArgs};
 use crate::tools::{ConfirmationText, Permission, Tool, ToolError, ToolResult, ToolSpec};
 use async_trait::async_trait;
-use parking_lot::Mutex;
-use rusqlite::Connection;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::sync::Arc;
 
-type Db = Arc<Mutex<Connection>>;
+use crate::Db;
 
 pub struct Create { pub db: Db, pub events: Arc<dyn Events> }
 pub struct Search { pub db: Db }
@@ -24,8 +22,6 @@ pub struct ToReminder { pub db: Db, pub events: Arc<dyn Events> }
 struct CreateArgs { text: String }
 #[derive(Deserialize)]
 struct SearchArgs { query: String }
-#[derive(Deserialize)]
-struct IdArgs { id: i64 }
 #[derive(Deserialize)]
 struct PinArgs { id: i64, pinned: bool }
 
@@ -156,7 +152,9 @@ pub fn all(db: &Db, events: &Arc<dyn Events>) -> Vec<Arc<dyn Tool>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::notes::{recent, tests::db};
+    use crate::test_util::db;
+    use parking_lot::Mutex;
+    use crate::notes::recent;
     use crate::tools::{Origin, Provenance, ToolBroker, ToolCall, ToolOutcome};
     use chrono::{Local, TimeZone, Timelike};
     use std::sync::Mutex as StdMutex;
@@ -165,13 +163,13 @@ mod tests {
     struct Log(StdMutex<Vec<Topic>>);
     impl Events for Log { fn changed(&self, t: Topic) { self.0.lock().unwrap().push(t); } }
 
-    fn setup() -> (tempfile::TempDir, Db, Arc<Log>, ToolBroker) {
-        let (dir, c) = db();
+    fn setup() -> (Db, Arc<Log>, ToolBroker) {
+        let c = db();
         let db: Db = Arc::new(Mutex::new(c));
         let log = Arc::new(Log::default());
         let ev: Arc<dyn Events> = log.clone();
         let broker = ToolBroker::new(db.clone(), Arc::new(|| 0), all(&db, &ev)).unwrap();
-        (dir, db, log, broker)
+        (db, log, broker)
     }
     fn call(tool: &str, args: Value) -> ToolCall {
         ToolCall { tool: tool.into(), args, provenance: Provenance::User, origin: Origin::User }
@@ -179,7 +177,7 @@ mod tests {
 
     #[tokio::test]
     async fn create_puis_undo() {
-        let (_d, db, log, broker) = setup();
+        let (db, log, broker) = setup();
         let ToolOutcome::Done { action_id, .. } = broker.call(call("notes.create", json!({"text": "  idée  "}))).await else { panic!() };
         assert_eq!(recent(&db.lock(), 50).unwrap()[0].body, "idée");
         broker.undo(action_id).await.unwrap();
@@ -190,7 +188,7 @@ mod tests {
 
     #[tokio::test]
     async fn search_et_delete_puis_undo() {
-        let (_d, db, _l, broker) = setup();
+        let (db, _l, broker) = setup();
         let id = insert(&db.lock(), "Réunion client").unwrap();
         let ToolOutcome::Done { output, .. } = broker.call(call("notes.search", json!({"query": "reunion"}))).await else { panic!() };
         assert_eq!(output.as_array().unwrap().len(), 1);
@@ -204,7 +202,7 @@ mod tests {
 
     #[tokio::test]
     async fn pin_puis_undo() {
-        let (_d, db, _l, broker) = setup();
+        let (db, _l, broker) = setup();
         let a = insert(&db.lock(), "a").unwrap();
         insert(&db.lock(), "b").unwrap();
         let ToolOutcome::Done { action_id, .. } = broker.call(call("notes.pin", json!({"id": a, "pinned": true}))).await else { panic!() };
@@ -215,7 +213,7 @@ mod tests {
 
     #[tokio::test]
     async fn to_reminder_puis_undo() {
-        let (_d, db, log, broker) = setup();
+        let (db, log, broker) = setup();
         let id = insert(&db.lock(), "demain appeler la banque").unwrap();
         let ToolOutcome::Done { action_id, .. } = broker.call(call("notes.to_reminder", json!({"id": id}))).await else { panic!() };
         let open = reminders::list_open(&db.lock()).unwrap();
@@ -231,7 +229,7 @@ mod tests {
 
     #[tokio::test]
     async fn to_reminder_sans_date_et_note_inconnue() {
-        let (_d, db, _l, broker) = setup();
+        let (db, _l, broker) = setup();
         let id = insert(&db.lock(), "penser au pain").unwrap();
         broker.call(call("notes.to_reminder", json!({"id": id}))).await;
         assert_eq!(reminders::list_open(&db.lock()).unwrap()[0].due_ms, None);

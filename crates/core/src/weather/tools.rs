@@ -3,8 +3,7 @@ use crate::kv;
 use crate::tools::helpers::{failed, low, spec};
 use crate::tools::{ConfirmationText, Permission, Tool, ToolError, ToolResult, ToolSpec};
 use async_trait::async_trait;
-use parking_lot::Mutex;
-use rusqlite::Connection;
+use crate::Db;
 use serde_json::{json, Value};
 use std::sync::Arc;
 
@@ -13,7 +12,7 @@ pub const LAST_KEY: &str = "weather.last";
 /// Clé `kv` du lieu géocodé (JSON de `Place`).
 pub const PLACE_KEY: &str = "weather.place";
 
-pub struct Today { pub db: Arc<Mutex<Connection>> }
+pub struct Today { pub db: Db }
 
 #[async_trait]
 impl Tool for Today {
@@ -31,20 +30,20 @@ impl Tool for Today {
     }
 }
 
-pub fn all(db: &Arc<Mutex<Connection>>) -> Vec<Arc<dyn Tool>> {
+pub fn all(db: &Db) -> Vec<Arc<dyn Tool>> {
     vec![Arc::new(Today { db: db.clone() })]
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::clipboard::tests::db;
+    use crate::test_util::db;
     use crate::tools::{Origin, Provenance, ToolBroker, ToolCall, ToolOutcome};
 
     #[tokio::test]
     async fn weather_today_libre_renvoie_le_cache_ou_null() {
-        let (_d, c) = db();
-        let db = Arc::new(Mutex::new(c));
+        let c = db();
+        let db = Arc::new(parking_lot::Mutex::new(c));
         let broker = ToolBroker::new(db.clone(), Arc::new(|| 0), all(&db)).unwrap();
         let call = || ToolCall { tool: "weather.today".into(), args: json!({}), provenance: Provenance::User, origin: Origin::User };
         let ToolOutcome::Done { output, .. } = broker.call(call()).await else { panic!("Free : exécuté sans confirmation") };

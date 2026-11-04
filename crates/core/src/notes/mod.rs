@@ -78,21 +78,15 @@ pub fn search(c: &Connection, query: &str, limit: usize) -> Result<Vec<Note>, Co
 }
 
 #[cfg(test)]
-pub(crate) mod tests {
+mod tests {
     use super::*;
-    use crate::{migrate, open_db, CORE_MIGRATIONS};
+    use crate::test_util::db;
 
-    pub(crate) fn db() -> (tempfile::TempDir, Connection) {
-        let dir = tempfile::tempdir().unwrap();
-        let mut c = open_db(&dir.path().join("t.db")).unwrap();
-        migrate(&mut c, CORE_MIGRATIONS).unwrap();
-        (dir, c)
-    }
     fn found(c: &Connection, q: &str) -> Vec<String> { search(c, q, 50).unwrap().into_iter().map(|n| n.body).collect() }
 
     #[test]
     fn recherche_insensible_aux_accents_et_a_la_casse() {
-        let (_d, c) = db();
+        let c = db();
         insert(&c, "Réunion client").unwrap();
         insert(&c, "Courses").unwrap();
         assert_eq!(found(&c, "reunion"), vec!["Réunion client"]);
@@ -101,7 +95,7 @@ pub(crate) mod tests {
 
     #[test]
     fn recherche_par_prefixe_et_et_entre_mots() {
-        let (_d, c) = db();
+        let c = db();
         insert(&c, "Réunion client").unwrap();
         insert(&c, "client suivant").unwrap();
         assert_eq!(found(&c, "cli").len(), 2);
@@ -110,7 +104,7 @@ pub(crate) mod tests {
 
     #[test]
     fn note_supprimee_absente_puis_restauree() {
-        let (_d, c) = db();
+        let c = db();
         let id = insert(&c, "secret").unwrap();
         set_deleted(&c, id, true).unwrap();
         assert!(found(&c, "secret").is_empty());
@@ -121,7 +115,7 @@ pub(crate) mod tests {
 
     #[test]
     fn modification_reindexee() {
-        let (_d, c) = db();
+        let c = db();
         let id = insert(&c, "alpha").unwrap();
         update(&c, id, "bravo").unwrap();
         assert!(found(&c, "alpha").is_empty());
@@ -130,7 +124,7 @@ pub(crate) mod tests {
 
     #[test]
     fn caracteres_speciaux_sans_erreur() {
-        let (_d, c) = db();
+        let c = db();
         insert(&c, "près du port: \"quai\" 🙂 NEAR").unwrap();
         for q in ["\"", "*", "-", "NEAR", "(", ")", "a AND", "\"\"", "- *", "🙂", "près", "col:on", "NEAR(", "OR", "^x"] {
             search(&c, q, 50).unwrap_or_else(|e| panic!("{q:?} : {e}"));
@@ -142,7 +136,7 @@ pub(crate) mod tests {
 
     #[test]
     fn requete_vide_renvoie_recent_epinglees_d_abord() {
-        let (_d, c) = db();
+        let c = db();
         let a = insert(&c, "a").unwrap();
         insert(&c, "b").unwrap();
         set_pinned(&c, a, true).unwrap();

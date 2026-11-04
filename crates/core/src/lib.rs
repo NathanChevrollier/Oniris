@@ -18,6 +18,21 @@ pub use db::{migrate, open_db, Migration, CORE_MIGRATIONS};
 pub use error::CoreError;
 pub use settings::{key_to_vk, load_settings, save_settings, HotkeySetting, Settings};
 
+/// La connexion unique du processus, partagée par le courtier et les outils.
+pub type Db = std::sync::Arc<parking_lot::Mutex<rusqlite::Connection>>;
+
+/// Aides des tests de modules.
+#[cfg(test)]
+pub mod test_util {
+    /// Base en mémoire, mêmes réglages qu'`open_db` (hors WAL, sans objet en mémoire), migrée.
+    pub fn db() -> rusqlite::Connection {
+        let mut c = rusqlite::Connection::open_in_memory().unwrap();
+        c.execute_batch("PRAGMA secure_delete=ON; PRAGMA foreign_keys=ON;").unwrap();
+        crate::migrate(&mut c, crate::CORE_MIGRATIONS).unwrap();
+        c
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

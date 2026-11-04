@@ -2,17 +2,15 @@
 use super::{cancel, find_duration, start};
 use crate::events::{Events, Topic};
 use crate::load_settings;
-use crate::tools::helpers::{bad, failed, low, parse, spec};
+use crate::time_util::now_ms;
+use crate::tools::helpers::{bad, failed, low, parse, spec, IdArgs};
 use crate::tools::{ConfirmationText, Permission, Tool, ToolError, ToolResult, ToolSpec};
 use async_trait::async_trait;
-use chrono::Local;
-use parking_lot::Mutex;
-use rusqlite::Connection;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::sync::Arc;
 
-type Db = Arc<Mutex<Connection>>;
+use crate::Db;
 
 pub struct StartTimer { pub db: Db, pub events: Arc<dyn Events> }
 pub struct CancelTimer { pub db: Db, pub events: Arc<dyn Events> }
@@ -20,10 +18,7 @@ pub struct StartFocus { pub db: Db, pub events: Arc<dyn Events> }
 
 #[derive(Deserialize)]
 struct TextArgs { text: String }
-#[derive(Deserialize)]
-struct IdArgs { id: i64 }
 
-fn now_ms() -> i64 { Local::now().timestamp_millis() }
 
 /// Libellé : le texte sans la durée ni les mots « minuteur » / « timer » ; « Minuteur » s'il ne reste rien.
 fn label_of(text: &str, dur: std::ops::Range<usize>) -> String {
@@ -104,16 +99,18 @@ pub fn all(db: &Db, events: &Arc<dyn Events>) -> Vec<Arc<dyn Tool>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_util::db;
+    use parking_lot::Mutex;
     use crate::events::NoEvents;
-    use crate::timers::{find_duration, running, tests::db};
+    use crate::timers::{find_duration, running};
     use crate::tools::{Origin, Provenance, ToolBroker, ToolCall, ToolOutcome};
 
-    fn setup() -> (tempfile::TempDir, Db, ToolBroker) {
-        let (dir, c) = db();
+    fn setup() -> (Db, ToolBroker) {
+        let c = db();
         let db: Db = Arc::new(Mutex::new(c));
         let ev: Arc<dyn Events> = Arc::new(NoEvents);
         let broker = ToolBroker::new(db.clone(), Arc::new(|| 0), all(&db, &ev)).unwrap();
-        (dir, db, broker)
+        (db, broker)
     }
     fn call(tool: &str, args: Value) -> ToolCall {
         ToolCall { tool: tool.into(), args, provenance: Provenance::User, origin: Origin::User }
@@ -129,7 +126,7 @@ mod tests {
 
     #[tokio::test]
     async fn start_puis_undo_et_duree_introuvable() {
-        let (_d, db, broker) = setup();
+        let (db, broker) = setup();
         let ToolOutcome::Done { action_id, .. } = broker.call(call("timer.start", json!({"text": "minuteur 25 minutes thé"}))).await else { panic!() };
         let r = running(&db.lock()).unwrap();
         assert_eq!((r[0].label.as_str(), r[0].duration_ms), ("thé", 25 * 60_000));
@@ -141,7 +138,7 @@ mod tests {
 
     #[tokio::test]
     async fn focus_utilise_les_reglages_et_cancel_annule() {
-        let (_d, db, broker) = setup();
+        let (db, broker) = setup();
         let ToolOutcome::Done { output, .. } = broker.call(call("focus.start", json!({}))).await else { panic!() };
         let r = running(&db.lock()).unwrap();
         assert_eq!((r[0].kind.as_str(), r[0].duration_ms), ("focus", 25 * 60_000));

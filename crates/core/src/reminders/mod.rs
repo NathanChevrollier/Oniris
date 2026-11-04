@@ -100,20 +100,14 @@ pub fn take_due(c: &Connection, now_ms: i64) -> Result<Vec<Reminder>, CoreError>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{migrate, open_db, CORE_MIGRATIONS};
+    use crate::test_util::db;
     use rusqlite::Connection;
 
-    pub(crate) fn db() -> (tempfile::TempDir, Connection) {
-        let dir = tempfile::tempdir().unwrap();
-        let mut c = open_db(&dir.path().join("t.db")).unwrap();
-        migrate(&mut c, CORE_MIGRATIONS).unwrap();
-        (dir, c)
-    }
     fn add(c: &Connection, text: &str, due: Option<i64>) -> i64 { insert(c, text, due).unwrap() }
 
     #[test]
     fn take_due_ne_renvoie_un_rappel_qu_une_fois() {
-        let (_d, c) = db();
+        let c = db();
         let id = add(&c, "a", Some(1000));
         add(&c, "futur", Some(9000));
         let got = take_due(&c, 2000).unwrap();
@@ -124,7 +118,7 @@ mod tests {
 
     #[test]
     fn rappel_echu_pendant_l_absence_est_en_retard_puis_jamais_renvoye() {
-        let (_d, c) = db();
+        let c = db();
         add(&c, "banque", Some(1_000));
         let now = 1_000 + 3_600_000; // une heure plus tard, au démarrage
         let got = take_due(&c, now).unwrap();
@@ -137,7 +131,7 @@ mod tests {
 
     #[test]
     fn next_due_ignore_faits_supprimes_et_notifies() {
-        let (_d, c) = db();
+        let c = db();
         assert_eq!(next_due(&c).unwrap(), None);
         let fait = add(&c, "fait", Some(10));
         let supp = add(&c, "supp", Some(20));
@@ -153,7 +147,7 @@ mod tests {
 
     #[test]
     fn list_open_trie_par_echeance_sans_echeance_en_dernier() {
-        let (_d, c) = db();
+        let c = db();
         let sans = add(&c, "sans", None);
         let tard = add(&c, "tard", Some(900));
         let tot = add(&c, "tôt", Some(100));
@@ -165,7 +159,7 @@ mod tests {
 
     #[test]
     fn list_today_ouverts_puis_faits_du_jour() {
-        let (_d, c) = db();
+        let c = db();
         let now = Local::now().timestamp_millis();
         let (start, _) = local_day_bounds(now);
         let fait = add(&c, "fait", Some(10));
@@ -188,7 +182,7 @@ mod tests {
 
     #[test]
     fn recocher_garde_l_heure_du_premier_cochage() {
-        let (_d, c) = db();
+        let c = db();
         let id = add(&c, "x", None);
         set_done(&c, id, true).unwrap();
         c.execute("UPDATE reminders SET done_ms = 42 WHERE id = ?1", [id]).unwrap();
@@ -198,7 +192,7 @@ mod tests {
 
     #[test]
     fn migration_4_cree_la_table() {
-        let (_d, c) = db();
+        let c = db();
         assert!(c.execute("INSERT INTO reminders(text, due_ms, created_ms) VALUES ('a', 'x', 0)", []).is_err());
     }
 }

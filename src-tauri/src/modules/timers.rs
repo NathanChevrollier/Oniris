@@ -1,7 +1,7 @@
 //! Commandes Tauri des minuteurs et branchement sur l'ordonnanceur.
 //!
-//! Reprogrammation : les outils du cœur signalent `Topic::Timers`, `TauriEvents::changed` appelle alors
-//! `reschedule_timers` (création, annulation, undo ; l'UI se rafraîchit par le même événement).
+//! Reprogrammation : les outils du cœur signalent `Topic::Timers`, `TauriEvents::changed` reprogramme alors
+//! l'échéance (table `RESCHEDULE` d'events.rs ; création, annulation, undo ; l'UI se rafraîchit par le même événement).
 //! Aucun libellé n'est journalisé : ids seulement.
 use crate::commands::dispatch_as_user;
 use crate::state::AppState;
@@ -14,7 +14,7 @@ use serde_json::json;
 use std::sync::Arc;
 use tauri::{AppHandle, Manager, State};
 
-const KEY: &str = "timers";
+pub const KEY: &str = "timers";
 
 #[tauri::command(async)]
 pub fn timers_list(state: State<AppState>) -> Result<Vec<Timer>, String> {
@@ -34,17 +34,6 @@ pub async fn focus_start(app: AppHandle) -> ToolOutcome {
 #[tauri::command]
 pub async fn timers_cancel(app: AppHandle, id: i64) -> ToolOutcome {
     dispatch_as_user(&app, "timer.cancel", json!({ "id": id })).await
-}
-
-/// Recalcule la prochaine fin en base et la donne à l'ordonnanceur.
-pub fn reschedule_timers(app: &AppHandle) {
-    let Some(state) = app.try_state::<AppState>() else { return };
-    let Some(scheduler) = state.scheduler.get() else { return };
-    let next = timers::next_end(&state.db.lock());
-    match next {
-        Ok(next) => scheduler.set(KEY, next.and_then(|ms| u64::try_from(ms).ok())),
-        Err(e) => tracing::error!("minuteurs : échéance illisible : {e}"),
-    }
 }
 
 /// Termine les minuteurs échus : notification, et pause automatique après un focus.

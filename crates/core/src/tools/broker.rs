@@ -3,8 +3,7 @@ use super::journal::{self, NewRow};
 use super::*;
 use crate::CoreError;
 use serde_json::json;
-use parking_lot::Mutex;
-use rusqlite::Connection;
+use crate::Db;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -12,14 +11,14 @@ pub const PENDING_TTL_MS: u64 = 600_000;
 pub type Clock = Arc<dyn Fn() -> u64 + Send + Sync>;
 
 pub struct ToolBroker {
-    db: Arc<Mutex<Connection>>,
+    db: Db,
     clock: Clock,
     tools: HashMap<String, Arc<dyn Tool>>,
 }
 
 impl ToolBroker {
     /// Outils fixés à la construction. Deux outils du même nom : `CoreError::Invalid`, jamais de remplacement.
-    pub fn new(db: Arc<Mutex<Connection>>, clock: Clock, tools: Vec<Arc<dyn Tool>>) -> Result<Self, CoreError> {
+    pub fn new(db: Db, clock: Clock, tools: Vec<Arc<dyn Tool>>) -> Result<Self, CoreError> {
         let mut map = HashMap::new();
         for t in tools {
             let name = t.spec().name;
@@ -172,15 +171,13 @@ impl ToolBroker {
 #[cfg(test)]
 mod tests {
     use crate::tools::*;
-    use crate::{migrate, open_db, CORE_MIGRATIONS};
     use async_trait::async_trait;
     use parking_lot::Mutex;
-    use rusqlite::Connection;
     use serde_json::{json, Value};
     use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
     use std::sync::Arc;
 
-    struct Echo { perm: Permission, undoable: bool, sensitive: bool, runs: Arc<AtomicUsize>, db: Arc<Mutex<Connection>>, during: Arc<Mutex<Vec<String>>> }
+    struct Echo { perm: Permission, undoable: bool, sensitive: bool, runs: Arc<AtomicUsize>, db: crate::Db, during: Arc<Mutex<Vec<String>>> }
 
     #[async_trait]
     impl Tool for Echo {
@@ -201,22 +198,19 @@ mod tests {
         }
     }
 
-    struct Fx { during: Arc<Mutex<Vec<String>>>, broker: ToolBroker, runs: Arc<AtomicUsize>, now: Arc<AtomicU64>, db: Arc<Mutex<Connection>>, _dir: tempfile::TempDir }
+    struct Fx { during: Arc<Mutex<Vec<String>>>, broker: ToolBroker, runs: Arc<AtomicUsize>, now: Arc<AtomicU64>, db: crate::Db }
 
     fn fx(perm: Permission, undoable: bool) -> Fx { fx_with(perm, undoable, false) }
 
     fn fx_with(perm: Permission, undoable: bool, sensitive: bool) -> Fx {
-        let dir = tempfile::tempdir().unwrap();
-        let mut c = open_db(&dir.path().join("t.db")).unwrap();
-        migrate(&mut c, CORE_MIGRATIONS).unwrap();
-        let db = Arc::new(Mutex::new(c));
+        let db = Arc::new(Mutex::new(crate::test_util::db()));
         let now = Arc::new(AtomicU64::new(0));
         let n = now.clone();
         let runs = Arc::new(AtomicUsize::new(0));
         let during = Arc::new(Mutex::new(vec![]));
         let echo = Arc::new(Echo { perm, undoable, sensitive, runs: runs.clone(), db: db.clone(), during: during.clone() });
         let broker = ToolBroker::new(db.clone(), Arc::new(move || n.load(Ordering::SeqCst)), vec![echo]).unwrap();
-        Fx { during, broker, runs, now, db, _dir: dir }
+        Fx { during, broker, runs, now, db }
     }
 
     fn call(prov: Provenance) -> ToolCall {

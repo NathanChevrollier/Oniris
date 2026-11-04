@@ -3,7 +3,8 @@ pub mod geometry;
 use crate::state::AppState;
 use geometry::{panel_rect, pill_rect, Rect};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use oniris_core::time_util::now_ms;
+use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewWindow};
 
 #[derive(Clone, serde::Serialize)]
@@ -18,10 +19,6 @@ const BLUR_DEBOUNCE: Duration = Duration::from_millis(150);
 /// perdre le focus au panneau arrive après sa fermeture.
 const REOPEN_GUARD_MS: u64 = 400;
 static LAST_CLOSE_MS: AtomicU64 = AtomicU64::new(0);
-
-pub(crate) fn now_ms() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64)
-}
 
 /// Écran principal (repli : premier écran disponible) : rectangle physique + échelle.
 fn primary(app: &AppHandle) -> tauri::Result<(Rect, f64)> {
@@ -58,7 +55,7 @@ pub fn show_pill(app: &AppHandle) -> tauri::Result<()> {
 
 fn set_panel_state(app: &AppHandle, open: bool) -> tauri::Result<()> {
     app.state::<AppState>().panel_open.store(open, Ordering::SeqCst);
-    app.emit("oniris://panel-state", PanelState { open, at_ms: now_ms() })
+    app.emit("oniris://panel-state", PanelState { open, at_ms: now_ms() as u64 })
 }
 
 /// Fenêtre au premier plan si elle n'est pas à nous (0 sinon).
@@ -89,7 +86,7 @@ pub fn open_panel(app: &AppHandle) -> tauri::Result<()> {
 pub fn close_panel(app: &AppHandle) -> tauri::Result<()> {
     crate::modules::system::set_sampling(app, false);
     window(app, "panel")?.hide()?;
-    LAST_CLOSE_MS.store(now_ms(), Ordering::SeqCst);
+    LAST_CLOSE_MS.store(now_ms() as u64, Ordering::SeqCst);
     set_panel_state(app, false)
 }
 
@@ -100,7 +97,7 @@ fn toggle_reopens(now: u64, last_close: u64) -> bool {
 pub fn toggle_panel(app: &AppHandle) -> tauri::Result<()> {
     if app.state::<AppState>().panel_open.load(Ordering::SeqCst) {
         close_panel(app)
-    } else if toggle_reopens(now_ms(), LAST_CLOSE_MS.load(Ordering::SeqCst)) {
+    } else if toggle_reopens(now_ms() as u64, LAST_CLOSE_MS.load(Ordering::SeqCst)) {
         open_panel(app)
     } else {
         Ok(())

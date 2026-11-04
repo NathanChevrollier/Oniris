@@ -3,6 +3,7 @@
 use crate::state::AppState;
 use oniris_core::events::Topic;
 use oniris_core::kv;
+use oniris_core::time_util::now_ms;
 use oniris_core::weather::tools::{LAST_KEY, PLACE_KEY};
 use oniris_core::weather::{self, Place, Weather};
 use oniris_core::CoreError;
@@ -50,8 +51,6 @@ fn error_kind(e: &CoreError) -> &'static str {
 /// Réponse de `weather_get` : la dernière météo et, sans donnée, la nature du dernier échec.
 #[derive(Serialize)]
 pub struct WeatherState { pub weather: Option<Weather>, pub error: Option<&'static str> }
-
-fn now_ms() -> i64 { chrono::Utc::now().timestamp_millis() }
 
 /// À appeler dans `setup`, état géré : reprend la date de la dernière météo en cache.
 pub fn load(app: &AppHandle) {

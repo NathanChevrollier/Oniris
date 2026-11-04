@@ -24,6 +24,9 @@ pub fn day_bounds_in<Tz: TimeZone>(tz: &Tz, ms: i64) -> (i64, i64) {
 
 pub fn next_midnight_in<Tz: TimeZone>(tz: &Tz, ms: i64) -> i64 { day_bounds_in(tz, ms).1 }
 
+/// Maintenant, en ms depuis l'époque Unix.
+pub fn now_ms() -> i64 { chrono::Utc::now().timestamp_millis() }
+
 /// Bornes du jour local de `ms` (début inclus, fin exclue).
 pub fn local_day_bounds(ms: i64) -> (i64, i64) { day_bounds_in(&Local, ms) }
 

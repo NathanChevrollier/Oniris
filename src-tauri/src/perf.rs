@@ -54,7 +54,7 @@ fn run_cycles(app: &AppHandle, n: u32) -> PerfReport {
         let (tx, rx) = channel();
         *WAITER.lock() = Some(tx);
         // Instant juste avant l'ouverture (légèrement pessimiste vs l'`at_ms` de l'événement).
-        let open_at = crate::windows::now_ms();
+        let open_at = oniris_core::time_util::now_ms() as u64;
         if crate::windows::open_panel(app).is_err() {
             timeouts += 1;
             WAITER.lock().take();

@@ -3,6 +3,7 @@ import { Bell, Feather, Pin, Search, SearchX, Trash2 } from "lucide-react";
 import { Empty } from "../../ui/Empty";
 import { Card } from "../../ui/Card";
 import { useTopic } from "../../lib/data";
+import { useToolAction } from "../../lib/toolAction";
 import { useNow } from "../../lib/time";
 import { usePanelStore } from "../../panel/store";
 import { notesIpc, type Note } from "./api";
@@ -29,7 +30,7 @@ export function NotesCard() {
   const [text, setText] = useState("");
   const [query, setQuery] = useState("");
   const [applied, setApplied] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const { run, error, clear } = useToolAction(UNAVAILABLE);
   const box = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -46,14 +47,6 @@ export function NotesCard() {
     if (el) { el.style.height = "auto"; el.style.height = `${el.scrollHeight}px`; }
   }, [text]);
 
-  const run = async (p: ReturnType<typeof notesIpc.create>) => {
-    try {
-      const out = await p;
-      const msg = "Failed" in out ? out.Failed.error : null;
-      setError(msg);
-      return !msg;
-    } catch { setError(UNAVAILABLE); return false; }
-  };
   const onKey = async (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key !== "Enter" || e.shiftKey || e.nativeEvent.isComposing) return;
     e.preventDefault();
@@ -66,7 +59,7 @@ export function NotesCard() {
       aside={<label className="nsearch"><Search size={12} aria-hidden />
         <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Rechercher"
           aria-label="Rechercher une note" autoComplete="off" spellCheck={false} /></label>}>
-      <textarea ref={box} className="ninput" rows={1} value={text} onChange={(e) => { setText(e.target.value); setError(null); }}
+      <textarea ref={box} className="ninput" rows={1} value={text} onChange={(e) => { setText(e.target.value); clear(); }}
         onKeyDown={onKey} placeholder="Noter quelque chose…" aria-label="Nouvelle note" spellCheck={false} />
       {error && <p className="err" role="alert">{error}</p>}
       <ul className="notes">

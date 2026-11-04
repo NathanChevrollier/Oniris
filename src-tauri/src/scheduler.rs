@@ -1,9 +1,13 @@
+use crate::state::AppState;
+use oniris_core::time_util::now_ms;
+use oniris_core::CoreError;
 use parking_lot::Mutex;
+use rusqlite::Connection;
 use std::collections::HashMap;
 use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use tauri::AppHandle;
+use std::time::Duration;
+use tauri::{AppHandle, Manager};
 use tokio::sync::Notify;
 
 type Handler = Arc<dyn Fn(&AppHandle) + Send + Sync>;
@@ -11,10 +15,6 @@ type Handler = Arc<dyn Fn(&AppHandle) + Send + Sync>;
 /// Plus petite échéance : `(clé, at_ms)`. Logique pure.
 pub fn next_due(entries: &HashMap<&'static str, u64>) -> Option<(&'static str, u64)> {
     entries.iter().map(|(k, v)| (*k, *v)).min_by_key(|&(_, v)| v)
-}
-
-fn now_ms() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64)
 }
 
 #[derive(Default)]
@@ -40,7 +40,7 @@ async fn run_loop(shared: Arc<Shared>, fire: impl Fn(&'static str) -> bool) {
         let notified = shared.notify.notified();
         tokio::pin!(notified);
         notified.as_mut().enable(); // un `set` entre le calcul et l'attente ne sera pas perdu
-        let now = now_ms();
+        let now = now_ms() as u64;
         let (mut due, next) = {
             let mut e = shared.entries.lock();
             let live: HashMap<_, _> = e.iter().filter(|(k, _)| !parked.contains(*k)).map(|(k, v)| (*k, *v)).collect();
@@ -115,6 +115,20 @@ impl Scheduler {
     }
 }
 
+/// Lecture en base de la prochaine échéance d'une clé (ms), `None` s'il n'y en a pas.
+pub type NextFn = fn(&Connection) -> Result<Option<i64>, CoreError>;
+
+/// Recalcule en base la prochaine échéance de `key` et la donne à l'ordonnanceur.
+pub fn reschedule(app: &AppHandle, key: &'static str, next_fn: NextFn) {
+    let Some(state) = app.try_state::<AppState>() else { return };
+    let Some(scheduler) = state.scheduler.get() else { return };
+    let next = next_fn(&state.db.lock());
+    match next {
+        Ok(next) => scheduler.set(key, next.and_then(|ms| u64::try_from(ms).ok())),
+        Err(e) => tracing::error!("ordonnanceur : échéance de « {key} » illisible : {e}"),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -134,7 +148,7 @@ mod tests {
         let fired = Arc::new(Mutex::new(Vec::new()));
         let f = fired.clone();
         tokio::spawn(run_loop(shared.clone(), move |k| { f.lock().push(k); true }));
-        let now = now_ms();
+        let now = now_ms() as u64;
         {
             let mut e = shared.entries.lock();
             e.insert("late", now + 80);
@@ -159,7 +173,7 @@ mod tests {
         let shared = Arc::new(Shared::default());
         let h: Handlers = Arc::default();
         spawn_with(&shared, &h);
-        shared.entries.lock().insert("k", now_ms());
+        shared.entries.lock().insert("k", now_ms() as u64);
         shared.notify.notify_one();
         tokio::time::sleep(Duration::from_millis(100)).await;
         assert!(shared.entries.lock().contains_key("k"));
@@ -181,7 +195,7 @@ mod tests {
         h.lock().insert("boom", Box::new(|| panic!("test")));
         h.lock().insert("ok", Box::new(move || *c.lock() += 1));
         spawn_with(&shared, &h);
-        let now = now_ms();
+        let now = now_ms() as u64;
         shared.entries.lock().insert("boom", now + 20);
         shared.entries.lock().insert("ok", now + 80);
         shared.notify.notify_one();

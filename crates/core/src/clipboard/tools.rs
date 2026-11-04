@@ -3,13 +3,11 @@ use super::search;
 use crate::tools::helpers::{failed, low, parse, spec};
 use crate::tools::{ConfirmationText, Permission, Tool, ToolError, ToolResult, ToolSpec};
 use async_trait::async_trait;
-use parking_lot::Mutex;
-use rusqlite::Connection;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::sync::Arc;
 
-type Db = Arc<Mutex<Connection>>;
+use crate::Db;
 
 pub struct Search { pub db: Db }
 
@@ -46,12 +44,14 @@ pub fn all(db: &Db) -> Vec<Arc<dyn Tool>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::clipboard::{record_image, record_text, tests::db};
+    use crate::test_util::db;
+    use parking_lot::Mutex;
+    use crate::clipboard::{record_image, record_text};
     use crate::tools::{Origin, Provenance, ToolBroker, ToolCall, ToolOutcome};
 
     #[tokio::test]
     async fn search_textes_seulement_extrait_de_200_caracteres() {
-        let (_d, c) = db();
+        let c = db();
         let db: Db = Arc::new(Mutex::new(c));
         let long = format!("clé {}", "é".repeat(300));
         let id = record_text(&db.lock(), &long, 1).unwrap();

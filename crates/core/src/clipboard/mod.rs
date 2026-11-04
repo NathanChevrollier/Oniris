@@ -113,22 +113,16 @@ pub fn get(c: &Connection, id: i64) -> Result<Option<ClipContent>, CoreError> {
 }
 
 #[cfg(test)]
-pub(crate) mod tests {
+mod tests {
     use super::*;
-    use crate::{migrate, open_db, CORE_MIGRATIONS};
+    use crate::test_util::db;
 
-    pub(crate) fn db() -> (tempfile::TempDir, Connection) {
-        let dir = tempfile::tempdir().unwrap();
-        let mut c = open_db(&dir.path().join("t.db")).unwrap();
-        migrate(&mut c, CORE_MIGRATIONS).unwrap();
-        (dir, c)
-    }
     fn count(c: &Connection) -> i64 { c.query_row("SELECT count(*) FROM clipboard", [], |r| r.get(0)).unwrap() }
     fn texts(c: &Connection, q: &str) -> Vec<String> { search(c, q, 50).unwrap().into_iter().filter_map(|e| e.text).collect() }
 
     #[test]
     fn copie_en_double_une_seule_ligne_remontee_et_epinglage_garde() {
-        let (_d, c) = db();
+        let c = db();
         let a = record_text(&c, "bonjour", 1).unwrap();
         record_text(&c, "autre", 2).unwrap();
         set_pinned(&c, a, true).unwrap();
@@ -145,7 +139,7 @@ pub(crate) mod tests {
 
     #[test]
     fn texte_enorme_tronque_et_marque() {
-        let (_d, c) = db();
+        let c = db();
         record_text(&c, &"a".repeat(10 * 1024 * 1024), 1).unwrap();
         let e = &search(&c, "", 1).unwrap()[0];
         assert!(e.truncated);
@@ -154,7 +148,7 @@ pub(crate) mod tests {
 
     #[test]
     fn purge_respecte_epinglees_duree_et_nombre() {
-        let (_d, c) = db();
+        let c = db();
         let now = 100 * DAY_MS;
         let old_pinned = record_text(&c, "vieux épinglé", now - 30 * DAY_MS).unwrap();
         set_pinned(&c, old_pinned, true).unwrap();
@@ -170,7 +164,7 @@ pub(crate) mod tests {
 
     #[test]
     fn recherche_insensible_a_la_casse_textes_seulement() {
-        let (_d, c) = db();
+        let c = db();
         record_text(&c, "Mot de PASSE oublié", 1).unwrap();
         record_text(&c, "100% sûr", 2).unwrap();
         record_text(&c, "autre", 3).unwrap();
@@ -184,7 +178,7 @@ pub(crate) mod tests {
 
     #[test]
     fn get_et_delete() {
-        let (_d, c) = db();
+        let c = db();
         let t = record_text(&c, "abc", 1).unwrap();
         let i = record_image(&c, b"png", b"th", 2).unwrap();
         assert_eq!(get(&c, t).unwrap(), Some(ClipContent::Text("abc".into())));

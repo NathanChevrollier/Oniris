@@ -45,5 +45,5 @@ it("le champ libre lance un minuteur et affiche l'échec", async () => {
   await userEvent.type(input, "1h30 pâtes{Enter}");
   expect(start).toHaveBeenCalledWith("1h30 pâtes");
   await userEvent.type(input, "bientôt{Enter}");
-  expect(await screen.findByRole("alert")).toHaveTextContent("durée introuvable");
+  expect(await screen.findByRole("alert")).toHaveTextContent("Durée introuvable — essaie « 10 min pâtes »");
 });

@@ -3,6 +3,10 @@ use super::{ConfirmationText, Permission, Risk, ToolError, ToolSpec};
 use serde::Deserialize;
 use serde_json::Value;
 
+/// Arguments `{ "id": … }` des outils qui visent une ligne (et de leurs payloads d'undo).
+#[derive(Deserialize)]
+pub struct IdArgs { pub id: i64 }
+
 /// Arguments invalides (erreur de l'appelant).
 pub fn bad(e: impl ToString) -> ToolError { ToolError::BadArgs(e.to_string()) }
 

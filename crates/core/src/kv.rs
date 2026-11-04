@@ -23,11 +23,11 @@ pub fn delete(c: &Connection, key: &str) -> Result<(), CoreError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::clipboard::tests::db;
+    use crate::test_util::db;
 
     #[test]
     fn set_get_ecrase_et_delete() {
-        let (_d, c) = db();
+        let c = db();
         assert_eq!(get(&c, "a").unwrap(), None);
         set(&c, "a", "1", 10).unwrap();
         set(&c, "a", "2", 20).unwrap();

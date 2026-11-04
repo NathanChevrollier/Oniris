@@ -249,7 +249,7 @@ fn dispatch(app: &AppHandle, action: HotkeyAction) {
             "oniris://ptt",
             Ptt {
                 phase,
-                at_ms: crate::windows::now_ms(),
+                at_ms: oniris_core::time_util::now_ms() as u64,
             },
         )
     };

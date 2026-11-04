@@ -108,14 +108,8 @@ pub fn parse_duration(text: &str) -> Option<u64> { find_duration(text).map(|(ms,
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{migrate, open_db, CORE_MIGRATIONS};
+    use crate::test_util::db;
 
-    pub(crate) fn db() -> (tempfile::TempDir, Connection) {
-        let dir = tempfile::tempdir().unwrap();
-        let mut c = open_db(&dir.path().join("t.db")).unwrap();
-        migrate(&mut c, CORE_MIGRATIONS).unwrap();
-        (dir, c)
-    }
 
     #[test]
     fn parse_duration_formats() {
@@ -136,7 +130,7 @@ mod tests {
 
     #[test]
     fn take_finished_une_seule_fois() {
-        let (_d, c) = db();
+        let c = db();
         let a = start(&c, "a", "timer", 1000, 0).unwrap();
         start(&c, "futur", "timer", 9000, 0).unwrap();
         let got = take_finished(&c, 2000).unwrap();
@@ -148,7 +142,7 @@ mod tests {
 
     #[test]
     fn minuteur_ecoule_pendant_l_absence_renvoye_une_seule_fois_au_demarrage() {
-        let (_d, c) = db();
+        let c = db();
         start(&c, "thé", "timer", 60_000, 0).unwrap();
         let got = take_finished(&c, 3_600_000).unwrap();
         assert_eq!(got.len(), 1);
@@ -158,7 +152,7 @@ mod tests {
 
     #[test]
     fn focus_termine_demarre_une_pause_pause_terminee_rien() {
-        let (_d, c) = db();
+        let c = db();
         start(&c, "Focus", "focus", 1000, 0).unwrap();
         let done = take_finished(&c, 1000).unwrap();
         let b = after_finish(&c, &done[0], 300_000, 1000).unwrap().expect("pause");
@@ -174,7 +168,7 @@ mod tests {
 
     #[test]
     fn next_end_et_cancel() {
-        let (_d, c) = db();
+        let c = db();
         assert_eq!(next_end(&c).unwrap(), None);
         let a = start(&c, "a", "timer", 500, 0).unwrap();
         start(&c, "b", "timer", 900, 0).unwrap();

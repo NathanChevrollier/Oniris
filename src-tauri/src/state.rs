@@ -2,9 +2,8 @@ use crate::hotkey::HotkeyConfig;
 use crate::scheduler::Scheduler;
 use oniris_core::events::Events;
 use oniris_core::tools::{Tool, ToolBroker};
-use oniris_core::{migrate, open_db, load_settings, Settings, CORE_MIGRATIONS};
+use oniris_core::{migrate, open_db, load_settings, Db, Settings, CORE_MIGRATIONS};
 use parking_lot::{Mutex, RwLock};
-use rusqlite::Connection;
 use std::sync::atomic::{AtomicBool, AtomicIsize};
 use std::sync::{Arc, OnceLock};
 use tauri::AppHandle;
@@ -18,7 +17,7 @@ pub struct AppState {
     /// État de « Mettre la voix en pause » (sans effet avant le plan 6).
     pub voice_paused: AtomicBool,
     /// Seule connexion du processus.
-    pub db: Arc<Mutex<Connection>>,
+    pub db: Db,
     /// Client HTTP partagé (météo) : délai 8 s, agent générique.
     pub http: reqwest::Client,
     pub settings: RwLock<Settings>,
@@ -46,7 +45,7 @@ impl AppState {
         migrate(&mut conn, CORE_MIGRATIONS)?;
         let s = load_settings(&conn)?;
         let db = Arc::new(Mutex::new(conn));
-        let clock = Arc::new(|| std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64));
+        let clock = Arc::new(|| oniris_core::time_util::now_ms() as u64);
         let events: Arc<dyn Events> = Arc::new(crate::events::TauriEvents(app.clone()));
         let mut tools: Vec<Arc<dyn Tool>> = vec![]; // les plans 2 à 5 ajoutent leurs outils ici
         tools.extend(oniris_core::agenda::tools::all(&db, &events));

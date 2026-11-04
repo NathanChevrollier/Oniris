@@ -33,12 +33,12 @@ mod tests {
     use super::*;
     use crate::system::NOT_INSTALLED;
     use crate::tools::{Origin, Provenance, ToolBroker, ToolCall, ToolOutcome};
-    use crate::clipboard::tests::db;
+    use crate::test_util::db;
     use parking_lot::Mutex;
 
     #[tokio::test]
     async fn system_status_libre_renvoie_un_instantane() {
-        let (_d, c) = db();
+        let c = db();
         let snap: Snapshot = Arc::new(|| SystemStatus { cpu_pct: 12.5, ram_used_mb: 1, ram_total_mb: 2, gpu_pct: None, vram_used_mb: None, vram_total_mb: None, oniris_mb: 3, local_ai: NOT_INSTALLED.into(), voice: NOT_INSTALLED.into() });
         let broker = ToolBroker::new(Arc::new(Mutex::new(c)), Arc::new(|| 0), all(&snap)).unwrap();
         let call = ToolCall { tool: "system.status".into(), args: json!({}), provenance: Provenance::User, origin: Origin::User };

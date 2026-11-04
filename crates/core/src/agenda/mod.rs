@@ -98,15 +98,10 @@ pub fn days_with_events(c: &Connection, month_start_ms: i64, month_end_ms: i64) 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{migrate, open_db, CORE_MIGRATIONS};
+    use crate::test_util::db;
+    use crate::{migrate, CORE_MIGRATIONS};
     use chrono::NaiveDate;
 
-    pub(crate) fn db() -> (tempfile::TempDir, Connection) {
-        let dir = tempfile::tempdir().unwrap();
-        let mut c = open_db(&dir.path().join("t.db")).unwrap();
-        migrate(&mut c, CORE_MIGRATIONS).unwrap();
-        (dir, c)
-    }
     fn ms(y: i32, m: u32, d: u32, h: u32) -> i64 {
         let n = NaiveDate::from_ymd_opt(y, m, d).unwrap().and_hms_opt(h, 0, 0).unwrap();
         Local.from_local_datetime(&n).earliest().unwrap().timestamp_millis()
@@ -117,7 +112,7 @@ mod tests {
 
     #[test]
     fn migration_3_cree_la_table_et_reste_idempotente() {
-        let (_d, mut c) = db();
+        let mut c = db();
         let v = migrate(&mut c, CORE_MIGRATIONS).unwrap();
         assert_eq!(v, CORE_MIGRATIONS.len() as u32);
         let n: i64 = c.query_row("SELECT count(*) FROM events", [], |r| r.get(0)).unwrap();
@@ -127,7 +122,7 @@ mod tests {
 
     #[test]
     fn between_renvoie_l_evenement_qui_chevauche_le_debut() {
-        let (_d, c) = db();
+        let c = db();
         let id = insert(&c, &ev("nuit", ms(2026, 11, 11, 22), Some(ms(2026, 11, 12, 2)))).unwrap();
         insert(&c, &ev("avant", ms(2026, 11, 11, 8), Some(ms(2026, 11, 11, 9)))).unwrap();
         insert(&c, &ev("après", ms(2026, 11, 13, 8), None)).unwrap();
@@ -137,7 +132,7 @@ mod tests {
 
     #[test]
     fn fin_exclusive_un_evenement_qui_finit_a_minuit_n_est_pas_le_jour_suivant() {
-        let (_d, c) = db();
+        let c = db();
         let soir = insert(&c, &ev("soir", ms(2026, 11, 11, 22), Some(ms(2026, 11, 12, 0)))).unwrap();
         let jour = insert(&c, &NewEvent { all_day: true, ..ev("jour", ms(2026, 11, 11, 0), Some(ms(2026, 11, 12, 0))) }).unwrap();
         let instant = insert(&c, &ev("instant", ms(2026, 11, 12, 0), None)).unwrap();
@@ -148,7 +143,7 @@ mod tests {
 
     #[test]
     fn supprime_exclu_et_restaurable() {
-        let (_d, c) = db();
+        let c = db();
         let id = insert(&c, &ev("x", ms(2026, 11, 12, 10), None)).unwrap();
         set_deleted(&c, id, true).unwrap();
         assert!(get(&c, id).unwrap().is_none());
@@ -159,7 +154,7 @@ mod tests {
 
     #[test]
     fn jours_avec_evenements() {
-        let (_d, c) = db();
+        let c = db();
         insert(&c, &ev("a", ms(2026, 11, 12, 10), None)).unwrap();
         // Sur trois jours, finit à minuit pile : 20, 21, 22 seulement.
         insert(&c, &ev("b", ms(2026, 11, 20, 18), Some(ms(2026, 11, 23, 0)))).unwrap();

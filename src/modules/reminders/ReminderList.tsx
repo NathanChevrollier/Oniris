@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { Check } from "lucide-react";
 import { useTopic } from "../../lib/data";
+import { useToolAction } from "../../lib/toolAction";
 import { hhmm, useNow } from "../../lib/time";
 import { usePanelStore } from "../../panel/store";
 import { remindersIpc, type Reminder } from "./api";
@@ -19,17 +20,9 @@ export function ReminderList() {
   const open = usePanelStore((s) => s.open);
   const now = useNow(60_000, open);
   const [text, setText] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const { run, error, clear } = useToolAction(UNAVAILABLE);
   const { data } = useTopic<Reminder[]>("reminders", remindersIpc.list, NONE, now.toDateString());
 
-  const run = async (p: ReturnType<typeof remindersIpc.create>) => {
-    try {
-      const out = await p;
-      const msg = "Failed" in out ? out.Failed.error : null;
-      setError(msg);
-      return !msg;
-    } catch { setError(UNAVAILABLE); return false; }
-  };
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     const t = text.trim();
@@ -53,7 +46,7 @@ export function ReminderList() {
         );
       })}
       <form className="add" onSubmit={submit}>
-        <input value={text} onChange={(e) => { setText(e.target.value); setError(null); }} placeholder="Nouveau rappel…"
+        <input value={text} onChange={(e) => { setText(e.target.value); clear(); }} placeholder="Nouveau rappel…"
           aria-label="Nouveau rappel" autoComplete="off" spellCheck={false} />
         {error && <p className="err" role="alert">{error}</p>}
       </form>

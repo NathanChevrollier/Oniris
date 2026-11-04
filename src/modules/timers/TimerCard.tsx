@@ -2,6 +2,7 @@ import { useState, type KeyboardEvent } from "react";
 import { X } from "lucide-react";
 import { Card } from "../../ui/Card";
 import { useTopic } from "../../lib/data";
+import { useToolAction } from "../../lib/toolAction";
 import { useNow } from "../../lib/time";
 import { usePanelStore } from "../../panel/store";
 import { mmss, timersIpc, type Timer } from "./api";
@@ -16,20 +17,12 @@ export function TimerCard() {
   const open = usePanelStore((s) => s.open);
   const { data } = useTopic<Timer[]>("timers", timersIpc.list, NONE);
   const [text, setText] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const { run, error, clear } = useToolAction(UNAVAILABLE);
   const at = Date.now();
   const live = data.filter((t) => t.ends_ms > at);
   useNow(1000, open && live.length > 0); // panneau fermé ou aucun minuteur : aucun tic
   const [first, ...others] = live;
 
-  const run = async (p: ReturnType<typeof timersIpc.start>) => {
-    try {
-      const out = await p;
-      const msg = "Failed" in out ? out.Failed.error : null;
-      setError(msg);
-      return !msg;
-    } catch { setError(UNAVAILABLE); return false; }
-  };
   const onKey = async (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
     const t = text.trim();
@@ -65,7 +58,7 @@ export function TimerCard() {
         <button type="button" onClick={() => run(timersIpc.start("25 minutes"))}>25 min</button>
         <button type="button" onClick={() => run(timersIpc.focus())}>Focus</button>
       </div>
-      <input className="tinput" value={text} onChange={(e) => { setText(e.target.value); setError(null); }} onKeyDown={onKey}
+      <input className="tinput" value={text} onChange={(e) => { setText(e.target.value); clear(); }} onKeyDown={onKey}
         placeholder="Ex. 10 min pâtes" aria-label="Nouveau minuteur" autoComplete="off" spellCheck={false} />
       {error && <p className="err" role="alert">{error}</p>}
     </Card>

@@ -2,18 +2,16 @@
 use super::{between, get, insert, set_deleted, update_times, Event, NewEvent};
 use crate::events::{Events, Topic};
 use crate::time_util::local_day_bounds;
-use crate::tools::helpers::{bad, failed, low, parse, spec};
+use crate::tools::helpers::{bad, failed, low, parse, spec, IdArgs};
 use crate::tools::{ConfirmationText, Permission, Risk, Tool, ToolError, ToolResult, ToolSpec};
 use crate::when::{at_default_hour, parse_when};
 use async_trait::async_trait;
 use chrono::Local;
-use parking_lot::Mutex;
-use rusqlite::Connection;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::sync::Arc;
 
-type Db = Arc<Mutex<Connection>>;
+use crate::Db;
 
 pub struct CreateEvent { pub db: Db, pub events: Arc<dyn Events> }
 pub struct MoveEvent { pub db: Db, pub events: Arc<dyn Events> }
@@ -49,8 +47,6 @@ impl CreateArgs {
     }
 }
 
-#[derive(Deserialize)]
-struct IdArgs { id: i64 }
 #[derive(Deserialize)]
 struct MoveArgs { id: i64, start_ms: i64, end_ms: Option<i64> }
 #[derive(Deserialize)]
@@ -165,7 +161,8 @@ pub fn all(db: &Db, events: &Arc<dyn Events>) -> Vec<Arc<dyn Tool>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::agenda::tests::db;
+    use parking_lot::Mutex;
+    use crate::test_util::db;
     use crate::tools::{Origin, Provenance, ToolBroker, ToolCall, ToolOutcome};
     use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -175,13 +172,13 @@ mod tests {
         fn changed(&self, t: Topic) { assert_eq!(t, Topic::Agenda); self.0.fetch_add(1, Ordering::SeqCst); }
     }
 
-    fn setup() -> (tempfile::TempDir, Db, Arc<Count>, ToolBroker) {
-        let (dir, c) = db();
+    fn setup() -> (Db, Arc<Count>, ToolBroker) {
+        let c = db();
         let db: Db = Arc::new(Mutex::new(c));
         let count = Arc::new(Count::default());
         let ev: Arc<dyn Events> = count.clone();
         let broker = ToolBroker::new(db.clone(), Arc::new(|| 0), all(&db, &ev)).unwrap();
-        (dir, db, count, broker)
+        (db, count, broker)
     }
     fn call(tool: &str, args: Value) -> ToolCall {
         ToolCall { tool: tool.into(), args, provenance: Provenance::User, origin: Origin::User }
@@ -190,7 +187,7 @@ mod tests {
 
     #[tokio::test]
     async fn create_avec_texte_cree_la_ligne_et_signale_le_sujet() {
-        let (_d, db, count, broker) = setup();
+        let (db, count, broker) = setup();
         let out = broker.call(call("agenda.create_event", json!({"text": "demain 14h dentiste"}))).await;
         assert!(matches!(out, ToolOutcome::Done { .. }), "{out:?}");
         let r = rows(&db);
@@ -201,7 +198,7 @@ mod tests {
 
     #[tokio::test]
     async fn create_avec_champs_explicites_puis_undo() {
-        let (_d, db, count, broker) = setup();
+        let (db, count, broker) = setup();
         let ToolOutcome::Done { action_id, .. } =
             broker.call(call("agenda.create_event", json!({"title": "Revue", "start_ms": 1000, "end_ms": 5000}))).await else { panic!() };
         assert_eq!(rows(&db)[0].end_ms, Some(5000));
@@ -212,7 +209,7 @@ mod tests {
 
     #[tokio::test]
     async fn journee_entiere_va_de_minuit_a_minuit() {
-        let (_d, db, _c, broker) = setup();
+        let (db, _c, broker) = setup();
         let noon = Local::now().timestamp_millis();
         broker.call(call("agenda.create_event", json!({"title": "Congé", "start_ms": noon, "all_day": true}))).await;
         let e = &rows(&db)[0];
@@ -222,7 +219,7 @@ mod tests {
 
     #[tokio::test]
     async fn texte_sans_date_refuse() {
-        let (_d, db, count, broker) = setup();
+        let (db, count, broker) = setup();
         let ToolOutcome::Failed { error, .. } = broker.call(call("agenda.create_event", json!({"text": "dentiste"}))).await else { panic!() };
         assert!(error.contains("date introuvable"), "{error}");
         assert!(rows(&db).is_empty());
@@ -231,7 +228,7 @@ mod tests {
 
     #[tokio::test]
     async fn delete_passe_par_la_confirmation_et_l_undo_restaure() {
-        let (_d, db, _c, broker) = setup();
+        let (db, _c, broker) = setup();
         let id = insert(&db.lock(), &NewEvent { title: "Dentiste".into(), start_ms: 10, ..Default::default() }).unwrap();
         let ToolOutcome::NeedsConfirmation(p) = broker.call(call("agenda.delete_event", json!({"id": id}))).await else { panic!() };
         assert!(p.text.summary.contains("Dentiste"));
@@ -244,7 +241,7 @@ mod tests {
 
     #[tokio::test]
     async fn move_puis_undo() {
-        let (_d, db, _c, broker) = setup();
+        let (db, _c, broker) = setup();
         let id = insert(&db.lock(), &NewEvent { title: "x".into(), start_ms: 100, end_ms: Some(200), ..Default::default() }).unwrap();
         let ToolOutcome::Done { action_id, .. } =
             broker.call(call("agenda.move_event", json!({"id": id, "start_ms": 500}))).await else { panic!() };
@@ -255,7 +252,7 @@ mod tests {
 
     #[tokio::test]
     async fn list_et_evenement_inconnu() {
-        let (_d, db, _c, broker) = setup();
+        let (db, _c, broker) = setup();
         insert(&db.lock(), &NewEvent { title: "x".into(), start_ms: 100, ..Default::default() }).unwrap();
         let ToolOutcome::Done { output, .. } = broker.call(call("agenda.list", json!({"from_ms": 0, "to_ms": 1000}))).await else { panic!() };
         assert_eq!(output.as_array().unwrap().len(), 1);

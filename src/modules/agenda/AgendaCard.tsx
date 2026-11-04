@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Card } from "../../ui/Card";
 import { useTopic } from "../../lib/data";
+import { useToolAction } from "../../lib/toolAction";
 import { useNow } from "../../lib/time";
 import { usePanelStore } from "../../panel/store";
 import { agendaIpc, dayBounds, dayKey, type AgendaEvent } from "./api";
@@ -11,7 +12,6 @@ import { DayList } from "./DayList";
 import "./agenda.css";
 
 const MONTHS = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
-const NOT_FOUND = "Date introuvable — essaie « demain 14h dentiste »";
 const UNAVAILABLE = "Agenda indisponible, réessaie.";
 
 type View = { days: number[]; events: AgendaEvent[] };
@@ -24,7 +24,7 @@ export function AgendaCard() {
   const [picked, setPicked] = useState<Date | null>(null);
   const sel = picked ?? now;
   const [text, setText] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const { run, error, clear } = useToolAction(UNAVAILABLE);
   const year = sel.getFullYear();
   const month = sel.getMonth() + 1;
 
@@ -39,22 +39,12 @@ export function AgendaCard() {
     const d = new Date(year, month - 1 + delta, 1);
     setPicked(d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() ? null : d);
   };
-  const fail = (out: Awaited<ReturnType<typeof agendaIpc.create>>) =>
-    "Failed" in out ? (out.Failed.error.includes("date introuvable") ? NOT_FOUND : out.Failed.error) : null;
-
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     const t = text.trim();
-    if (!t) return;
-    try {
-      const msg = fail(await agendaIpc.create(t));
-      setError(msg);
-      if (!msg) setText("");
-    } catch { setError(UNAVAILABLE); }
+    if (t && (await run(agendaIpc.create(t)))) setText("");
   };
-  const remove = async (id: number) => {
-    try { setError(fail(await agendaIpc.remove(id))); } catch { setError(UNAVAILABLE); }
-  };
+  const remove = (id: number) => run(agendaIpc.remove(id));
 
   return (
     <Card title={MONTHS[month - 1] + (year === now.getFullYear() ? "" : ` ${year}`)} span={3} delay={0.15}
@@ -66,7 +56,7 @@ export function AgendaCard() {
         withEvents={data.days} onSelect={(day) => setPicked(new Date(year, month - 1, day))} />
       <DayList events={data.events} onDelete={remove} />
       <form className="add" onSubmit={submit}>
-        <input value={text} onChange={(e) => { setText(e.target.value); setError(null); }} placeholder="Ajouter…"
+        <input value={text} onChange={(e) => { setText(e.target.value); clear(); }} placeholder="Ajouter…"
           aria-label="Ajouter un événement" autoComplete="off" spellCheck={false} />
         {error && <p className="err" role="alert">{error}</p>}
       </form>

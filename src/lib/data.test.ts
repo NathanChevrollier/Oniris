@@ -55,3 +55,17 @@ it("sujet périmé panneau fermé : recharge à la réouverture seulement", asyn
   await setOpen(true);
   expect(fetcher).toHaveBeenCalledTimes(2);
 });
+
+it("deux rechargements qui se doublent : seul le dernier résultat compte", async () => {
+  usePanelStore.setState({ open: true });
+  let r1!: (v: string) => void;
+  fetcher.mockReset();
+  fetcher.mockImplementationOnce(() => new Promise((r) => { r1 = r; }));
+  fetcher.mockResolvedValueOnce("second");
+  const { result } = renderHook(() => useTopic("notes", fetcher, "init"));
+  await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1));
+  act(() => result.current.reload());
+  await waitFor(() => expect(result.current.data).toBe("second"));
+  await act(async () => { r1("first"); });
+  expect(result.current.data).toBe("second");
+});

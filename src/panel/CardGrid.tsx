@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from "react";
+import { Fragment, type CSSProperties, type ReactNode } from "react";
 import { CalendarDays, ClipboardList, Cpu, FolderGit2, Mail, Music, Server, StickyNote, Timer, type LucideIcon } from "lucide-react";
 import { Card } from "../ui/Card";
 
@@ -34,7 +34,7 @@ export function SoonCard({ id, delay }: { id: SlotId; delay?: number }) {
 export function CardGrid({ slots = {} }: { slots?: Partial<Record<SlotId, ReactNode>> }) {
   return (
     <div className="grid">
-      {ORDER.map((id, i) => slots[id] ?? <SoonCard key={id} id={id} delay={0.05 * (i + 1)} />)}
+      {ORDER.map((id, i) => <Fragment key={id}>{slots[id] ?? <SoonCard id={id} delay={0.05 * (i + 1)} />}</Fragment>)}
     </div>
   );
 }

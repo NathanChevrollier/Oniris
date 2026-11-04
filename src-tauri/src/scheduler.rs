@@ -1,5 +1,6 @@
 use parking_lot::Mutex;
 use std::collections::HashMap;
+use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::AppHandle;
@@ -22,38 +23,58 @@ struct Shared {
     notify: Notify,
 }
 
-/// Boucle unique. Aucun réveil périodique : sans échéance, elle n'attend que `notify`.
-/// Les échéances sont en heure murale (ms) et le délai de sommeil est recalculé à chaque réveil :
-/// après une mise en veille du PC, tout ce qui est échu part au réveil suivant, sans dérive cumulée.
-/// Chaque clé échue est signalée une fois, par ordre d'échéance, hors de tout verrou ;
-/// le rappel doit appeler `set` pour sa clé s'il a une prochaine échéance.
-async fn run_loop(shared: Arc<Shared>, fire: impl Fn(&'static str)) {
+/// Plafond d'un sommeil tant qu'une échéance existe : l'horloge de tokio peut ne pas compter
+/// la mise en veille du PC, on recalcule donc contre l'heure murale au plus tard après ce délai.
+const MAX_SLEEP_MS: u64 = 60_000;
+
+/// Boucle unique. Sans échéance, elle n'attend que `notify` (aucun réveil). Avec échéance, elle dort
+/// `min(échéance - maintenant, MAX_SLEEP_MS)` puis recalcule contre l'heure murale (ms) : après une veille,
+/// le retard est borné à `MAX_SLEEP_MS`. Chaque clé échue est signalée une fois, par ordre d'échéance,
+/// hors de tout verrou ; le rappel doit appeler `set` pour sa clé s'il a une prochaine échéance.
+/// `fire` renvoie `false` s'il n'y a pas de gestionnaire : l'entrée reste en file (« parquée »,
+/// sans boucler) jusqu'au prochain réveil. Un rappel qui panique est journalisé
+/// (clé seulement) et la boucle continue : un gestionnaire doit être court et lancer tout travail lourd.
+async fn run_loop(shared: Arc<Shared>, fire: impl Fn(&'static str) -> bool) {
+    let mut parked: Vec<&'static str> = Vec::new();
     loop {
         let notified = shared.notify.notified();
         tokio::pin!(notified);
         notified.as_mut().enable(); // un `set` entre le calcul et l'attente ne sera pas perdu
         let now = now_ms();
-        let mut due: Vec<(&'static str, u64)> = {
+        let (mut due, next) = {
             let mut e = shared.entries.lock();
-            let due: Vec<_> = e.iter().filter(|(_, &at)| at <= now).map(|(k, v)| (*k, *v)).collect();
+            let live: HashMap<_, _> = e.iter().filter(|(k, _)| !parked.contains(*k)).map(|(k, v)| (*k, *v)).collect();
+            let due: Vec<_> = live.iter().filter(|(_, &at)| at <= now).map(|(k, v)| (*k, *v)).collect();
             for (k, _) in &due { e.remove(k); }
-            due
+            (due, next_due(&live).map(|(_, at)| at))
         };
         if !due.is_empty() {
             due.sort_by_key(|&(_, at)| at);
-            for (k, _) in due { fire(k); }
+            for (k, at) in due {
+                let handled = std::panic::catch_unwind(AssertUnwindSafe(|| fire(k))).unwrap_or_else(|_| {
+                    tracing::error!("ordonnanceur : le rappel de « {k} » a paniqué");
+                    true
+                });
+                if !handled {
+                    tracing::warn!("ordonnanceur : aucun gestionnaire pour « {k} », en attente");
+                    shared.entries.lock().entry(k).or_insert(at);
+                    parked.push(k);
+                }
+            }
             continue;
         }
-        let next = next_due(&shared.entries.lock());
         match next {
             None => notified.await,
-            Some((_, at)) => {
+            Some(at) => {
+                let wait = at.saturating_sub(now).min(MAX_SLEEP_MS);
                 tokio::select! {
-                    () = tokio::time::sleep(Duration::from_millis(at.saturating_sub(now))) => {}
+                    () = tokio::time::sleep(Duration::from_millis(wait)) => {}
                     () = notified => {}
                 }
             }
         }
+        // Réveil par `notify` (set / on_due) ou fin de sommeil : on réessaie les clés parquées.
+        parked.clear();
     }
 }
 
@@ -68,7 +89,7 @@ impl Scheduler {
         let (shared, handlers) = (s.shared.clone(), s.handlers.clone());
         tauri::async_runtime::spawn(run_loop(shared, move |key| {
             let h = handlers.lock().get(key).cloned();
-            if let Some(h) = h { h(&app); }
+            h.map(|h| h(&app)).is_some()
         }));
         s
     }
@@ -86,9 +107,11 @@ impl Scheduler {
         self.shared.notify.notify_one();
     }
 
+    /// Le gestionnaire doit être court et lancer tout travail lourd (il bloque la boucle).
     #[allow(dead_code)] // appelé par les modules à partir de la tâche 3
     pub fn on_due(&self, key: &'static str, f: Handler) {
         self.handlers.lock().insert(key, f);
+        self.shared.notify.notify_one(); // rejoue une échéance parquée faute de gestionnaire
     }
 }
 
@@ -110,7 +133,7 @@ mod tests {
         let shared = Arc::new(Shared::default());
         let fired = Arc::new(Mutex::new(Vec::new()));
         let f = fired.clone();
-        tokio::spawn(run_loop(shared.clone(), move |k| f.lock().push(k)));
+        tokio::spawn(run_loop(shared.clone(), move |k| { f.lock().push(k); true }));
         let now = now_ms();
         {
             let mut e = shared.entries.lock();
@@ -120,5 +143,49 @@ mod tests {
         shared.notify.notify_one();
         tokio::time::sleep(Duration::from_millis(400)).await;
         assert_eq!(*fired.lock(), vec!["x", "late"]);
+    }
+
+    type Handlers = Arc<Mutex<HashMap<&'static str, Box<dyn Fn() + Send + Sync>>>>;
+    fn spawn_with(shared: &Arc<Shared>, h: &Handlers) {
+        let h = h.clone();
+        tokio::spawn(run_loop(shared.clone(), move |k| match h.lock().get(k) {
+            Some(f) => { f(); true }
+            None => false,
+        }));
+    }
+
+    #[tokio::test]
+    async fn due_without_handler_waits_then_fires_on_registration() {
+        let shared = Arc::new(Shared::default());
+        let h: Handlers = Arc::default();
+        spawn_with(&shared, &h);
+        shared.entries.lock().insert("k", now_ms());
+        shared.notify.notify_one();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert!(shared.entries.lock().contains_key("k"));
+        let hits = Arc::new(Mutex::new(0));
+        let c = hits.clone();
+        h.lock().insert("k", Box::new(move || *c.lock() += 1));
+        shared.notify.notify_one();
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        assert_eq!(*hits.lock(), 1);
+        assert!(!shared.entries.lock().contains_key("k"));
+    }
+
+    #[tokio::test]
+    async fn panicking_handler_does_not_stop_later_deadlines() {
+        let shared = Arc::new(Shared::default());
+        let h: Handlers = Arc::default();
+        let hits = Arc::new(Mutex::new(0));
+        let c = hits.clone();
+        h.lock().insert("boom", Box::new(|| panic!("test")));
+        h.lock().insert("ok", Box::new(move || *c.lock() += 1));
+        spawn_with(&shared, &h);
+        let now = now_ms();
+        shared.entries.lock().insert("boom", now + 20);
+        shared.entries.lock().insert("ok", now + 80);
+        shared.notify.notify_one();
+        tokio::time::sleep(Duration::from_millis(400)).await;
+        assert_eq!(*hits.lock(), 1);
     }
 }

@@ -15,10 +15,17 @@ export function useTopic<T>(topic: Topic, fetcher: () => Promise<T>, initial: T)
   const openRef = useRef(open);
   openRef.current = open;
 
+  const req = useRef(0);
+  useEffect(() => () => { req.current = -1; }, []); // après démontage, plus aucun résultat appliqué
+
   const reload = useCallback(() => {
     loaded.current = true;
     stale.current = false;
-    f.current().then(setData, (e) => console.warn("[oniris] chargement", topic, e));
+    const id = ++req.current;
+    f.current().then(
+      (v) => { if (req.current === id) setData(v); },
+      (e) => console.warn("[oniris] chargement", topic, e),
+    );
   }, [topic]);
 
   useEffect(() => {

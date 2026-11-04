@@ -5,3 +5,4 @@ target/
 graphify-out/cache/
 *.log
 tools/perf/results-*.json
+graphify-out/

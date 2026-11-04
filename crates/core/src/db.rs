@@ -7,6 +7,8 @@ pub struct Migration {
     pub sql: &'static str,
 }
 
+/// Liste globale unique, ordonnée, versions contiguës depuis 1 : chaque module (rappels, mails…) y ajoute
+/// ses migrations à la suite, jamais dans une liste à part.
 pub const CORE_MIGRATIONS: &[Migration] = &[Migration {
     version: 1,
     sql: "CREATE TABLE settings (
@@ -40,9 +42,16 @@ pub fn open_db(path: &Path) -> Result<Connection, CoreError> {
 }
 
 /// Applique, dans une transaction, les migrations dont la version dépasse `user_version`.
+/// Base créée par un build plus récent (version inconnue) : `CoreError::Invalid`, rien n'est touché.
 pub fn migrate(conn: &mut Connection, migrations: &[Migration]) -> Result<u32, CoreError> {
     let tx = conn.transaction()?;
     let start: u32 = tx.query_row("PRAGMA user_version", [], |r| r.get(0))?;
+    let known = migrations.iter().map(|m| m.version).max().unwrap_or(0);
+    if start > known {
+        return Err(CoreError::Invalid(format!(
+            "base en version {start}, plus récente que ce build (version {known})"
+        )));
+    }
     let mut sorted: Vec<&Migration> = migrations.iter().collect();
     sorted.sort_by_key(|m| m.version);
     let mut current = start;
@@ -72,5 +81,17 @@ mod tests {
         let v1 = migrate(&mut c, CORE_MIGRATIONS).unwrap();
         let v2 = migrate(&mut c, CORE_MIGRATIONS).unwrap();
         assert_eq!(v1, v2);
+    }
+    #[test] fn versions_uniques_et_contigues_depuis_1() {
+        for (i, m) in CORE_MIGRATIONS.iter().enumerate() {
+            assert_eq!(m.version, i as u32 + 1, "migration n°{i}");
+        }
+    }
+    #[test] fn base_d_une_version_plus_recente_refusee() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut c = open_db(&dir.path().join("t.db")).unwrap();
+        let last = migrate(&mut c, CORE_MIGRATIONS).unwrap();
+        c.execute_batch(&format!("PRAGMA user_version = {}", last + 1)).unwrap();
+        assert!(matches!(migrate(&mut c, CORE_MIGRATIONS), Err(CoreError::Invalid(_))));
     }
 }

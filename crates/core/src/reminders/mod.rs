@@ -1,6 +1,7 @@
 //! Rappels : table `reminders` (migration 4) et outils du courtier (`tools`).
 pub mod tools;
 
+use crate::time_util::local_day_bounds;
 use crate::CoreError;
 use chrono::Local;
 use rusqlite::{params, Connection, Row};
@@ -34,8 +35,10 @@ pub fn insert(c: &Connection, text: &str, due_ms: Option<i64>) -> Result<i64, Co
     Ok(c.last_insert_rowid())
 }
 
+/// Coche (heure de cochage dans `done_ms`, migration 9) ou décoche (`done_ms` effacé).
 pub fn set_done(c: &Connection, id: i64, done: bool) -> Result<(), CoreError> {
-    c.execute("UPDATE reminders SET done = ?2 WHERE id = ?1", params![id, done])?;
+    let done_ms = done.then(|| Local::now().timestamp_millis());
+    c.execute("UPDATE reminders SET done = ?2, done_ms = ?3 WHERE id = ?1", params![id, done, done_ms])?;
     Ok(())
 }
 
@@ -57,6 +60,17 @@ pub fn list_open(c: &Connection) -> Result<Vec<Reminder>, CoreError> {
         "SELECT {COLS} FROM reminders WHERE done = 0 AND deleted = 0 ORDER BY due_ms IS NULL, due_ms, id"
     ))?;
     let rows = st.query_map([], from_row)?;
+    Ok(rows.collect::<Result<_, _>>()?)
+}
+
+/// Liste du panneau : rappels ouverts, puis ceux cochés depuis le minuit local de `now_ms` (barrés jusqu'à minuit).
+pub fn list_today(c: &Connection, now_ms: i64) -> Result<Vec<Reminder>, CoreError> {
+    let (start, _) = local_day_bounds(now_ms);
+    let mut st = c.prepare(&format!(
+        "SELECT {COLS} FROM reminders WHERE deleted = 0 AND (done = 0 OR done_ms >= ?1)
+         ORDER BY done, due_ms IS NULL, due_ms, done_ms, id"
+    ))?;
+    let rows = st.query_map([start], from_row)?;
     Ok(rows.collect::<Result<_, _>>()?)
 }
 
@@ -145,6 +159,29 @@ mod tests {
         set_done(&c, fait, true).unwrap();
         let ids: Vec<_> = list_open(&c).unwrap().iter().map(|r| r.id).collect();
         assert_eq!(ids, vec![tot, tard, sans]);
+    }
+
+    #[test]
+    fn list_today_ouverts_puis_faits_du_jour() {
+        let (_d, c) = db();
+        let now = Local::now().timestamp_millis();
+        let (start, _) = local_day_bounds(now);
+        let fait = add(&c, "fait", Some(10));
+        let hier = add(&c, "fait hier", Some(20));
+        let ouvert = add(&c, "ouvert", None);
+        let tot = add(&c, "tôt", Some(100));
+        set_done(&c, fait, true).unwrap();
+        let done_ms: i64 = c.query_row("SELECT done_ms FROM reminders WHERE id = ?1", [fait], |r| r.get(0)).unwrap();
+        assert!((now - done_ms).abs() < 60_000);
+        set_done(&c, hier, true).unwrap();
+        c.execute("UPDATE reminders SET done_ms = ?2 WHERE id = ?1", params![hier, start - 1]).unwrap();
+        let got = list_today(&c, now).unwrap();
+        assert_eq!(got.iter().map(|r| r.id).collect::<Vec<_>>(), vec![tot, ouvert, fait]);
+        assert!(got[2].done);
+        // Décocher efface l'heure : le rappel redevient ouvert.
+        set_done(&c, fait, false).unwrap();
+        assert_eq!(c.query_row("SELECT done_ms FROM reminders WHERE id = ?1", [fait], |r| r.get::<_, Option<i64>>(0)).unwrap(), None);
+        assert_eq!(list_today(&c, now).unwrap().iter().map(|r| r.id).collect::<Vec<_>>(), vec![fait, tot, ouvert]);
     }
 
     #[test]

@@ -40,14 +40,15 @@ export function ReminderList() {
     <div className="rems">
       {data.map((r) => {
         const due = r.due_ms == null ? null : new Date(r.due_ms);
-        const soon = due != null && due.getTime() - now.getTime() <= SOON_MS;
+        const soon = !r.done && due != null && due.getTime() - now.getTime() <= SOON_MS;
         return (
-          <div className="rem" key={r.id}>
-            <button type="button" className="ck" aria-label={`Terminer ${r.text}`} onClick={() => run(remindersIpc.complete(r.id, true))}>
-              <Check size={11} />
+          <div className={r.done ? "rem done" : "rem"} key={r.id}>
+            <button type="button" className="ck" aria-label={`${r.done ? "Rouvrir" : "Terminer"} ${r.text}`}
+              aria-pressed={r.done} onClick={() => run(remindersIpc.complete(r.id, !r.done))}>
+              <Check size={11} strokeWidth={3} />
             </button>
             <span>{r.text}</span>
-            {due && <small className={soon ? "soon" : undefined}>{dueLabel(due, now)}</small>}
+            {r.done ? <small>fait</small> : due && <small className={soon ? "soon" : undefined}>{dueLabel(due, now)}</small>}
           </div>
         );
       })}

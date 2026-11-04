@@ -21,7 +21,7 @@ const KEY: &str = "reminders";
 
 #[tauri::command]
 pub fn reminders_list(state: State<AppState>) -> Result<Vec<Reminder>, String> {
-    reminders::list_open(&state.db.lock()).map_err(|e| e.to_string())
+    reminders::list_today(&state.db.lock(), Local::now().timestamp_millis()).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

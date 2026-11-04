@@ -5,4 +5,7 @@
 .card .rems .ck:hover:enabled,.card .rems .ck:focus-visible{background:var(--green);border-color:var(--green);color:#000}
 .rems .rem small{margin-left:auto;color:var(--txt3);font-size:11.5px}
 .rems .rem small.soon{color:var(--yellow)}
+.card .rems .done .ck{background:var(--green);border-color:var(--green);color:#000}
+.card .rems .done .ck:hover:enabled{opacity:.75}
+.rems .done span{color:var(--txt3);text-decoration:line-through}
 .rems .add{margin-top:2px}

@@ -118,6 +118,10 @@ Migration {
         value TEXT NOT NULL,
         updated_ms INTEGER NOT NULL
     ) STRICT;",
+},
+Migration {
+    version: 9,
+    sql: "ALTER TABLE reminders ADD COLUMN done_ms INTEGER;",
 }];
 
 pub fn open_db(path: &Path) -> Result<Connection, CoreError> {

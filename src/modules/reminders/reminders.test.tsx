@@ -44,3 +44,18 @@ it("le champ « Nouveau rappel… » crée un rappel et affiche l'erreur en cas 
   await userEvent.type(input, "x{Enter}");
   await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("Rappels indisponibles"));
 });
+
+it("un rappel fait du jour est barré avec sa coche verte ; le décocher rappelle complete(id, false)", async () => {
+  vi.spyOn(remindersIpc, "list").mockResolvedValue([...list, { id: 3, text: "Sauvegarde VPS", due_ms: soon, done: true }]);
+  const complete = vi.spyOn(remindersIpc, "complete").mockResolvedValue({ Done: { action_id: 1, output: {} } });
+  const { container } = render(<ReminderList />);
+  const btn = await screen.findByRole("button", { name: "Rouvrir Sauvegarde VPS" });
+  expect(btn).toHaveAttribute("aria-pressed", "true");
+  const row = btn.closest(".rem")!;
+  expect(row).toHaveClass("done");
+  expect(row.querySelector("small")).toHaveTextContent("fait");
+  expect(row.querySelector("small")).not.toHaveClass("soon");
+  expect(container.querySelectorAll(".rem.done")).toHaveLength(1);
+  await userEvent.click(btn);
+  expect(complete).toHaveBeenCalledWith(3, false);
+});

@@ -41,7 +41,7 @@ export function Panel({ onCommand = logCommand }: { onCommand?: (text: string) =
   const reminders = useTopic<Reminder[]>("reminders", remindersIpc.list, NO_REMINDERS, dayKey(now));
   const dots = useMemo<TimelineItem[]>(() => {
     const [from, to] = dayBounds(now);
-    return reminders.data.filter((r) => r.due_ms != null && r.due_ms >= from && r.due_ms < to)
+    return reminders.data.filter((r) => !r.done && r.due_ms != null && r.due_ms >= from && r.due_ms < to)
       .map((r) => ({ start: new Date(r.due_ms!), label: r.text, kind: "reminder" as const }));
   }, [reminders.data, now]);
 

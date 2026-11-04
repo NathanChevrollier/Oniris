@@ -2,8 +2,8 @@ pub mod geometry;
 
 use crate::state::AppState;
 use geometry::{panel_rect, pill_rect, Rect};
-use std::sync::atomic::Ordering;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewWindow};
 
 #[derive(Clone, serde::Serialize)]
@@ -11,6 +11,13 @@ struct PanelState {
     open: bool,
     at_ms: u64,
 }
+
+/// Délai avant de fermer sur perte de focus : un clic sur la zone de notification le reprend un instant.
+const BLUR_DEBOUNCE: Duration = Duration::from_millis(150);
+/// Une bascule juste après une fermeture ne rouvre pas : le clic (pilule, zone de notification) qui a fait
+/// perdre le focus au panneau arrive après sa fermeture.
+const REOPEN_GUARD_MS: u64 = 400;
+static LAST_CLOSE_MS: AtomicU64 = AtomicU64::new(0);
 
 pub(crate) fn now_ms() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64)
@@ -64,13 +71,44 @@ pub fn open_panel(app: &AppHandle) -> tauri::Result<()> {
 
 pub fn close_panel(app: &AppHandle) -> tauri::Result<()> {
     window(app, "panel")?.hide()?;
+    LAST_CLOSE_MS.store(now_ms(), Ordering::SeqCst);
     set_panel_state(app, false)
+}
+
+fn toggle_reopens(now: u64, last_close: u64) -> bool {
+    now.saturating_sub(last_close) >= REOPEN_GUARD_MS
 }
 
 pub fn toggle_panel(app: &AppHandle) -> tauri::Result<()> {
     if app.state::<AppState>().panel_open.load(Ordering::SeqCst) {
         close_panel(app)
-    } else {
+    } else if toggle_reopens(now_ms(), LAST_CLOSE_MS.load(Ordering::SeqCst)) {
         open_panel(app)
+    } else {
+        Ok(())
+    }
+}
+
+/// Le panneau a perdu le focus : fermé s'il ne l'a pas retrouvé après `BLUR_DEBOUNCE`.
+pub fn close_on_blur(app: AppHandle) {
+    std::thread::spawn(move || {
+        std::thread::sleep(BLUR_DEBOUNCE);
+        let refocused = window(&app, "panel").and_then(|w| w.is_focused()).unwrap_or(false);
+        if !refocused && app.state::<AppState>().panel_open.load(Ordering::SeqCst) {
+            if let Err(e) = close_panel(&app) {
+                eprintln!("oniris: fermeture du panneau sur perte de focus : {e}");
+            }
+        }
+    });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn bascule_juste_apres_fermeture_ne_rouvre_pas() {
+        assert!(!toggle_reopens(10_000, 10_000 - REOPEN_GUARD_MS + 1));
+        assert!(toggle_reopens(10_000, 10_000 - REOPEN_GUARD_MS));
+        assert!(toggle_reopens(10_000, 0));
     }
 }

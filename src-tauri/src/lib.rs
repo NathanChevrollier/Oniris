@@ -36,6 +36,11 @@ pub fn run() {
             #[cfg(any(debug_assertions, feature = "perf"))]
             perf::perf_open_cycles
         ])
+        .on_window_event(|window, event| {
+            if window.label() == "panel" && matches!(event, tauri::WindowEvent::Focused(false)) {
+                windows::close_on_blur(window.app_handle().clone());
+            }
+        })
         .setup(|app| {
             let st = state::AppState::open(app.handle())?;
             let hotkey_cfg = st.hotkey.clone();

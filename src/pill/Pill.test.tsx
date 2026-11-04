@@ -1,7 +1,13 @@
 import { render, screen, cleanup, act, fireEvent } from "@testing-library/react";
 import { it, expect, vi, afterEach, beforeEach } from "vitest";
 import { Pill } from "./Pill";
-import { ipc } from "../lib/ipc";
+import { ipc, type PanelState } from "../lib/ipc";
+
+let panelState: (p: PanelState) => void = () => {};
+vi.mock("../lib/ipc", async (orig) => ({
+  ...(await orig<typeof import("../lib/ipc")>()),
+  onPanelState: (cb: (p: PanelState) => void) => { panelState = cb; return Promise.resolve(() => {}); },
+}));
 
 let roCb: ResizeObserverCallback = () => {};
 const fire = (w: number) =>
@@ -54,6 +60,19 @@ it("survol prolongé : ouvre le panneau ; quitter avant annule", () => {
   fireEvent.mouseLeave(btn);
   act(() => { vi.advanceTimersByTime(1000); });
   expect(spies.panelOpen).not.toHaveBeenCalled();
+  fireEvent.mouseEnter(btn);
+  act(() => { vi.advanceTimersByTime(350); });
+  expect(spies.panelOpen).toHaveBeenCalledOnce();
+});
+
+it("survol juste après la fermeture du panneau : ignoré 600 ms", () => {
+  render(<Pill />);
+  const btn = screen.getByRole("button");
+  act(() => panelState({ open: false, at_ms: 0 }));
+  fireEvent.mouseEnter(btn); // le curseur se retrouve sur la pilule quand le panneau disparaît
+  act(() => { vi.advanceTimersByTime(1000); });
+  expect(spies.panelOpen).not.toHaveBeenCalled();
+  fireEvent.mouseLeave(btn);
   fireEvent.mouseEnter(btn);
   act(() => { vi.advanceTimersByTime(350); });
   expect(spies.panelOpen).toHaveBeenCalledOnce();

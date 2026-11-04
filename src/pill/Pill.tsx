@@ -8,16 +8,23 @@ import "../ui/glass.css";
 import "../ui/motion.css";
 import "./pill.css";
 
+/** Après une fermeture, le curseur peut se retrouver sur la pilule : ce survol-là ne rouvre pas le panneau. */
+const HOVER_REARM_MS = 600;
+
 export function Pill() {
   const settings = useSettings();
   const now = useNow(60_000);
   const [panelOpen, setPanelOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const hover = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const closedAt = useRef(-Infinity);
   const cancelHover = () => clearTimeout(hover.current);
 
   useEffect(() => {
-    const un = onPanelState((p) => setPanelOpen(p.open));
+    const un = onPanelState((p) => {
+      setPanelOpen(p.open);
+      if (!p.open) { closedAt.current = Date.now(); cancelHover(); }
+    });
     return () => { un.then((f) => f()); cancelHover(); };
   }, []);
 
@@ -39,7 +46,7 @@ export function Pill() {
       <button type="button" className="island" aria-label="Ouvrir le panneau Oniris"
         onClick={() => { cancelHover(); ipc.panelToggle(); }}
         onMouseEnter={() => {
-          if (settings.hover_open) hover.current = setTimeout(() => ipc.panelOpen(), settings.hover_delay_ms);
+          if (settings.hover_open && Date.now() - closedAt.current >= HOVER_REARM_MS) hover.current = setTimeout(() => ipc.panelOpen(), settings.hover_delay_ms);
         }}
         onMouseLeave={cancelHover}>
         <span className="time">{hhmm(now)}</span>

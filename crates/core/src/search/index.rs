@@ -1,5 +1,6 @@
 use crate::CoreError;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Entry {
@@ -24,7 +25,30 @@ fn is_sep(c: char) -> bool {
     c == '/' || c == '\\'
 }
 
+/// Clé de comparaison d'un chemin Windows : minuscules, `\` partout, sans séparateur final.
+pub fn norm_key(p: &str) -> String {
+    p.trim_end_matches(is_sep).to_lowercase().replace('/', "\\")
+}
+
+/// `key` (déjà passée par `norm_key`) est-elle l'un des `prefixes` ou dans leur sous-arbre ?
+pub fn under_any(key: &str, prefixes: &HashSet<String>) -> bool {
+    prefixes.contains(key) || key.match_indices('\\').any(|(i, _)| prefixes.contains(&key[..i]))
+}
+
 impl FileIndex {
+    /// Chemins et indicateur dossier, dans l'ordre d'insertion.
+    pub fn iter(&self) -> impl Iterator<Item = (&str, bool)> {
+        self.entries.iter().map(|e| (e.path.as_ref(), e.is_dir))
+    }
+    /// Comme `remove_prefix` pour plusieurs préfixes (clés `norm_key`), en un seul passage.
+    pub fn remove_prefixes(&mut self, prefixes: &HashSet<String>) -> usize {
+        if prefixes.is_empty() {
+            return 0;
+        }
+        let before = self.entries.len();
+        self.entries.retain(|e| !under_any(&norm_key(&e.path), prefixes));
+        before - self.entries.len()
+    }
     pub fn new() -> Self {
         Self::default()
     }
@@ -87,6 +111,18 @@ mod tests {
         assert_eq!(i.remove_prefix("C:\\a"), 4);
         assert_eq!(i.len(), 1);
         assert_eq!(i.entries[0].path.as_ref(), "C:\\ab");
+    }
+
+    #[test]
+    fn remove_prefixes_en_un_passage() {
+        let mut i = FileIndex::new();
+        for p in ["C:\\a", "C:\\a\\b.txt", "C:\\ab", "D:\\X\\y", "D:\\x\\y\\z", "D:\\keep"] {
+            i.insert(p, false);
+        }
+        let set: HashSet<String> = ["c:\\a/", "D:\\x\\Y"].iter().map(|p| norm_key(p)).collect();
+        assert_eq!(i.remove_prefixes(&set), 4);
+        let left: Vec<_> = i.iter().map(|(p, _)| p).collect();
+        assert_eq!(left, ["C:\\ab", "D:\\keep"]);
     }
 
     #[test]

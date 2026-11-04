@@ -3,7 +3,7 @@ mod index;
 mod rank;
 mod usage;
 
-pub use index::FileIndex;
+pub use index::{norm_key, under_any, FileIndex};
 pub use rank::{frecency, query, query_at, Hit, FRECENCY_WEIGHT};
 pub use usage::{bump, bumped, load, prune, record, UsageMap};
 

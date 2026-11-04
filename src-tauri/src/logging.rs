@@ -14,6 +14,8 @@ fn targets(debug: bool) -> Targets {
     let ours = if debug { LevelFilter::DEBUG } else { LevelFilter::INFO };
     Targets::new()
         .with_targets([("oniris", ours), ("oniris_lib", ours), ("oniris_core", ours)])
+        // Leurs journaux d'erreur contiennent des chemins de dossiers (contenu utilisateur).
+        .with_targets([("notify", LevelFilter::OFF), ("ignore", LevelFilter::OFF)])
         .with_default(LevelFilter::WARN)
 }
 

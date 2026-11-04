@@ -31,6 +31,11 @@ pub fn percentile(sorted: &[f64], p: f64) -> f64 {
     sorted[rank.clamp(1, sorted.len()) - 1]
 }
 
+/// Écart ouverture -> frame ; `None` si la frame précède l'ouverture (échantillon périmé).
+fn delta_ms(open_at: u64, frame_at: u64) -> Option<f64> {
+    frame_at.checked_sub(open_at).map(|d| d as f64)
+}
+
 // Présent seulement pendant un cycle armé : le panneau ne fait l'IPC que dans ce cas.
 static WAITER: Mutex<Option<Sender<u64>>> = Mutex::new(None);
 
@@ -56,7 +61,10 @@ fn run_cycles(app: &AppHandle, n: u32) -> PerfReport {
             continue;
         }
         match rx.recv_timeout(Duration::from_secs(2)) {
-            Ok(frame_at) => deltas.push(frame_at.saturating_sub(open_at) as f64),
+            Ok(frame_at) => match delta_ms(open_at, frame_at) {
+                Some(d) => deltas.push(d),
+                None => timeouts += 1,
+            },
             Err(_) => timeouts += 1,
         }
         WAITER.lock().take();
@@ -92,6 +100,11 @@ mod tests {
         let v = [1.0, 2.0, 3.0, 4.0, 100.0];
         assert_eq!(percentile(&v, 0.5), 3.0);
         assert_eq!(percentile(&v, 1.0), 100.0);
+    }
+    #[test]
+    fn stale_frame_is_rejected() {
+        assert_eq!(delta_ms(100, 140), Some(40.0));
+        assert_eq!(delta_ms(100, 99), None);
     }
     #[test]
     fn percentile_empty() {

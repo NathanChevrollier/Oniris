@@ -5,7 +5,7 @@
 ## Ce que mesure le banc
 - **Ouverture** : `perf_open_cycles(30)` (Rust, `src-tauri/src/perf.rs`) ouvre le panneau 30 fois. Pour chaque cycle : ouverture, attente de `perf_frame` (le panneau l'appelle avec `Date.now()` au 2e `requestAnimationFrame` après l'événement d'ouverture ; délai max 2 s), fermeture, pause de 300 ms. Écart = `frame_at_ms − instant juste avant open_panel`. Un cycle sans réponse sous 2 s est un *timeout* : exclu des statistiques et compté à part.
 - **Armement** : le panneau ne fait l'IPC `perf_frame` que si Rust a émis `oniris://perf-armed = true` (pendant `perf_open_cycles` seulement). En usage normal, aucun IPC.
-- **RAM** : mémoire privée (`PrivateMemorySize64`) d'`oniris.exe` + tous les `msedgewebview2.exe` descendants, après 60 s de repos panneau fermé.
+- **RAM** : `PrivateMemorySize64` = octets privés *committed*, un peu au-dessus du « working set privé » du Gestionnaire des tâches : chiffre pessimiste. Somme pour `oniris.exe` + tous les `msedgewebview2.exe` descendants, après 60 s de repos panneau fermé.
 - **CPU** : temps CPU cumulé de ces processus sur 60 s ÷ 60 s ÷ nombre de cœurs.
 - `perf_open_cycles` / `perf_frame` n'existent qu'en build debug ou avec `--features perf`.
 
@@ -23,9 +23,10 @@ node tools/perf/measure.mjs
 ```
 Résultat : un tableau dans la console et `tools/perf/results-<AAAA-MM-JJ>.json`.
 
-Mesure release (optionnelle, plus représentative ; build long, à faire sciemment) :
+Mesure release (optionnelle, plus représentative). **Build long : à lancer par vous.** Un `cargo build --release` nu n'embarque pas le frontend (l'exe chargerait `devUrl`, donc une page blanche) : il faut `pnpm build` puis la feature `custom-protocol` (définie dans `src-tauri/Cargo.toml`) :
 ```powershell
-cargo build --release -p oniris --features perf
+pnpm build
+cargo build --release -p oniris --features perf,custom-protocol
 $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--remote-debugging-port=9333"
 .\target\release\oniris.exe
 # puis, dans un autre terminal :
@@ -34,6 +35,7 @@ node tools/perf/measure.mjs
 Fermer ensuite Oniris (zone de notification > Quitter). Note : le build dev inclut les outils de débogage et gonfle RAM/latence ; le chiffre release fait foi.
 
 ## Lire `results-<date>.json`
+- Le tableau affiche `INVALIDE` si `open.samples` vaut 0 ou si `open.timeouts` > 3 (plus de 10 % de cycles perdus) : ne rien conclure dans ce cas.
 - `open.samples` : cycles valides sur 30 ; `open.timeouts` : cycles perdus (idéalement 0 ; beaucoup = mesure non fiable).
 - `open.p50_ms`, `open.p95_ms`, `open.max_ms` : latence d'ouverture en ms (nearest-rank).
 - `ramMb` : mémoire privée totale (Mo) ; `processes` : nombre de processus comptés ; `cpuPct` : CPU moyen au repos en % de la machine ; `cores`.

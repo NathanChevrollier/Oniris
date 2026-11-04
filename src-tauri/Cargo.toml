@@ -33,3 +33,4 @@ windows = { version = "0.62", features = [
 
 [features]
 perf = []
+custom-protocol = ["tauri/custom-protocol"] # embarque le frontend (build release)

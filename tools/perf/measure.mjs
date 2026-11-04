@@ -48,7 +48,7 @@ async function openCycles(n) {
   try { return await reply; } finally { ws.close(); }
 }
 
-const row = (k, v, budget, ok) => console.log(`${k.padEnd(22)}${String(v).padEnd(12)}${budget.padEnd(10)}${ok ? "OK" : "DÉPASSÉ"}`);
+const row = (k, v, budget, ok, invalid = false) => console.log(`${k.padEnd(22)}${String(v).padEnd(12)}${budget.padEnd(10)}${invalid ? "INVALIDE" : ok ? "OK" : "DÉPASSÉ"}`);
 
 console.log("Ouverture : 30 cycles (le panneau va clignoter)...");
 const open = await openCycles(30);
@@ -66,7 +66,10 @@ const file = join(dirname(fileURLToPath(import.meta.url)), `results-${result.dat
 writeFileSync(file, JSON.stringify(result, null, 2));
 
 console.log(`\n${"Mesure".padEnd(22)}${"Valeur".padEnd(12)}${"Budget".padEnd(10)}`);
-row("Ouverture p95 (ms)", open.p95_ms.toFixed(1), `< ${BUDGET.openP95Ms}`, open.p95_ms < BUDGET.openP95Ms);
+// 0 échantillon (jamais armé / tout en timeout) ou > 10 % de timeouts : la mesure ne vaut rien.
+const invalid = open.samples === 0 || open.timeouts > 3;
+row("Ouverture p95 (ms)", open.p95_ms.toFixed(1), `< ${BUDGET.openP95Ms}`, open.p95_ms < BUDGET.openP95Ms, invalid);
+row("Timeouts (/30)", open.timeouts, "<= 3", open.timeouts <= 3, invalid);
 row("CPU repos (%)", cpuPct.toFixed(3), `< ${BUDGET.cpuPct}`, cpuPct < BUDGET.cpuPct);
 row("RAM privée (Mo)", ramMb.toFixed(0), `< ${BUDGET.ramMb}`, ramMb < BUDGET.ramMb);
 console.log(`échantillons ${open.samples}, timeouts ${open.timeouts}, p50 ${open.p50_ms} ms, max ${open.max_ms} ms\n-> ${file}`);

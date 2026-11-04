@@ -16,6 +16,7 @@ parking_lot = "0.12"
 tracing = "0.1"
 chrono = { version = "0.4", features = ["clock", "serde"] }
 sha2 = "0.10"
+tokio = { version = "1", features = ["rt"] }
 
 [dev-dependencies]
 tempfile = "3"

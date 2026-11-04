@@ -17,7 +17,10 @@ impl Tool for Status {
     }
     fn describe(&self, _: &Value) -> ConfirmationText { low("Lire l'état du PC") }
     async fn run(&self, _: &Value) -> Result<ToolResult, ToolError> {
-        Ok(ToolResult { output: serde_json::to_value((self.snapshot)()).map_err(failed)?, undo: None })
+        // L'échantillon dort 200 ms : hors du worker async.
+        let snap = self.snapshot.clone();
+        let st = tokio::task::spawn_blocking(move || snap()).await.map_err(failed)?;
+        Ok(ToolResult { output: serde_json::to_value(st).map_err(failed)?, undo: None })
     }
 }
 

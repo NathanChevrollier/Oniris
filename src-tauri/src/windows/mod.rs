@@ -86,9 +86,9 @@ pub fn open_panel(app: &AppHandle) -> tauri::Result<()> {
 }
 
 pub fn close_panel(app: &AppHandle) -> tauri::Result<()> {
+    crate::modules::system::set_sampling(app, false);
     window(app, "panel")?.hide()?;
     LAST_CLOSE_MS.store(now_ms(), Ordering::SeqCst);
-    crate::modules::system::set_sampling(app, false);
     set_panel_state(app, false)
 }
 

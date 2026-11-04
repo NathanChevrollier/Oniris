@@ -17,7 +17,6 @@ export function PcCard() {
     if (!open) return;
     let live = true;
     const off = systemIpc.subscribe((s) => { if (live) setSt(s); });
-    systemIpc.snapshot().then((s) => { if (live) setSt((cur) => cur ?? s); }, () => {});
     return () => { live = false; off(); };
   }, [open]);
 

@@ -26,9 +26,10 @@ it("PcCard masque GPU et VRAM quand ils valent null", () => {
   usePanelStore.setState({ open: true });
   let push: (s: SystemStatus) => void = () => {};
   vi.spyOn(systemIpc, "subscribe").mockImplementation((cb) => { push = cb; return () => {}; });
-  vi.spyOn(systemIpc, "snapshot").mockResolvedValue(FAKE_STATUS);
+  const snap = vi.spyOn(systemIpc, "snapshot");
   render(<PcCard />);
   expect(screen.getByRole("meter", { name: "GPU" })).toBeInTheDocument();
+  expect(snap).not.toHaveBeenCalled(); // pas d'appel supplémentaire à l'ouverture
   act(() => push({ ...FAKE_STATUS, gpu_pct: null, vram_used_mb: null, vram_total_mb: null }));
   expect(screen.queryByRole("meter", { name: "GPU" })).toBeNull();
   expect(screen.queryByRole("meter", { name: "VRAM" })).toBeNull();
@@ -40,7 +41,6 @@ it("PcCard masque GPU et VRAM quand ils valent null", () => {
 it("PcCard : aucun abonnement panneau fermé, désabonnement à la fermeture", () => {
   const off = vi.fn();
   const sub = vi.spyOn(systemIpc, "subscribe").mockReturnValue(off);
-  vi.spyOn(systemIpc, "snapshot").mockResolvedValue(FAKE_STATUS);
   render(<PcCard />);
   expect(sub).not.toHaveBeenCalled();
   act(() => usePanelStore.setState({ open: true }));

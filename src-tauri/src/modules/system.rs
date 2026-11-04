@@ -36,7 +36,10 @@ pub fn set_sampling(app: &AppHandle, open: bool) {
     let app = app.clone();
     std::thread::spawn(move || {
         let mut s = Sampler::new();
-        s.sample(); // amorce : le CPU et les compteurs PDH ont besoin de deux lectures
+        s.prime(); // amorce : le CPU et les compteurs PDH ont besoin de deux lectures
+        if !CTL.is_current(generation) {
+            return; // fermé pendant l'amorce
+        }
         while sleep_while_current(&CTL, generation, TICK) {
             let st = s.sample();
             if !CTL.is_current(generation) {
@@ -64,7 +67,7 @@ fn sleep_while_current(ctl: &SamplerCtl, generation: u64, total: Duration) -> bo
 /// Un instantané à la demande : deux lectures à 200 ms d'écart.
 pub fn snapshot() -> SystemStatus {
     let mut s = Sampler::new();
-    s.sample();
+    s.prime();
     std::thread::sleep(Duration::from_millis(200));
     s.sample()
 }
@@ -74,9 +77,25 @@ pub async fn system_snapshot() -> Result<SystemStatus, String> {
     tauri::async_runtime::spawn_blocking(snapshot).await.map_err(|e| e.to_string())
 }
 
+/// Désactive PDH après `limit` échecs de lecture consécutifs (une erreur isolée ne coupe pas le GPU de la session).
+struct FailureCounter { consecutive: u32, limit: u32 }
+
+impl FailureCounter {
+    const fn new(limit: u32) -> Self { Self { consecutive: 0, limit } }
+    /// `true` : garder PDH actif.
+    fn record(&mut self, ok: bool) -> bool {
+        self.consecutive = if ok { 0 } else { self.consecutive + 1 };
+        self.consecutive < self.limit
+    }
+}
+
+const PDH_FAILURE_LIMIT: u32 = 5;
+
 struct Sampler {
     sys: System,
     gpu: Option<gpu::Pdh>,
+    failures: FailureCounter,
+    last_gpu: Option<(f32, u64)>,
     vram_total_mb: Option<u64>,
     oniris_mb: u64,
     oniris_at: Option<Instant>,
@@ -90,25 +109,43 @@ impl Sampler {
                 .with_memory(MemoryRefreshKind::nothing().with_ram()),
         );
         let gpu = gpu::Pdh::open().inspect_err(|e| tracing::warn!("PDH indisponible, GPU masqué : {e}")).ok();
-        Self { sys, gpu, vram_total_mb: gpu::vram_total_mb(), oniris_mb: 0, oniris_at: None }
+        Self { sys, gpu, failures: FailureCounter::new(PDH_FAILURE_LIMIT), last_gpu: None, vram_total_mb: gpu::vram_total_mb(), oniris_mb: 0, oniris_at: None }
+    }
+
+    /// Première lecture : les erreurs PDH y sont normales (pas de point de comparaison), on les ignore.
+    fn prime(&mut self) {
+        self.read(false);
     }
 
     fn sample(&mut self) -> SystemStatus {
+        self.read(true)
+    }
+
+    fn read(&mut self, count_failures: bool) -> SystemStatus {
         self.sys.refresh_cpu_usage();
         self.sys.refresh_memory();
         if self.oniris_at.is_none_or(|t| t.elapsed() >= ONIRIS_EVERY) {
             self.oniris_mb = procs::oniris_private_bytes() / MB;
             self.oniris_at = Some(Instant::now());
         }
-        let g = match self.gpu.as_ref().map(gpu::Pdh::read) {
-            Some(Ok(g)) => Some(g),
-            Some(Err(e)) => {
-                tracing::warn!("PDH : lecture impossible, GPU masqué : {e}");
-                self.gpu = None;
-                None
+        if let Some(pdh) = &self.gpu {
+            match pdh.read() {
+                Ok(Some(v)) => {
+                    self.failures.record(true);
+                    self.last_gpu = Some(v);
+                }
+                Ok(None) => {} // pas de donnée ce tick : on garde la dernière valeur
+                Err(e) if count_failures => {
+                    if !self.failures.record(false) {
+                        tracing::warn!("PDH : {PDH_FAILURE_LIMIT} échecs de suite, GPU masqué ({e})");
+                        self.gpu = None;
+                        self.last_gpu = None;
+                    }
+                }
+                Err(_) => {}
             }
-            None => None,
-        };
+        }
+        let g = self.last_gpu;
         SystemStatus {
             cpu_pct: self.sys.global_cpu_usage().clamp(0.0, 100.0),
             ram_used_mb: self.sys.used_memory() / MB,
@@ -223,33 +260,53 @@ mod gpu {
         }
 
         /// (utilisation %, VRAM utilisée en Mo).
-        pub fn read(&self) -> Result<(f32, u64), String> {
-            check(unsafe { PdhCollectQueryData(self.query) }, "PdhCollectQueryData")?;
-            let engines = array(self.engine)?;
-            let vram = array(self.mem)?.into_iter().map(|(_, v)| v).fold(0.0_f64, f64::max); // adaptateur le plus chargé
-            Ok((gpu_from_counters(&engines), (vram / MB as f64) as u64))
+        /// `Ok(None)` : pas de donnée ce tick (statuts transitoires de PDH).
+        pub fn read(&self) -> Result<Option<(f32, u64)>, String> {
+            let st = unsafe { PdhCollectQueryData(self.query) };
+            if transient(st) {
+                return Ok(None);
+            }
+            check(st, "PdhCollectQueryData")?;
+            let (Some(engines), Some(mem)) = (array(self.engine)?, array(self.mem)?) else { return Ok(None) };
+            let vram = mem.into_iter().map(|(_, v)| v).fold(0.0_f64, f64::max); // adaptateur le plus chargé
+            Ok(Some((gpu_from_counters(&engines), (vram / MB as f64) as u64)))
         }
     }
 
-    fn array(counter: PDH_HCOUNTER) -> Result<Vec<(String, f64)>, String> {
+    /// Statuts sans conséquence : première lecture, compteur sans dénominateur, aucune instance.
+    fn transient(st: u32) -> bool {
+        st == PDH_NO_DATA || st == PDH_INVALID_DATA || st == PDH_CALC_NEGATIVE_DENOMINATOR
+    }
+
+    /// `None` : pas de donnée ce tick. Boucle sur PDH_MORE_DATA (le nombre d'instances peut grandir entre deux appels).
+    fn array(counter: PDH_HCOUNTER) -> Result<Option<Vec<(String, f64)>>, String> {
         let (mut size, mut count) = (0u32, 0u32);
-        let st = unsafe { PdhGetFormattedCounterArrayW(counter, PDH_FMT_DOUBLE, &mut size, &mut count, None) };
-        if st == PDH_NO_DATA {
-            return Ok(vec![]);
+        let mut buf: Vec<u64> = vec![]; // u64 pour l'alignement des éléments
+        for _ in 0..4 {
+            let items = buf.as_mut_ptr().cast::<PDH_FMT_COUNTERVALUE_ITEM_W>();
+            let arg = if buf.is_empty() { None } else { Some(items) };
+            let st = unsafe { PdhGetFormattedCounterArrayW(counter, PDH_FMT_DOUBLE, &mut size, &mut count, arg) };
+            if st == PDH_MORE_DATA {
+                buf = vec![0u64; (size as usize).div_ceil(8)];
+                continue;
+            }
+            if transient(st) {
+                return Ok(None);
+            }
+            check(st, "PdhGetFormattedCounterArray")?;
+            if buf.is_empty() {
+                return Ok(Some(vec![]));
+            }
+            let slice = unsafe { std::slice::from_raw_parts(items, count as usize) };
+            return Ok(Some(
+                slice
+                    .iter()
+                    .filter(|i| i.FmtValue.CStatus == 0)
+                    .map(|i| (unsafe { i.szName.to_string() }.unwrap_or_default(), unsafe { i.FmtValue.Anonymous.doubleValue }))
+                    .collect(),
+            ));
         }
-        if st != PDH_MORE_DATA {
-            return check(st, "PdhGetFormattedCounterArray (taille)").map(|()| vec![]);
-        }
-        // u64 pour l'alignement des éléments dans le tampon.
-        let mut buf = vec![0u64; (size as usize).div_ceil(8)];
-        let items = buf.as_mut_ptr().cast::<PDH_FMT_COUNTERVALUE_ITEM_W>();
-        check(unsafe { PdhGetFormattedCounterArrayW(counter, PDH_FMT_DOUBLE, &mut size, &mut count, Some(items)) }, "PdhGetFormattedCounterArray")?;
-        let slice = unsafe { std::slice::from_raw_parts(items, count as usize) };
-        Ok(slice
-            .iter()
-            .filter(|i| i.FmtValue.CStatus == 0)
-            .map(|i| (unsafe { i.szName.to_string() }.unwrap_or_default(), unsafe { i.FmtValue.Anonymous.doubleValue }))
-            .collect())
+        Err("PdhGetFormattedCounterArray : taille instable".into())
     }
 }
 
@@ -266,6 +323,19 @@ mod tests {
         assert!(!ctl.is_current(g1), "fermé : la tâche sort");
         let g2 = ctl.start();
         assert!(ctl.is_current(g2) && !ctl.is_current(g1), "rouvert : seule la nouvelle tâche tourne");
+    }
+
+    #[test]
+    fn pdh_coupe_apres_cinq_echecs_consecutifs_seulement() {
+        let mut f = FailureCounter::new(5);
+        for _ in 0..4 {
+            assert!(f.record(false));
+        }
+        assert!(f.record(true), "un succès remet à zéro");
+        for _ in 0..4 {
+            assert!(f.record(false));
+        }
+        assert!(!f.record(false), "5e échec de suite : PDH coupé");
     }
 
     #[test]

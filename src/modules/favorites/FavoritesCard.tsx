@@ -33,7 +33,7 @@ const move = <T,>(a: T[], from: number, to: number) => { const b = [...a]; b.spl
 type Drag = { id: number; x: number; y: number; active: boolean; timer: number; over: number | null; el: HTMLElement; pid: number };
 
 export function FavoritesCard() {
-  const { data } = useTopic<Favorite[]>("favorites", favoritesIpc.list, NONE);
+  const { data, reload } = useTopic<Favorite[]>("favorites", favoritesIpc.list, NONE);
   const [local, setLocal] = useState<Favorite[] | null>(null); // ordre optimiste jusqu'au prochain rechargement
   useEffect(() => setLocal(null), [data]);
   const list = local ?? data;
@@ -59,7 +59,11 @@ export function FavoritesCard() {
   const persist = (next: Favorite[]) => {
     fresh();
     setLocal(next);
-    favoritesIpc.reorder(next.map((f) => f.id)).catch(() => { setLocal(null); setReorderError("Liste modifiée ailleurs — réessaie"); });
+    favoritesIpc.reorder(next.map((f) => f.id)).catch((e) => {
+      setLocal(null);
+      setReorderError(String(e).includes("ordre incomplet ou inconnu") ? "Liste modifiée ailleurs — réessaie" : "Réorganisation impossible");
+      reload();
+    });
   };
 
   /** Index de la tuile sous le pointeur, dans la même catégorie que la tuile saisie. */
@@ -141,7 +145,20 @@ export function FavoritesCard() {
   const categories = [...new Set(list.map((f) => f.category))];
   const grouped = categories.length > 1;
   const groups = grouped ? categories : [null];
-  const open = (f: Favorite) => { if (!justDragged.current) fresh(), void run(favoritesIpc.open(f.id)); };
+  const open = (f: Favorite) => {
+    if (justDragged.current) return;
+    fresh();
+    void run(favoritesIpc.open(f.id));
+  };
+  /** Supprime puis place le focus sur la tuile suivante, à défaut la précédente, à défaut « + » ("…" a disparu avec la tuile). */
+  const remove = async (f: Favorite) => {
+    const i = list.indexOf(f);
+    const next = list[i + 1] ?? list[i - 1];
+    fresh();
+    const ok = await run(favoritesIpc.remove(f.id));
+    const sel = !ok ? `[data-id="${f.id}"] .fav-more` : next ? `[data-id="${next.id}"] .fav-btn` : ".fav-add";
+    root.current?.querySelector<HTMLElement>(sel)?.focus();
+  };
   const draggedAt = dragging === null ? -1 : list.findIndex((x) => x.id === dragging);
 
   const tile = (f: Favorite) => {
@@ -168,8 +185,8 @@ export function FavoritesCard() {
         <button type="button" className="fav-more" aria-label={`Options de ${f.title}`} aria-haspopup="menu" onClick={() => { fresh(); setMenu(menu === f.id ? null : f.id); }}><MoreHorizontal size={12} /></button>
         {menu === f.id && (
           <div className="fav-menu" role="menu">
-            <button type="button" role="menuitem" autoFocus onClick={() => { setMenu(null); setRenaming(f.id); }}>Renommer</button>
-            <button type="button" role="menuitem" onClick={() => { setMenu(null); refocusMore(f.id); fresh(); void run(favoritesIpc.remove(f.id)); }}>Supprimer</button>
+            <button type="button" role="menuitem" autoFocus onClick={() => { fresh(); setMenu(null); setRenaming(f.id); }}>Renommer</button>
+            <button type="button" role="menuitem" onClick={() => { setMenu(null); void remove(f); }}>Supprimer</button>
           </div>
         )}
       </li>
@@ -191,7 +208,7 @@ export function FavoritesCard() {
             <ul className="favs" role="list" aria-label={grouped ? `Favoris — ${cat ?? "Sans catégorie"}` : "Favoris"}>
               {list.filter((f) => !grouped || f.category === cat).map(tile)}
               {g === groups.length - 1 && (
-                <li><button type="button" className="fav-btn fav-add" aria-label="Ajouter un favori" onClick={() => { setAdding(!adding); clear(); }}>
+                <li><button type="button" className="fav-btn fav-add" aria-label="Ajouter un favori" onClick={() => { fresh(); setAdding(!adding); }}>
                   <span className="fav-ico"><Plus size={16} aria-hidden /></span><span className="fav-t" aria-hidden>Ajouter</span></button></li>
               )}
             </ul>

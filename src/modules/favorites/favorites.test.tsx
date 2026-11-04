@@ -1,4 +1,4 @@
-import { render, screen, cleanup, fireEvent } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { it, expect, vi, afterEach, beforeEach } from "vitest";
 import { FavoritesCard, hueOf } from "./FavoritesCard";
@@ -203,4 +203,56 @@ it("Échap rend le focus au bouton « … » ; titres de liste par catégorie", 
   fireEvent.contextMenu(screen.getByRole("button", { name: "Alpha" }));
   await userEvent.keyboard("{Escape}");
   expect(screen.getByRole("button", { name: "Options de Alpha" })).toHaveFocus();
+});
+
+it("après Supprimer, le focus va à la tuile suivante, sinon la précédente, sinon « + »", async () => {
+  const cases: [Favorite[], number, string][] = [
+    [three, 2, "Gamma"], // suivante
+    [three, 3, "Beta"], // pas de suivante : précédente
+    [[fav(1, "Alpha")], 1, "Ajouter un favori"], // liste vide : « + »
+  ];
+  for (const [items, id, expected] of cases) {
+    vi.spyOn(favoritesIpc, "list").mockResolvedValue(items);
+    vi.spyOn(favoritesIpc, "remove").mockResolvedValue(ok);
+    const { unmount } = render(<FavoritesCard />);
+    const title = items.find((f) => f.id === id)!.title;
+    fireEvent.contextMenu(await screen.findByRole("button", { name: title }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "Supprimer" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: expected })).toHaveFocus());
+    unmount();
+    vi.restoreAllMocks();
+    usePanelStore.setState({ open: true });
+  }
+});
+
+it("un échec de reorder autre que l'ordre strict : message générique et rechargement", async () => {
+  const list = vi.spyOn(favoritesIpc, "list").mockResolvedValue(three);
+  vi.spyOn(favoritesIpc, "reorder").mockRejectedValue("échec : base verrouillée");
+  render(<FavoritesCard />);
+  const beta = await screen.findByRole("button", { name: "Beta" });
+  beta.focus();
+  list.mockClear();
+  await userEvent.keyboard("{Alt>}{ArrowLeft}{/Alt}");
+  expect(await screen.findByRole("alert")).toHaveTextContent("Réorganisation impossible");
+  expect(list).toHaveBeenCalled();
+});
+
+it("« Ajouter » et « Renommer » effacent les erreurs périmées", async () => {
+  vi.spyOn(favoritesIpc, "list").mockResolvedValue(three);
+  vi.spyOn(favoritesIpc, "rename").mockRejectedValue("boom");
+  render(<FavoritesCard />);
+  fireEvent.contextMenu(await screen.findByRole("button", { name: "Alpha" }));
+  await userEvent.click(screen.getByRole("menuitem", { name: "Renommer" }));
+  await userEvent.type(screen.getByLabelText("Nouveau titre"), "x{Enter}");
+  expect(await screen.findByRole("alert")).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "Ajouter un favori" }));
+  expect(screen.queryByRole("alert")).toBeNull();
+
+  fireEvent.contextMenu(screen.getByRole("button", { name: "Beta" }));
+  await userEvent.click(screen.getByRole("menuitem", { name: "Renommer" }));
+  await userEvent.type(screen.getByLabelText("Nouveau titre"), "y{Enter}");
+  expect(await screen.findByRole("alert")).toBeInTheDocument();
+  fireEvent.contextMenu(screen.getByRole("button", { name: "Gamma" }));
+  await userEvent.click(screen.getByRole("menuitem", { name: "Renommer" }));
+  expect(screen.queryByRole("alert")).toBeNull();
 });

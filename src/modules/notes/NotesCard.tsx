@@ -83,7 +83,7 @@ export function NotesCard() {
         ))}
       </ul>
       {data.length === 0 && (applied.trim()
-        ? <Empty icon={SearchX} tint="#ffd60a">Rien ne correspond, essaie un autre mot.</Empty>
+        ? <Empty icon={SearchX} tint="#ffd60a" role="status">Rien ne correspond, essaie un autre mot.</Empty>
         : <Empty icon={Feather} tint="#ffd60a">Une idée qui passe ? Note-la, elle t'attendra ici.</Empty>)}
     </Card>
   );

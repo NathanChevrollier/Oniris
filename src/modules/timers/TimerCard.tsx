@@ -37,7 +37,8 @@ export function TimerCard() {
   };
 
   return (
-    <Card title="Minuteur" span={3} delay={0.45}>
+    <Card title="Minuteur" span={3} delay={0.45}
+      aside={first && <button type="button" className="tstop" aria-label={`Annuler ${first.label}`} onClick={() => run(timersIpc.cancel(first.id))}>Annuler</button>}>
       <div className="tring">
         <svg viewBox="0 0 80 80" aria-hidden>
           <circle className="track" cx="40" cy="40" r={R} />
@@ -59,7 +60,6 @@ export function TimerCard() {
           ))}
         </ul>
       )}
-      {first && <button type="button" className="tstop" onClick={() => run(timersIpc.cancel(first.id))}>Annuler {first.label}</button>}
       <div className="tquick">
         <button type="button" onClick={() => run(timersIpc.start("5 minutes"))}>5 min</button>
         <button type="button" onClick={() => run(timersIpc.start("25 minutes"))}>25 min</button>

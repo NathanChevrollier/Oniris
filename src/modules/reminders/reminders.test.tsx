@@ -19,7 +19,9 @@ it("cocher un rappel appelle reminders_complete(id, true)", async () => {
   vi.spyOn(remindersIpc, "list").mockResolvedValue(list);
   const complete = vi.spyOn(remindersIpc, "complete").mockResolvedValue({ Done: { action_id: 1, output: {} } });
   render(<ReminderList />);
-  await userEvent.click(await screen.findByRole("button", { name: "Terminer Appeler la banque" }));
+  const btn = await screen.findByRole("button", { name: "Terminé : Appeler la banque" });
+  expect(btn).toHaveAttribute("aria-pressed", "false");
+  await userEvent.click(btn);
   expect(complete).toHaveBeenCalledWith(1, true);
 });
 
@@ -49,7 +51,7 @@ it("un rappel fait du jour est barré avec sa coche verte ; le décocher rappell
   vi.spyOn(remindersIpc, "list").mockResolvedValue([...list, { id: 3, text: "Sauvegarde VPS", due_ms: soon, done: true }]);
   const complete = vi.spyOn(remindersIpc, "complete").mockResolvedValue({ Done: { action_id: 1, output: {} } });
   const { container } = render(<ReminderList />);
-  const btn = await screen.findByRole("button", { name: "Rouvrir Sauvegarde VPS" });
+  const btn = await screen.findByRole("button", { name: "Terminé : Sauvegarde VPS" });
   expect(btn).toHaveAttribute("aria-pressed", "true");
   const row = btn.closest(".rem")!;
   expect(row).toHaveClass("done");

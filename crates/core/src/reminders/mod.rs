@@ -35,10 +35,12 @@ pub fn insert(c: &Connection, text: &str, due_ms: Option<i64>) -> Result<i64, Co
     Ok(c.last_insert_rowid())
 }
 
-/// Coche (heure de cochage dans `done_ms`, migration 9) ou décoche (`done_ms` effacé).
+/// Coche (heure du premier cochage gardée dans `done_ms`, migration 9) ou décoche (`done_ms` effacé).
 pub fn set_done(c: &Connection, id: i64, done: bool) -> Result<(), CoreError> {
-    let done_ms = done.then(|| Local::now().timestamp_millis());
-    c.execute("UPDATE reminders SET done = ?2, done_ms = ?3 WHERE id = ?1", params![id, done, done_ms])?;
+    c.execute(
+        "UPDATE reminders SET done = ?2, done_ms = CASE WHEN ?2 THEN COALESCE(done_ms, ?3) END WHERE id = ?1",
+        params![id, done, Local::now().timestamp_millis()],
+    )?;
     Ok(())
 }
 
@@ -182,6 +184,16 @@ mod tests {
         set_done(&c, fait, false).unwrap();
         assert_eq!(c.query_row("SELECT done_ms FROM reminders WHERE id = ?1", [fait], |r| r.get::<_, Option<i64>>(0)).unwrap(), None);
         assert_eq!(list_today(&c, now).unwrap().iter().map(|r| r.id).collect::<Vec<_>>(), vec![fait, tot, ouvert]);
+    }
+
+    #[test]
+    fn recocher_garde_l_heure_du_premier_cochage() {
+        let (_d, c) = db();
+        let id = add(&c, "x", None);
+        set_done(&c, id, true).unwrap();
+        c.execute("UPDATE reminders SET done_ms = 42 WHERE id = ?1", [id]).unwrap();
+        set_done(&c, id, true).unwrap();
+        assert_eq!(c.query_row("SELECT done_ms FROM reminders WHERE id = ?1", [id], |r| r.get::<_, i64>(0)).unwrap(), 42);
     }
 
     #[test]

@@ -4,7 +4,7 @@
 .gauge .fill{transition:stroke-dashoffset 1.2s cubic-bezier(.2,.9,.25,1)}
 .gauge b{position:absolute;inset:0;display:grid;place-items:center;font-size:13px;font-weight:600}
 .rings small{display:block;font-size:10.5px;color:var(--txt3);margin-top:4px;letter-spacing:.06em;text-transform:uppercase}
-.ai-state{margin-top:12px;display:flex;flex-direction:column;gap:7px;font-size:12px;border-top:1px solid var(--line);padding-top:10px}
+.ai-state{margin-top:10px;display:flex;flex-direction:column;gap:5px;font-size:12px;border-top:1px solid var(--line);padding-top:8px}
 .ai-state div{display:flex;justify-content:space-between;color:var(--txt2)}
 .ai-state i{font-style:normal;color:var(--txt3)}
 .ai-state .on{color:var(--green)}

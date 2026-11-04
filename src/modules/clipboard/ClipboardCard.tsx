@@ -56,7 +56,7 @@ export function ClipboardCard() {
         ))}
       </ul>
       {data.length === 0 && (applied.trim()
-        ? <Empty icon={SearchX} tint="#64d2ff">Rien ne correspond dans tes copies.</Empty>
+        ? <Empty icon={SearchX} tint="#64d2ff" role="status">Rien ne correspond dans tes copies.</Empty>
         : <Empty icon={ClipboardList} tint="#64d2ff">Copie un texte ou une image : tout atterrit ici.</Empty>)}
     </Card>
   );

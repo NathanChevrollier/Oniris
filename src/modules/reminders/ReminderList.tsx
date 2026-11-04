@@ -43,7 +43,7 @@ export function ReminderList() {
         const soon = !r.done && due != null && due.getTime() - now.getTime() <= SOON_MS;
         return (
           <div className={r.done ? "rem done" : "rem"} key={r.id}>
-            <button type="button" className="ck" aria-label={`${r.done ? "Rouvrir" : "Terminer"} ${r.text}`}
+            <button type="button" className="ck" aria-label={`Terminé : ${r.text}`}
               aria-pressed={r.done} onClick={() => run(remindersIpc.complete(r.id, !r.done))}>
               <Check size={11} strokeWidth={3} />
             </button>

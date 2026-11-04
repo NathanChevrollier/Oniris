@@ -70,7 +70,12 @@ pub fn query_at(index: &FileIndex, extra: &[Item], usage: &UsageMap, q: &str, li
     if q.is_empty() {
         return recent(extra, usage, limit, now);
     }
-    let pattern = Pattern::parse(q, CaseMatching::Smart, Normalization::Smart);
+    // Mots négatifs (!foo) : jugés sur le chemin complet (ils excluent). Mots positifs : le reste.
+    let (neg_words, pos_words): (Vec<&str>, Vec<&str>) = q.split_whitespace().partition(|w| w.starts_with('!'));
+    let pos_q = pos_words.join(" ");
+    let pattern = Pattern::parse(&pos_q, CaseMatching::Smart, Normalization::Smart);
+    let neg = (!neg_words.is_empty())
+        .then(|| Pattern::parse(&neg_words.join(" "), CaseMatching::Smart, Normalization::Smart));
     let mut matcher = Matcher::new(Config::DEFAULT.match_paths());
     let mut buf = Vec::new();
     let mut heap = Heap::with_capacity(limit + 1);
@@ -85,11 +90,11 @@ pub fn query_at(index: &FileIndex, extra: &[Item], usage: &UsageMap, q: &str, li
     };
     let prefix = |name: &str| -> u32 {
         // Requête multi-mots : pas de notion de préfixe unique.
-        let ok = !q.contains(' ') && name.get(..q.len()).is_some_and(|p| p.eq_ignore_ascii_case(q));
+        let ok = !pos_q.is_empty() && !pos_q.contains(' ') && name.get(..pos_q.len()).is_some_and(|p| p.eq_ignore_ascii_case(&pos_q));
         if ok { PREFIX_BONUS } else { 0 }
     };
-    // Atomes ancrés (^foo) ou négatifs (!foo) : le chemin ne dit rien du nom, on note les deux.
-    let independent = q.split_whitespace().any(|w| w.starts_with('^') || w.starts_with('!'));
+    // Atome ancré (^foo) : le chemin commence par le lecteur, il ne dit rien du nom, on note les deux.
+    let independent = pos_words.iter().any(|w| w.starts_with('^'));
     // Un Matcher par fil (jamais partagé) ; l'index est découpé en tranches.
     let scan = |off: usize, chunk: &[Entry]| -> Heap {
         let mut matcher = Matcher::new(Config::DEFAULT.match_paths());
@@ -97,6 +102,11 @@ pub fn query_at(index: &FileIndex, extra: &[Item], usage: &UsageMap, q: &str, li
         let mut heap = Heap::with_capacity(limit + 1);
         for (i, e) in chunk.iter().enumerate() {
             let name = e.name();
+            if let Some(n) = &neg {
+                if n.score(Utf32Str::new(&e.path, &mut buf), &mut matcher).is_none() {
+                    continue;
+                }
+            }
             let path_score = pattern.score(Utf32Str::new(&e.path, &mut buf), &mut matcher);
             // Sans atome ancré/négatif, le nom est un suffixe du chemin : chemin raté => nom raté.
             if path_score.is_none() && !independent {
@@ -134,6 +144,11 @@ pub fn query_at(index: &FileIndex, extra: &[Item], usage: &UsageMap, q: &str, li
         let s = pattern.score(Utf32Str::new(&it.subtitle, &mut buf), &mut matcher);
         if t.is_none() && s.is_none() {
             continue;
+        }
+        if let Some(n) = &neg {
+            if [&it.title, &it.subtitle].iter().any(|f| n.score(Utf32Str::new(f, &mut buf), &mut matcher).is_none()) {
+                continue;
+            }
         }
         let total = t.map_or(0, |t| t * NAME_WEIGHT + prefix(&it.title)) + s.unwrap_or(0) + extra_bonus(it.kind, &it.key);
         push(&mut heap, limit, total, base + j);
@@ -199,6 +214,16 @@ mod tests {
         assert_eq!(keys(&h)[0], "C:\\Users\\n\\Projets\\Oniris");
         assert_eq!(h[0].item.kind, ItemKind::Dir);
         assert_eq!(h.len(), 3);
+    }
+
+    #[test]
+    fn negation_exclut_par_chemin() {
+        let i = idx(&[
+            ("C:\\Users\\n\\Projets\\Oniris", true),
+            ("C:\\Users\\n\\Projets\\archive\\oniris-old.md", false),
+        ]);
+        let h = query_at(&i, &[], &UsageMap::new(), "oniris !archive", 10, NOW);
+        assert_eq!(keys(&h), ["C:\\Users\\n\\Projets\\Oniris"]);
     }
 
     #[test]

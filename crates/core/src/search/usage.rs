@@ -14,17 +14,21 @@ pub fn bumped(score: f64, last_ms: i64, now: i64) -> f64 {
 }
 
 pub fn record(c: &Connection, kind: ItemKind, key: &str, now: i64) -> Result<(), CoreError> {
-    let prev: Option<(f64, i64)> = c
+    // Lecture puis écriture dans une même transaction : pas d'incrément perdu.
+    // `unchecked_transaction` car on ne reçoit que `&Connection` (la connexion est déjà sous verrou).
+    let tx = c.unchecked_transaction()?;
+    let prev: Option<(f64, i64)> = tx
         .query_row("SELECT score, last_ms FROM usage WHERE kind = ?1 AND key = ?2", params![kind.as_str(), key], |r| {
             Ok((r.get(0)?, r.get(1)?))
         })
         .optional()?;
     let score = prev.map_or(1.0, |(s, t)| bumped(s, t, now));
-    c.execute(
+    tx.execute(
         "INSERT INTO usage(kind, key, score, last_ms) VALUES (?1, ?2, ?3, ?4)
          ON CONFLICT(kind, key) DO UPDATE SET score = ?3, last_ms = ?4",
         params![kind.as_str(), key, score, now],
     )?;
+    tx.commit()?;
     Ok(())
 }
 

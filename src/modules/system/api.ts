@@ -17,6 +17,7 @@ export const systemIpc = {
   snapshot: (): Promise<SystemStatus> => isTauri ? invoke("system_snapshot") : Promise.resolve(FAKE_STATUS),
   /** `oniris://system` n'est émis que panneau ouvert : s'abonner seulement à ce moment. Retourne la désinscription. */
   subscribe: (cb: (s: SystemStatus) => void): (() => void) => {
+    if (!isTauri) cb(FAKE_STATUS); // aperçu navigateur
     const un = listen<SystemStatus>("oniris://system", (e) => cb(e.payload));
     return () => { un.then((f) => f()); };
   },

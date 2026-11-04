@@ -48,3 +48,16 @@ it("PcCard : aucun abonnement panneau fermé, désabonnement à la fermeture", (
   act(() => usePanelStore.setState({ open: false }));
   expect(off).toHaveBeenCalledTimes(1);
 });
+
+it("PcCard : « – » avant le premier tick, et de nouveau après fermeture puis réouverture", () => {
+  usePanelStore.setState({ open: true });
+  let push: (s: SystemStatus) => void = () => {};
+  vi.spyOn(systemIpc, "subscribe").mockImplementation((cb) => { push = cb; return () => {}; });
+  render(<PcCard />);
+  expect(screen.getByRole("meter", { name: "CPU" }).querySelector("b")).toHaveTextContent("–");
+  act(() => push(FAKE_STATUS));
+  expect(screen.getByRole("meter", { name: "CPU" }).querySelector("b")).toHaveTextContent("8%");
+  act(() => usePanelStore.setState({ open: false }));
+  act(() => usePanelStore.setState({ open: true }));
+  expect(screen.getByRole("meter", { name: "CPU" }).querySelector("b")).toHaveTextContent("–");
+});

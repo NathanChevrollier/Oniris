@@ -90,12 +90,36 @@ impl FailureCounter {
 }
 
 const PDH_FAILURE_LIMIT: u32 = 5;
+const TRANSIENT_HOLD: u32 = 3;
+
+/// Résultat d'une lecture PDH.
+enum Reading {
+    Value(f32, u64),
+    /// PDH_NO_DATA ou aucune instance : le GPU est au repos (0 %, 0 Mo), pas inconnu.
+    Idle,
+    /// PDH_INVALID_DATA / PDH_CALC_NEGATIVE_DENOMINATOR : pas de mesure ce tick.
+    Transient,
+}
+
+/// Valeur à afficher : une lecture transitoire réutilise la dernière valeur pendant `TRANSIENT_HOLD` ticks de suite, puis `None`.
+struct GpuHold { last: Option<(f32, u64)>, transient: u32 }
+
+impl GpuHold {
+    const fn new() -> Self { Self { last: None, transient: 0 } }
+    fn apply(&mut self, r: Reading) -> Option<(f32, u64)> {
+        match r {
+            Reading::Value(p, m) => { self.transient = 0; self.last = Some((p, m)); self.last }
+            Reading::Idle => { self.transient = 0; self.last = Some((0.0, 0)); self.last }
+            Reading::Transient => { self.transient += 1; if self.transient <= TRANSIENT_HOLD { self.last } else { None } }
+        }
+    }
+}
 
 struct Sampler {
     sys: System,
     gpu: Option<gpu::Pdh>,
     failures: FailureCounter,
-    last_gpu: Option<(f32, u64)>,
+    hold: GpuHold,
     vram_total_mb: Option<u64>,
     oniris_mb: u64,
     oniris_at: Option<Instant>,
@@ -109,7 +133,7 @@ impl Sampler {
                 .with_memory(MemoryRefreshKind::nothing().with_ram()),
         );
         let gpu = gpu::Pdh::open().inspect_err(|e| tracing::warn!("PDH indisponible, GPU masqué : {e}")).ok();
-        Self { sys, gpu, failures: FailureCounter::new(PDH_FAILURE_LIMIT), last_gpu: None, vram_total_mb: gpu::vram_total_mb(), oniris_mb: 0, oniris_at: None }
+        Self { sys, gpu, failures: FailureCounter::new(PDH_FAILURE_LIMIT), hold: GpuHold::new(), vram_total_mb: gpu::vram_total_mb(), oniris_mb: 0, oniris_at: None }
     }
 
     /// Première lecture : les erreurs PDH y sont normales (pas de point de comparaison), on les ignore.
@@ -128,24 +152,25 @@ impl Sampler {
             self.oniris_mb = procs::oniris_private_bytes() / MB;
             self.oniris_at = Some(Instant::now());
         }
+        let mut g = None;
         if let Some(pdh) = &self.gpu {
             match pdh.read() {
-                Ok(Some(v)) => {
-                    self.failures.record(true);
-                    self.last_gpu = Some(v);
+                Ok(r) => {
+                    if !matches!(r, Reading::Transient) {
+                        self.failures.record(true); // un tick transitoire ne compte ni ne remet à zéro
+                    }
+                    g = self.hold.apply(r);
                 }
-                Ok(None) => {} // pas de donnée ce tick : on garde la dernière valeur
                 Err(e) if count_failures => {
                     if !self.failures.record(false) {
                         tracing::warn!("PDH : {PDH_FAILURE_LIMIT} échecs de suite, GPU masqué ({e})");
                         self.gpu = None;
-                        self.last_gpu = None;
+                        self.hold = GpuHold::new();
                     }
                 }
                 Err(_) => {}
             }
         }
-        let g = self.last_gpu;
         SystemStatus {
             cpu_pct: self.sys.global_cpu_usage().clamp(0.0, 100.0),
             ram_used_mb: self.sys.used_memory() / MB,
@@ -260,26 +285,39 @@ mod gpu {
         }
 
         /// (utilisation %, VRAM utilisée en Mo).
-        /// `Ok(None)` : pas de donnée ce tick (statuts transitoires de PDH).
-        pub fn read(&self) -> Result<Option<(f32, u64)>, String> {
+        pub fn read(&self) -> Result<Reading, String> {
             let st = unsafe { PdhCollectQueryData(self.query) };
-            if transient(st) {
-                return Ok(None);
+            if let Some(r) = special(st) {
+                return Ok(r);
             }
             check(st, "PdhCollectQueryData")?;
-            let (Some(engines), Some(mem)) = (array(self.engine)?, array(self.mem)?) else { return Ok(None) };
+            let engines = match array(self.engine)? {
+                Ok(v) => v,
+                Err(r) => return Ok(r),
+            };
+            let mem = match array(self.mem)? {
+                Ok(v) => v,
+                Err(r) => return Ok(r),
+            };
             let vram = mem.into_iter().map(|(_, v)| v).fold(0.0_f64, f64::max); // adaptateur le plus chargé
-            Ok(Some((gpu_from_counters(&engines), (vram / MB as f64) as u64)))
+            Ok(Reading::Value(gpu_from_counters(&engines), (vram / MB as f64) as u64))
         }
     }
 
-    /// Statuts sans conséquence : première lecture, compteur sans dénominateur, aucune instance.
-    fn transient(st: u32) -> bool {
-        st == PDH_NO_DATA || st == PDH_INVALID_DATA || st == PDH_CALC_NEGATIVE_DENOMINATOR
+    /// Statuts PDH qui ne sont pas des erreurs : repos (NO_DATA) ou mesure impossible ce tick.
+    fn special(st: u32) -> Option<Reading> {
+        if st == PDH_NO_DATA {
+            Some(Reading::Idle)
+        } else if st == PDH_INVALID_DATA || st == PDH_CALC_NEGATIVE_DENOMINATOR {
+            Some(Reading::Transient)
+        } else {
+            None
+        }
     }
 
-    /// `None` : pas de donnée ce tick. Boucle sur PDH_MORE_DATA (le nombre d'instances peut grandir entre deux appels).
-    fn array(counter: PDH_HCOUNTER) -> Result<Option<Vec<(String, f64)>>, String> {
+    /// `Err(lecture)` : pas de tableau, la lecture à rapporter à la place. Boucle sur PDH_MORE_DATA (le nombre
+    /// d'instances peut grandir entre deux appels), 4 essais au plus.
+    fn array(counter: PDH_HCOUNTER) -> Result<Result<Vec<(String, f64)>, Reading>, String> {
         let (mut size, mut count) = (0u32, 0u32);
         let mut buf: Vec<u64> = vec![]; // u64 pour l'alignement des éléments
         for _ in 0..4 {
@@ -290,21 +328,19 @@ mod gpu {
                 buf = vec![0u64; (size as usize).div_ceil(8)];
                 continue;
             }
-            if transient(st) {
-                return Ok(None);
+            if let Some(r) = special(st) {
+                return Ok(Err(r));
             }
             check(st, "PdhGetFormattedCounterArray")?;
-            if buf.is_empty() {
-                return Ok(Some(vec![]));
+            if buf.is_empty() || count == 0 {
+                return Ok(Err(Reading::Idle));
             }
             let slice = unsafe { std::slice::from_raw_parts(items, count as usize) };
-            return Ok(Some(
-                slice
-                    .iter()
-                    .filter(|i| i.FmtValue.CStatus == 0)
-                    .map(|i| (unsafe { i.szName.to_string() }.unwrap_or_default(), unsafe { i.FmtValue.Anonymous.doubleValue }))
-                    .collect(),
-            ));
+            return Ok(Ok(slice
+                .iter()
+                .filter(|i| i.FmtValue.CStatus == 0)
+                .map(|i| (unsafe { i.szName.to_string() }.unwrap_or_default(), unsafe { i.FmtValue.Anonymous.doubleValue }))
+                .collect()));
         }
         Err("PdhGetFormattedCounterArray : taille instable".into())
     }
@@ -336,6 +372,20 @@ mod tests {
             assert!(f.record(false));
         }
         assert!(!f.record(false), "5e échec de suite : PDH coupé");
+    }
+
+    #[test]
+    fn gpu_repos_puis_transitoires_bornes_puis_reprise() {
+        let mut h = GpuHold::new();
+        assert_eq!(h.apply(Reading::Value(40.0, 900)), Some((40.0, 900)));
+        assert_eq!(h.apply(Reading::Idle), Some((0.0, 0)), "repos : 0, pas la dernière valeur haute");
+        assert_eq!(h.apply(Reading::Value(40.0, 900)), Some((40.0, 900)));
+        for _ in 0..3 {
+            assert_eq!(h.apply(Reading::Transient), Some((40.0, 900)), "3 ticks transitoires : dernière valeur");
+        }
+        assert_eq!(h.apply(Reading::Transient), None, "4e : inconnu");
+        assert_eq!(h.apply(Reading::Value(10.0, 500)), Some((10.0, 500)));
+        assert_eq!(h.apply(Reading::Transient), Some((10.0, 500)), "le compteur est reparti de zéro");
     }
 
     #[test]

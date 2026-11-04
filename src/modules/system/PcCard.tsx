@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
 import { Card } from "../../ui/Card";
-import { isTauri } from "../../lib/ipc";
 import { usePanelStore } from "../../panel/store";
-import { FAKE_STATUS, systemIpc, type SystemStatus } from "./api";
+import { systemIpc, type SystemStatus } from "./api";
 import { Gauge } from "./Gauge";
 import "./system.css";
 
@@ -10,11 +9,14 @@ const pct = (used: number, total: number) => (total > 0 ? (used / total) * 100 :
 
 export function PcCard() {
   const open = usePanelStore((s) => s.open);
-  const [st, setSt] = useState<SystemStatus | null>(isTauri ? null : FAKE_STATUS);
+  const [st, setSt] = useState<SystemStatus | null>(null);
 
   // Abonné seulement panneau ouvert : fermé, plus d'écoute (et l'échantillonneur Rust est arrêté).
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setSt(null); // réouverture : « – » jusqu'au premier tick
+      return;
+    }
     let live = true;
     const off = systemIpc.subscribe((s) => { if (live) setSt(s); });
     return () => { live = false; off(); };

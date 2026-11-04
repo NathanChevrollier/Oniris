@@ -22,7 +22,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
             // « Paramètres » : la section viendra au plan 7, on ouvre le panneau.
             "open" | "settings" => {
                 if let Err(e) = windows::open_panel(app) {
-                    eprintln!("tray: ouverture du panneau : {e}");
+                    tracing::error!("tray: ouverture du panneau : {e}");
                 }
             }
             "pause" => {
@@ -36,7 +36,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
         .on_tray_icon_event(|tray, ev| {
             if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = ev {
                 if let Err(e) = windows::toggle_panel(tray.app_handle()) {
-                    eprintln!("tray: bascule du panneau : {e}");
+                    tracing::error!("tray: bascule du panneau : {e}");
                 }
             }
         });
@@ -57,14 +57,14 @@ pub fn sync_autostart(app: &AppHandle, enabled: bool) {
     // Un build de dev ou de mesure inscrirait son exe de target/ dans la clé Run, qui lui survivrait.
     if cfg!(debug_assertions) || cfg!(feature = "perf") {
         static LOGGED: std::sync::Once = std::sync::Once::new();
-        LOGGED.call_once(|| eprintln!("autostart: ignoré en build de debug ou de mesure"));
+        LOGGED.call_once(|| tracing::info!("autostart: ignoré en build de debug ou de mesure"));
         return;
     }
     let mgr = app.autolaunch();
     let current = match mgr.is_enabled() {
         Ok(c) => c,
         Err(e) => {
-            eprintln!("autostart: lecture de l'état : {e}");
+            tracing::error!("autostart: lecture de l'état : {e}");
             return;
         }
     };
@@ -74,14 +74,14 @@ pub fn sync_autostart(app: &AppHandle, enabled: bool) {
         None => return,
     };
     if let Err(e) = res {
-        eprintln!("autostart: mise à jour : {e}");
+        tracing::error!("autostart: mise à jour : {e}");
     }
 }
 
 #[allow(dead_code)] // utilisée par les rappels et sondes (plans suivants)
 pub fn notify(app: &AppHandle, title: &str, body: &str) {
     if let Err(e) = app.notification().builder().title(title).body(body).show() {
-        eprintln!("notification: {e}");
+        tracing::error!("notification: {e}");
     }
 }
 

@@ -122,7 +122,7 @@ pub fn reapply(app: &AppHandle) {
 fn hook(ev: u32, pid: u32) -> Option<HWINEVENTHOOK> {
     let h = unsafe { SetWinEventHook(ev, ev, None, Some(on_event), pid, 0, FLAGS) };
     if h.is_invalid() {
-        eprintln!("oniris: SetWinEventHook a échoué pour l'événement {ev:#x}");
+        tracing::error!("oniris: SetWinEventHook a échoué pour l'événement {ev:#x}");
         return None;
     }
     Some(h)

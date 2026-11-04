@@ -244,7 +244,7 @@ struct Ptt {
 fn dispatch(app: &AppHandle, action: HotkeyAction) {
     let ptt = |phase| {
         #[cfg(debug_assertions)]
-        eprintln!("Oniris : ptt {phase}");
+        tracing::debug!("ptt {phase}");
         app.emit(
             "oniris://ptt",
             Ptt {
@@ -259,7 +259,7 @@ fn dispatch(app: &AppHandle, action: HotkeyAction) {
         HotkeyAction::PttEnd => ptt("end"),
     };
     if let Err(e) = result {
-        eprintln!("Oniris : action du raccourci impossible : {e}");
+        tracing::error!("Oniris : action du raccourci impossible : {e}");
     }
 }
 
@@ -290,7 +290,7 @@ pub fn start_hook(app: AppHandle, cfg: Arc<RwLock<HotkeyConfig>>) {
                 })
             });
             let Some(mut hook) = install() else {
-                eprintln!("Oniris : installation du crochet clavier impossible");
+                tracing::error!("Oniris : installation du crochet clavier impossible");
                 return;
             };
             let reinstall_timer = SetTimer(None, 0, REINSTALL_MS, None);
@@ -319,7 +319,7 @@ pub fn start_hook(app: AppHandle, cfg: Arc<RwLock<HotkeyConfig>>) {
             }
         });
     if let Err(e) = actions.and(hook) {
-        eprintln!("Oniris : démarrage du raccourci impossible : {e}");
+        tracing::error!("Oniris : démarrage du raccourci impossible : {e}");
     }
 }
 

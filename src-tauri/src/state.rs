@@ -19,6 +19,8 @@ pub struct AppState {
     pub broker: Arc<ToolBroker>,
     /// Relu par le crochet clavier à chaque touche : n'écrire que brièvement, sans E/S.
     pub hotkey: Arc<RwLock<HotkeyConfig>>,
+    /// Garde le journal fichier vivant (vidage à la fermeture).
+    pub _log_guard: Option<tracing_appender::non_blocking::WorkerGuard>,
 }
 
 impl AppState {
@@ -42,6 +44,7 @@ impl AppState {
             voice_paused: AtomicBool::new(false),
             hide_pill_in_fullscreen: AtomicBool::new(s.hide_pill_in_fullscreen),
             hotkey: Arc::new(RwLock::new(HotkeyConfig::from_setting(&s.hotkey, s.hold_threshold_ms as u64))),
+            _log_guard: None,
             db,
             broker,
             settings: RwLock::new(s),

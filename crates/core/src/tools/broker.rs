@@ -83,14 +83,14 @@ impl ToolBroker {
         match res {
             Ok(r) => {
                 if let Err(e) = journal::finish(&c, id, "done", &r.output, r.undo.as_ref()) {
-                    eprintln!("oniris: journal de l'action {id} non mis à jour : {e}");
+                    tracing::error!("oniris: journal de l'action {id} non mis à jour : {e}");
                 }
                 ToolOutcome::Done { action_id: id, output: r.output }
             }
             Err(e) => {
                 let err = e.to_string();
                 if let Err(e) = journal::finish(&c, id, "failed", &json!({ "error": err }), None) {
-                    eprintln!("oniris: journal de l'action {id} non mis à jour : {e}");
+                    tracing::error!("oniris: journal de l'action {id} non mis à jour : {e}");
                 }
                 ToolOutcome::Failed { action_id: id, error: err }
             }

@@ -114,7 +114,7 @@ pub fn load_settings(conn: &Connection) -> Result<Settings, CoreError> {
             Ok(mut s) => {
                 let errs = s.fix();
                 if !errs.is_empty() {
-                    eprintln!("oniris: réglages corrigés au chargement : {}", errs.join(" ; "));
+                    tracing::warn!("réglages corrigés au chargement : {}", errs.join(" ; "));
                 }
                 Ok(s)
             }

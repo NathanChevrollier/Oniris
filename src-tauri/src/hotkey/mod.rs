@@ -32,7 +32,7 @@ impl Default for HotkeyConfig {
 impl HotkeyConfig {
     pub fn from_setting(s: &oniris_core::HotkeySetting, threshold_ms: u64) -> Self {
         let vk = key_to_vk(&s.key).unwrap_or_else(|| {
-            eprintln!("oniris: touche de raccourci inconnue {:?}, Espace conservée", s.key);
+            tracing::warn!("touche de raccourci inconnue {:?}, Espace conservée", s.key);
             0x20
         });
         Self { alt: s.alt, ctrl: s.ctrl, shift: s.shift, win: s.win, vk, threshold_ms }

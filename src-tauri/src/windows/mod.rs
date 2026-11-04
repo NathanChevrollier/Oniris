@@ -96,7 +96,7 @@ pub fn close_on_blur(app: AppHandle) {
         let refocused = window(&app, "panel").and_then(|w| w.is_focused()).unwrap_or(false);
         if !refocused && app.state::<AppState>().panel_open.load(Ordering::SeqCst) {
             if let Err(e) = close_panel(&app) {
-                eprintln!("oniris: fermeture du panneau sur perte de focus : {e}");
+                tracing::error!("oniris: fermeture du panneau sur perte de focus : {e}");
             }
         }
     });

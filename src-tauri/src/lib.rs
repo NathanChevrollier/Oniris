@@ -1,6 +1,7 @@
 mod commands;
 mod fullscreen;
 mod hotkey;
+mod logging;
 #[cfg(any(debug_assertions, feature = "perf"))]
 mod perf;
 mod state;
@@ -17,7 +18,7 @@ pub fn run() {
                 return;
             }
             if let Err(e) = windows::open_panel(app) {
-                eprintln!("instance unique : {e}");
+                tracing::error!("instance unique : {e}");
             }
         }))
         .plugin(tauri_plugin_autostart::init(
@@ -46,13 +47,15 @@ pub fn run() {
             }
         })
         .setup(|app| {
-            let st = state::AppState::open(app.handle())?;
+            let guard = logging::init(&logging::log_dir());
+            let mut st = state::AppState::open(app.handle()).inspect_err(|e| tracing::error!("ouverture de la base impossible : {e}"))?;
+            st._log_guard = guard;
             let hotkey_cfg = st.hotkey.clone();
             let autostart = st.settings.read().autostart;
             app.manage(st);
             // Pas encore d'écran (session qui s'ouvre) : on continue sans pilule plutôt que d'échouer.
             if let Err(e) = windows::show_pill(app.handle()) {
-                eprintln!("pilule : affichage au démarrage impossible : {e}");
+                tracing::error!("pilule : affichage au démarrage impossible : {e}");
             }
             tray::build(app.handle())?;
             tray::sync_autostart(app.handle(), autostart);

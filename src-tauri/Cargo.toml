@@ -19,6 +19,9 @@ tauri-plugin-autostart = "2"
 tauri-plugin-notification = "2"
 serde = { version = "1", features = ["derive"] }
 parking_lot = "0.12"
+tracing = "0.1"
+tracing-appender = "0.2"
+tracing-subscriber = "0.3"
 rusqlite = { version = "0.37", features = ["bundled"] }
 windows = { version = "0.62", features = [
   "Win32_Foundation",
@@ -34,3 +37,6 @@ windows = { version = "0.62", features = [
 [features]
 perf = []
 custom-protocol = ["tauri/custom-protocol"] # embarque le frontend (build release)
+
+[dev-dependencies]
+tempfile = "3"

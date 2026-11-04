@@ -3,6 +3,7 @@ mod error;
 pub mod events;
 mod settings;
 pub mod tools;
+pub mod when;
 
 pub use db::{migrate, open_db, Migration, CORE_MIGRATIONS};
 pub use error::CoreError;

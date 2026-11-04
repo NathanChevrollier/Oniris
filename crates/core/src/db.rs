@@ -110,6 +110,14 @@ Migration {
         created_ms INTEGER NOT NULL
     ) STRICT;
     CREATE UNIQUE INDEX clipboard_hash ON clipboard(hash);",
+},
+Migration {
+    version: 8,
+    sql: "CREATE TABLE kv (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL,
+        updated_ms INTEGER NOT NULL
+    ) STRICT;",
 }];
 
 pub fn open_db(path: &Path) -> Result<Connection, CoreError> {

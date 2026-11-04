@@ -34,6 +34,8 @@
     "allow-clipboard-delete",
     "allow-clipboard-paste",
     "allow-system-snapshot",
+    "allow-weather-get",
+    "allow-weather-refresh",
     "allow-perf-frame",
     "allow-perf-open-cycles"
   ]

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-weather-refresh"
+description = "Enables the weather_refresh command without any pre-configured scope."
+commands.allow = ["weather_refresh"]
+
+[[permission]]
+identifier = "deny-weather-refresh"
+description = "Denies the weather_refresh command without any pre-configured scope."
+commands.deny = ["weather_refresh"]

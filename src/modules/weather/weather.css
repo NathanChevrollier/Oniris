@@ -1,0 +1,8 @@
+.clock .w{font-size:13px;color:var(--txt2);margin-top:4px;display:flex;gap:10px;justify-content:flex-end;align-items:center}
+.w.stale{opacity:.5}
+.w button{font:inherit;background:none;border:0;padding:0;cursor:pointer}
+.w .wplace{color:var(--txt3)}
+.w .wlink{color:var(--txt2);text-decoration:underline;text-underline-offset:3px}
+.w button:hover,.w button:focus-visible{color:var(--txt)}
+.w .wcity{width:150px;height:24px;padding:0 10px;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.06);font:13px var(--font);color:var(--txt);outline:0;caret-color:var(--acc)}
+.w .wcity:focus{border-color:rgba(255,140,100,.35)}

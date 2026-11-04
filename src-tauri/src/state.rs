@@ -19,6 +19,8 @@ pub struct AppState {
     pub voice_paused: AtomicBool,
     /// Seule connexion du processus.
     pub db: Arc<Mutex<Connection>>,
+    /// Client HTTP partagé (météo) : délai 8 s, agent générique.
+    pub http: reqwest::Client,
     pub settings: RwLock<Settings>,
     /// Seul point de passage des actions d'IRIS ; ses outils sont fixés dans `AppState::open`.
     pub broker: Arc<ToolBroker>,
@@ -54,6 +56,7 @@ impl AppState {
         tools.extend(oniris_core::clipboard::tools::all(&db));
         let snapshot: oniris_core::system::tools::Snapshot = Arc::new(crate::modules::system::snapshot);
         tools.extend(oniris_core::system::tools::all(&snapshot));
+        tools.extend(oniris_core::weather::tools::all(&db));
         let broker = Arc::new(ToolBroker::new(db.clone(), clock, tools)?);
         broker.mark_interrupted();
         broker.expire_stale();
@@ -65,6 +68,7 @@ impl AppState {
             hotkey: Arc::new(RwLock::new(HotkeyConfig::from_setting(&s.hotkey, s.hold_threshold_ms as u64))),
             events,
             scheduler: OnceLock::new(),
+            http: oniris_core::weather::client()?,
             _log_guard: None,
             db,
             broker,

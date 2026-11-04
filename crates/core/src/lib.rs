@@ -3,6 +3,7 @@ pub mod clipboard;
 mod db;
 mod error;
 pub mod events;
+pub mod kv;
 pub mod notes;
 pub mod reminders;
 pub mod system;
@@ -10,6 +11,7 @@ pub mod timers;
 mod settings;
 pub mod time_util;
 pub mod tools;
+pub mod weather;
 pub mod when;
 
 pub use db::{migrate, open_db, Migration, CORE_MIGRATIONS};

@@ -82,6 +82,7 @@ pub fn open_panel(app: &AppHandle) -> tauri::Result<()> {
     win.set_focus()?;
     set_panel_state(app, true)?;
     crate::modules::system::set_sampling(app, true);
+    crate::modules::weather::on_panel_open(app);
     Ok(())
 }
 

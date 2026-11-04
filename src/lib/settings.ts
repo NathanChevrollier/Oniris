@@ -29,6 +29,8 @@ export type Settings = {
   clipboard_retention_days: number;
   /** 20..=1000 */
   clipboard_max_items: number;
+  /** Ville de la météo, 80 caractères au plus ; vide = météo désactivée. */
+  weather_city: string;
 };
 
 /** Miroir de `Settings::default()` côté Rust : valeurs affichées avant la réponse de `settings_get`. */
@@ -48,6 +50,7 @@ export const DEFAULT_SETTINGS: Settings = {
   clipboard_enabled: true,
   clipboard_retention_days: 7,
   clipboard_max_items: 200,
+  weather_city: "",
 };
 
 /** Paramètres courants : chargés au montage, puis suivis via `oniris://settings`. */

@@ -37,6 +37,8 @@ pub struct Settings {
     pub clipboard_enabled: bool,
     pub clipboard_retention_days: u16,
     pub clipboard_max_items: u16,
+    /// Ville de la météo : vide = météo désactivée (aucune requête). 80 caractères au plus.
+    pub weather_city: String,
 }
 
 impl Default for Settings {
@@ -57,6 +59,7 @@ impl Default for Settings {
             clipboard_enabled: true,
             clipboard_retention_days: 7,
             clipboard_max_items: 200,
+            weather_city: String::new(),
         }
     }
 }
@@ -116,6 +119,11 @@ impl Settings {
         if !(20..=1000).contains(&self.clipboard_max_items) {
             errs.push("taille de l'historique du presse-papiers hors de 20..=1000".into());
             self.clipboard_max_items = d.clipboard_max_items;
+        }
+        self.weather_city = self.weather_city.trim().to_string();
+        if self.weather_city.chars().count() > 80 {
+            errs.push("ville de la météo : 80 caractères au plus".into());
+            self.weather_city = d.weather_city.clone();
         }
         if let Err(e) = check_hotkey(&self.hotkey) {
             errs.push(e);
@@ -224,6 +232,11 @@ mod tests {
         assert!(bad(|s| s.clipboard_retention_days = 91));
         assert!(bad(|s| s.clipboard_max_items = 19));
         assert!(bad(|s| s.clipboard_max_items = 1001));
+        assert!(bad(|s| s.weather_city = "v".repeat(81)));
+        assert!(Settings { weather_city: "v".repeat(80), ..Settings::default() }.validate().is_ok());
+        let mut s = Settings { weather_city: "  Paris ".into(), ..Settings::default() };
+        assert!(s.fix().is_empty());
+        assert_eq!(s.weather_city, "Paris");
         assert!(Settings { clipboard_retention_days: 1, clipboard_max_items: 20, ..Settings::default() }.validate().is_ok());
         assert!(Settings { clipboard_retention_days: 90, clipboard_max_items: 1000, ..Settings::default() }.validate().is_ok());
         // Sans Alt/Ctrl/Win : refusé, Maj seule ne compte pas.

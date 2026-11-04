@@ -34,16 +34,21 @@ pub fn settings_get(state: State<AppState>) -> Settings {
 
 #[tauri::command]
 pub fn settings_save(app: AppHandle, state: State<AppState>, settings: Settings) -> Result<(), String> {
+    let mut settings = settings;
+    settings.weather_city = settings.weather_city.trim().to_string();
     settings.validate()?;
     save_settings(&state.db.lock(), &settings).map_err(|e| e.to_string())?;
     let cfg = HotkeyConfig::from_setting(&settings.hotkey, settings.hold_threshold_ms as u64);
     *state.hotkey.write() = cfg;
     let hide = settings.hide_pill_in_fullscreen;
     let changed = state.hide_pill_in_fullscreen.swap(hide, Ordering::SeqCst) != hide;
-    *state.settings.write() = settings.clone();
+    let old_city = std::mem::replace(&mut *state.settings.write(), settings.clone()).weather_city;
     crate::tray::sync_autostart(&app, settings.autostart);
     if changed {
         fullscreen::reapply(&app);
+    }
+    if old_city != settings.weather_city {
+        crate::modules::weather::city_changed(&app, &settings.weather_city);
     }
     app.emit("oniris://settings", settings).map_err(|e| e.to_string())
 }

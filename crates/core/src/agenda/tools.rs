@@ -1,6 +1,8 @@
 //! Outils de l'agenda. Le verrou de la base n'est jamais tenu au-delà d'un bloc synchrone (aucun `.await`).
 use super::{between, get, insert, set_deleted, update_times, Event, NewEvent};
 use crate::events::{Events, Topic};
+use crate::time_util::local_day_bounds;
+use crate::tools::helpers::{bad, failed, low, parse, spec};
 use crate::tools::{ConfirmationText, Permission, Risk, Tool, ToolError, ToolResult, ToolSpec};
 use crate::when::{at_default_hour, parse_when};
 use async_trait::async_trait;
@@ -13,18 +15,6 @@ use std::sync::Arc;
 
 type Db = Arc<Mutex<Connection>>;
 
-fn bad(e: impl ToString) -> ToolError { ToolError::BadArgs(e.to_string()) }
-fn failed(e: impl ToString) -> ToolError { ToolError::Failed(e.to_string()) }
-fn parse<T: for<'a> Deserialize<'a>>(a: &Value) -> Result<T, ToolError> {
-    serde_json::from_value(a.clone()).map_err(bad)
-}
-fn spec(name: &str, description: &str, args_schema: Value, permission: Permission) -> ToolSpec {
-    ToolSpec { name: name.into(), description: description.into(), args_schema, permission }
-}
-fn low(summary: &str) -> ConfirmationText {
-    ConfirmationText { summary: summary.into(), details: String::new(), risk: Risk::Low }
-}
-
 pub struct CreateEvent { pub db: Db, pub events: Arc<dyn Events> }
 pub struct MoveEvent { pub db: Db, pub events: Arc<dyn Events> }
 pub struct DeleteEvent { pub db: Db, pub events: Arc<dyn Events> }
@@ -35,21 +25,27 @@ struct CreateArgs { text: Option<String>, title: Option<String>, start_ms: Optio
 
 impl CreateArgs {
     fn into_new(self) -> Result<NewEvent, ToolError> {
-        if let Some(text) = self.text {
+        let ev = if let Some(text) = self.text {
             let w = parse_when(&text, Local::now()).ok_or_else(|| bad("date introuvable"))?;
             let title = if w.rest.trim().is_empty() { text.trim().to_string() } else { w.rest.clone() };
-            return Ok(NewEvent {
+            NewEvent {
                 title,
                 start_ms: if w.all_day { w.start } else { at_default_hour(&w) }.timestamp_millis(),
                 end_ms: w.end.map(|e| e.timestamp_millis()),
                 all_day: w.all_day,
                 ..Default::default()
-            });
-        }
-        let title = self.title.filter(|t| !t.trim().is_empty()).ok_or_else(|| bad("titre manquant"))?;
-        let start_ms = self.start_ms.ok_or_else(|| bad("start_ms manquant"))?;
-        if self.end_ms.is_some_and(|e| e < start_ms) { return Err(bad("la fin précède le début")); }
-        Ok(NewEvent { title, start_ms, end_ms: self.end_ms, all_day: self.all_day.unwrap_or(false), ..Default::default() })
+            }
+        } else {
+            let title = self.title.filter(|t| !t.trim().is_empty()).ok_or_else(|| bad("titre manquant"))?;
+            let start_ms = self.start_ms.ok_or_else(|| bad("start_ms manquant"))?;
+            if self.end_ms.is_some_and(|e| e < start_ms) { return Err(bad("la fin précède le début")); }
+            NewEvent { title, start_ms, end_ms: self.end_ms, all_day: self.all_day.unwrap_or(false), ..Default::default() }
+        };
+        // Journée entière : minuit local → minuit local suivant (23 h ou 25 h les jours de changement d'heure).
+        Ok(if ev.all_day {
+            let (start_ms, end) = local_day_bounds(ev.start_ms);
+            NewEvent { start_ms, end_ms: Some(end), ..ev }
+        } else { ev })
     }
 }
 
@@ -212,6 +208,16 @@ mod tests {
         broker.undo(action_id).await.unwrap();
         assert!(rows(&db).is_empty());
         assert_eq!(count.0.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
+    async fn journee_entiere_va_de_minuit_a_minuit() {
+        let (_d, db, _c, broker) = setup();
+        let noon = Local::now().timestamp_millis();
+        broker.call(call("agenda.create_event", json!({"title": "Congé", "start_ms": noon, "all_day": true}))).await;
+        let e = &rows(&db)[0];
+        assert_eq!((e.start_ms, e.end_ms), { let (a, b) = local_day_bounds(noon); (a, Some(b)) });
+        assert!(e.all_day);
     }
 
     #[tokio::test]

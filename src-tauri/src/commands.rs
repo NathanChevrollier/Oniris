@@ -1,7 +1,7 @@
 use crate::hotkey::HotkeyConfig;
 use crate::state::AppState;
 use crate::{fullscreen, windows};
-use oniris_core::tools::{JournalEntry, ToolBroker, ToolCall, ToolOutcome};
+use oniris_core::tools::{JournalEntry, Origin, Provenance, ToolBroker, ToolCall, ToolOutcome};
 use oniris_core::{save_settings, Settings};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -57,6 +57,11 @@ pub async fn dispatch_tool_call(app: &AppHandle, call: ToolCall) -> ToolOutcome 
         let _ = app.emit_to("panel", "oniris://confirm", p);
     }
     outcome
+}
+
+/// Appel d'outil demandé par l'utilisateur depuis l'interface (origine et provenance « User »).
+pub async fn dispatch_as_user(app: &AppHandle, tool: &str, args: serde_json::Value) -> ToolOutcome {
+    dispatch_tool_call(app, ToolCall { tool: tool.into(), args, provenance: Provenance::User, origin: Origin::User }).await
 }
 
 /// Approuver ou annuler une action : seulement depuis le panneau, et seulement s'il est ouvert (visible).

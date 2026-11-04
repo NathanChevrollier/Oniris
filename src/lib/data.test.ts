@@ -69,3 +69,18 @@ it("deux rechargements qui se doublent : seul le dernier résultat compte", asyn
   await act(async () => { r1("first"); });
   expect(result.current.data).toBe("second");
 });
+
+it("clé changée panneau ouvert : recharge ; panneau fermé : périmé jusqu'à la réouverture", async () => {
+  usePanelStore.setState({ open: true });
+  const { rerender } = renderHook(({ k }) => useTopic("notes", fetcher, "init", k), { initialProps: { k: "2026-11-04" } });
+  await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1));
+  rerender({ k: "2026-11-04" });
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  rerender({ k: "2026-11-05" });
+  await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
+  await setOpen(false);
+  rerender({ k: "2026-11-06" });
+  expect(fetcher).toHaveBeenCalledTimes(2);
+  await setOpen(true);
+  await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(3));
+});

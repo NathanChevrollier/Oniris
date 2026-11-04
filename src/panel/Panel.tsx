@@ -7,7 +7,8 @@ import { Header } from "./Header";
 import { Timeline, type TimelineItem } from "./Timeline";
 import { useTopic } from "../lib/data";
 import { AgendaCard } from "../modules/agenda/AgendaCard";
-import { agendaIpc, dayBounds, type AgendaEvent } from "../modules/agenda/api";
+import { useNow } from "../lib/time";
+import { agendaIpc, dayBounds, dayKey, type AgendaEvent } from "../modules/agenda/api";
 import { CardGrid } from "./CardGrid";
 import { CommandBar } from "./CommandBar";
 import { ConfirmQueue } from "./ConfirmQueue";
@@ -23,7 +24,9 @@ const NO_EVENTS: AgendaEvent[] = [];
 export function Panel({ onCommand = logCommand }: { onCommand?: (text: string) => void }) {
   const open = usePanelStore((s) => s.open);
   const settings = useSettings();
-  const today = useTopic<AgendaEvent[]>("agenda", () => agendaIpc.between(...dayBounds(new Date())), NO_EVENTS);
+  const now = useNow(60_000, open);
+  // La clé du jour recharge la frise après minuit (ou à la réouverture le lendemain).
+  const today = useTopic<AgendaEvent[]>("agenda", () => agendaIpc.between(...dayBounds(new Date())), NO_EVENTS, dayKey(now));
   // Les événements « journée entière » n'ont pas d'heure : ils restent dans la carte Agenda.
   const items = useMemo<TimelineItem[]>(() => today.data.filter((e) => !e.all_day).map((e) => ({
     start: new Date(e.start_ms), end: e.end_ms == null ? undefined : new Date(e.end_ms), label: e.title, kind: "event", color: e.color ?? undefined,

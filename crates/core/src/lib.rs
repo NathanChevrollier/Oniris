@@ -3,6 +3,7 @@ mod db;
 mod error;
 pub mod events;
 mod settings;
+pub mod time_util;
 pub mod tools;
 pub mod when;
 

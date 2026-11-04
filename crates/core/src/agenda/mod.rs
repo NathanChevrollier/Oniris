@@ -62,11 +62,13 @@ pub fn get(c: &Connection, id: i64) -> Result<Option<Event>, CoreError> {
     Ok(rows.next().transpose()?)
 }
 
-/// Événements qui chevauchent [from_ms, to_ms[ ; sans fin, un événement est un instant.
+/// Événements qui chevauchent [from_ms, to_ms[. La fin est exclue : finir pile à `from_ms` ne compte pas ;
+/// un événement sans fin (ou de durée nulle) est un instant, compté si `start_ms >= from_ms`.
 pub fn between(c: &Connection, from_ms: i64, to_ms: i64) -> Result<Vec<Event>, CoreError> {
     let mut st = c.prepare(&format!(
         "SELECT {COLS} FROM events
-         WHERE deleted = 0 AND start_ms < ?2 AND COALESCE(end_ms, start_ms) >= ?1
+         WHERE deleted = 0 AND start_ms < ?2 AND (
+             (end_ms > start_ms AND end_ms > ?1) OR ((end_ms IS NULL OR end_ms = start_ms) AND start_ms >= ?1))
          ORDER BY start_ms, id"
     ))?;
     let rows = st.query_map([from_ms, to_ms], from_row)?;
@@ -131,6 +133,17 @@ mod tests {
         insert(&c, &ev("après", ms(2026, 11, 13, 8), None)).unwrap();
         let got = between(&c, ms(2026, 11, 12, 0), ms(2026, 11, 13, 0)).unwrap();
         assert_eq!(got.iter().map(|e| e.id).collect::<Vec<_>>(), vec![id]);
+    }
+
+    #[test]
+    fn fin_exclusive_un_evenement_qui_finit_a_minuit_n_est_pas_le_jour_suivant() {
+        let (_d, c) = db();
+        let soir = insert(&c, &ev("soir", ms(2026, 11, 11, 22), Some(ms(2026, 11, 12, 0)))).unwrap();
+        let jour = insert(&c, &NewEvent { all_day: true, ..ev("jour", ms(2026, 11, 11, 0), Some(ms(2026, 11, 12, 0))) }).unwrap();
+        let instant = insert(&c, &ev("instant", ms(2026, 11, 12, 0), None)).unwrap();
+        let ids = |d: u32| between(&c, ms(2026, 11, d, 0), ms(2026, 11, d + 1, 0)).unwrap().iter().map(|e| e.id).collect::<Vec<_>>();
+        assert_eq!(ids(11), vec![jour, soir]);
+        assert_eq!(ids(12), vec![instant]);
     }
 
     #[test]

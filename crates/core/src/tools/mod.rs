@@ -1,4 +1,5 @@
 //! Courtier d'outils : toute action d'IRIS passe par `ToolBroker`.
+pub mod helpers;
 mod broker;
 mod journal;
 

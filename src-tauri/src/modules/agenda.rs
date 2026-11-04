@@ -1,9 +1,9 @@
 //! Commandes Tauri de l'agenda. Lecture directe de la base ; création et suppression passent par le courtier.
-use crate::commands::dispatch_tool_call;
+use crate::commands::dispatch_as_user;
 use crate::state::AppState;
 use chrono::{Local, NaiveDate, TimeZone};
 use oniris_core::agenda::{self, Event};
-use oniris_core::tools::{Origin, Provenance, ToolCall, ToolOutcome};
+use oniris_core::tools::ToolOutcome;
 use serde_json::json;
 use tauri::{AppHandle, State};
 
@@ -27,19 +27,15 @@ pub fn agenda_month_days(state: State<AppState>, year: i32, month: u32) -> Resul
     agenda::days_with_events(&state.db.lock(), from, to).map_err(|e| e.to_string())
 }
 
-async fn as_user(app: &AppHandle, tool: &str, args: serde_json::Value) -> ToolOutcome {
-    dispatch_tool_call(app, ToolCall { tool: tool.into(), args, provenance: Provenance::User, origin: Origin::User }).await
-}
-
 #[tauri::command]
 pub async fn agenda_create(app: AppHandle, text: String) -> ToolOutcome {
-    as_user(&app, "agenda.create_event", json!({ "text": text })).await
+    dispatch_as_user(&app, "agenda.create_event", json!({ "text": text })).await
 }
 
 /// Passe par la confirmation : la suppression n'a lieu qu'après l'accord dans la carte du panneau.
 #[tauri::command]
 pub async fn agenda_delete(app: AppHandle, id: i64) -> ToolOutcome {
-    as_user(&app, "agenda.delete_event", json!({ "id": id })).await
+    dispatch_as_user(&app, "agenda.delete_event", json!({ "id": id })).await
 }
 
 #[cfg(test)]

@@ -5,7 +5,7 @@ import { usePanelStore } from "../panel/store";
 export type Topic = "agenda" | "reminders" | "notes" | "timers" | "clipboard" | "weather";
 
 /** Données d'un sujet : chargées à la première ouverture, rechargées sur `oniris://changed` (panneau ouvert) ou à la réouverture si périmées. */
-export function useTopic<T>(topic: Topic, fetcher: () => Promise<T>, initial: T): { data: T; reload: () => void } {
+export function useTopic<T>(topic: Topic, fetcher: () => Promise<T>, initial: T, key?: string): { data: T; reload: () => void } {
   const open = usePanelStore((s) => s.open);
   const [data, setData] = useState<T>(initial);
   const f = useRef(fetcher);
@@ -31,6 +31,15 @@ export function useTopic<T>(topic: Topic, fetcher: () => Promise<T>, initial: T)
   useEffect(() => {
     if (open && (!loaded.current || stale.current)) reload();
   }, [open, reload]);
+
+  // `key` (ex. le jour affiché) change : recharge si le panneau est ouvert, sinon marque périmé.
+  const prevKey = useRef(key);
+  useEffect(() => {
+    if (prevKey.current === key) return;
+    prevKey.current = key;
+    if (openRef.current) reload();
+    else stale.current = true;
+  }, [key, reload]);
 
   useEffect(() => {
     const un = listen<{ topic: Topic }>("oniris://changed", (e) => {

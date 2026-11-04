@@ -27,7 +27,7 @@ const fakeDone: ToolOutcome = { Done: { action_id: 0, output: {} } };
 export const agendaIpc = {
   between: (from_ms: number, to_ms: number): Promise<AgendaEvent[]> =>
     isTauri ? invoke("agenda_between", { fromMs: from_ms, toMs: to_ms })
-      : Promise.resolve(fakeEvents().filter((e) => e.start_ms < to_ms && (e.end_ms ?? e.start_ms) >= from_ms)),
+      : Promise.resolve(fakeEvents().filter((e) => e.start_ms < to_ms && (e.end_ms != null && e.end_ms > e.start_ms ? e.end_ms > from_ms : e.start_ms >= from_ms))),
   /** `month` : 1 à 12. */
   monthDays: (year: number, month: number): Promise<number[]> =>
     isTauri ? invoke("agenda_month_days", { year, month })
@@ -36,6 +36,9 @@ export const agendaIpc = {
   /** Passe par la carte de confirmation du panneau. */
   remove: (id: number): Promise<ToolOutcome> => isTauri ? invoke("agenda_delete", { id }) : Promise.resolve(fakeDone),
 };
+
+/** Clé de jour locale (AAAA-MM-JJ). */
+export const dayKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
 export const dayBounds = (d: Date): [number, number] => {
   const a = new Date(d.getFullYear(), d.getMonth(), d.getDate());

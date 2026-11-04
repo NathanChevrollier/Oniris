@@ -1,9 +1,12 @@
 mod commands;
+mod events;
 mod fullscreen;
 mod hotkey;
 mod logging;
+mod modules;
 #[cfg(any(debug_assertions, feature = "perf"))]
 mod perf;
+mod scheduler;
 mod state;
 mod tray;
 mod windows;
@@ -53,6 +56,7 @@ pub fn run() {
             let hotkey_cfg = st.hotkey.clone();
             let autostart = st.settings.read().autostart;
             app.manage(st);
+            let _ = app.state::<state::AppState>().scheduler.set(scheduler::Scheduler::start(app.handle().clone()));
             // Pas encore d'écran (session qui s'ouvre) : on continue sans pilule plutôt que d'échouer.
             if let Err(e) = windows::show_pill(app.handle()) {
                 tracing::error!("pilule : affichage au démarrage impossible : {e}");

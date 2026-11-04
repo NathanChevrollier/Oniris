@@ -1,0 +1,57 @@
+import { renderHook, act, waitFor, cleanup } from "@testing-library/react";
+import { it, expect, vi, beforeEach, afterEach } from "vitest";
+
+type Cb = (e: { payload: { topic: string } }) => void;
+let cb: Cb | null = null;
+vi.mock("./ipc", () => ({
+  isTauri: false,
+  listen: vi.fn((_ev: string, f: Cb) => { cb = f; return Promise.resolve(() => { cb = null; }); }),
+}));
+import { useTopic } from "./data";
+import { usePanelStore } from "../panel/store";
+
+const fetcher = vi.fn();
+const emit = (topic: string) => act(async () => { cb!({ payload: { topic } }); });
+const setOpen = (open: boolean) => act(async () => { usePanelStore.setState({ open }); });
+
+beforeEach(() => {
+  cb = null;
+  fetcher.mockReset();
+  fetcher.mockResolvedValue("v");
+  usePanelStore.setState({ open: false });
+});
+afterEach(cleanup);
+
+it("ne charge pas tant que le panneau est fermé, charge à l'ouverture", async () => {
+  const { result } = renderHook(() => useTopic("notes", fetcher, "init"));
+  await waitFor(() => expect(cb).not.toBeNull());
+  expect(fetcher).not.toHaveBeenCalled();
+  expect(result.current.data).toBe("init");
+  await setOpen(true);
+  await waitFor(() => expect(result.current.data).toBe("v"));
+  expect(fetcher).toHaveBeenCalledTimes(1);
+});
+
+it("recharge sur un événement du même sujet panneau ouvert, ignore les autres", async () => {
+  usePanelStore.setState({ open: true });
+  renderHook(() => useTopic("notes", fetcher, "init"));
+  await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1));
+  await emit("agenda");
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  await emit("notes");
+  await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
+});
+
+it("sujet périmé panneau fermé : recharge à la réouverture seulement", async () => {
+  usePanelStore.setState({ open: true });
+  renderHook(() => useTopic("notes", fetcher, "init"));
+  await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1));
+  await setOpen(false);
+  await emit("notes");
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  await setOpen(true);
+  await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
+  await setOpen(false);
+  await setOpen(true);
+  expect(fetcher).toHaveBeenCalledTimes(2);
+});

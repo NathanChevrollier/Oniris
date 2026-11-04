@@ -80,8 +80,8 @@ it("frise : une colonne par heure ; grille d'emplacements « Bientôt »", () =>
   const hours = [...container.querySelectorAll(".tl .hours > div")].map((d) => d.textContent);
   expect(hours[0]).toBe("8h");
   expect(hours.at(-1)).toBe("22h");
-  expect(container.querySelectorAll(".grid > .card")).toHaveLength(6);
-  expect(screen.getAllByText("Bientôt")).toHaveLength(6);
+  expect(container.querySelectorAll(".grid > .card")).toHaveLength(9);
+  expect(screen.getAllByText("Bientôt")).toHaveLength(9);
 });
 
 it("une confirmation en attente s'affiche au-dessus de la grille", () => {

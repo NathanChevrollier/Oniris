@@ -1,10 +1,12 @@
 use crate::hotkey::HotkeyConfig;
+use crate::scheduler::Scheduler;
+use oniris_core::events::Events;
 use oniris_core::tools::{Tool, ToolBroker};
 use oniris_core::{migrate, open_db, load_settings, Settings, CORE_MIGRATIONS};
 use parking_lot::{Mutex, RwLock};
 use rusqlite::Connection;
 use std::sync::atomic::AtomicBool;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use tauri::AppHandle;
 
 pub struct AppState {
@@ -19,14 +21,19 @@ pub struct AppState {
     pub broker: Arc<ToolBroker>,
     /// Relu par le crochet clavier à chaque touche : n'écrire que brièvement, sans E/S.
     pub hotkey: Arc<RwLock<HotkeyConfig>>,
+    /// Notifie panneau et pilule qu'un sujet de données a changé.
+    #[allow(dead_code)] // lu par les modules à partir de la tâche 3
+    pub events: Arc<dyn Events>,
+    /// Rempli dans `setup` après `manage` (il a besoin de l'`AppHandle`).
+    pub scheduler: OnceLock<Arc<Scheduler>>,
     /// Garde le journal fichier vivant (vidage à la fermeture).
     pub _log_guard: Option<tracing_appender::non_blocking::WorkerGuard>,
 }
 
 impl AppState {
     /// Ouvre `%APPDATA%\Oniris\oniris.db`, migre, charge les réglages et construit le courtier.
-    /// `_app` : pour les outils qui en auront besoin (notifications…, plans suivants).
-    pub fn open(_app: &AppHandle) -> Result<Self, Box<dyn std::error::Error>> {
+    /// `app` : pour les événements et les outils qui en auront besoin.
+    pub fn open(app: &AppHandle) -> Result<Self, Box<dyn std::error::Error>> {
         let appdata = std::env::var_os("APPDATA").ok_or("variable APPDATA absente")?;
         let dir = std::path::Path::new(&appdata).join("Oniris");
         std::fs::create_dir_all(&dir)?;
@@ -35,6 +42,7 @@ impl AppState {
         let s = load_settings(&conn)?;
         let db = Arc::new(Mutex::new(conn));
         let clock = Arc::new(|| std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64));
+        let events: Arc<dyn Events> = Arc::new(crate::events::TauriEvents(app.clone()));
         let tools: Vec<Arc<dyn Tool>> = vec![]; // les plans 2 à 5 ajoutent leurs outils ici
         let broker = Arc::new(ToolBroker::new(db.clone(), clock, tools)?);
         broker.mark_interrupted();
@@ -44,6 +52,8 @@ impl AppState {
             voice_paused: AtomicBool::new(false),
             hide_pill_in_fullscreen: AtomicBool::new(s.hide_pill_in_fullscreen),
             hotkey: Arc::new(RwLock::new(HotkeyConfig::from_setting(&s.hotkey, s.hold_threshold_ms as u64))),
+            events,
+            scheduler: OnceLock::new(),
             _log_guard: None,
             db,
             broker,

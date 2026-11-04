@@ -1,5 +1,6 @@
 mod db;
 mod error;
+pub mod events;
 mod settings;
 pub mod tools;
 

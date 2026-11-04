@@ -6,6 +6,7 @@ pub mod events;
 pub mod kv;
 pub mod notes;
 pub mod reminders;
+pub mod search;
 pub mod system;
 pub mod timers;
 mod settings;

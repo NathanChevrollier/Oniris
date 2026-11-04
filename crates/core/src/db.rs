@@ -122,6 +122,16 @@ Migration {
 Migration {
     version: 9,
     sql: "ALTER TABLE reminders ADD COLUMN done_ms INTEGER;",
+},
+Migration {
+    version: 10,
+    sql: "CREATE TABLE usage (
+        kind TEXT NOT NULL,
+        key TEXT NOT NULL,
+        count INTEGER NOT NULL,
+        last_ms INTEGER NOT NULL,
+        PRIMARY KEY (kind, key)
+    ) STRICT;",
 }];
 
 pub fn open_db(path: &Path) -> Result<Connection, CoreError> {

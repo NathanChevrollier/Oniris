@@ -4,6 +4,7 @@ import { Empty } from "../../ui/Empty";
 import { Card } from "../../ui/Card";
 import { useTopic } from "../../lib/data";
 import { useToolAction } from "../../lib/toolAction";
+import { useFocusCard } from "../../lib/focusCard";
 import { useNow } from "../../lib/time";
 import { usePanelStore } from "../../panel/store";
 import { notesIpc, type Note } from "./api";
@@ -34,6 +35,8 @@ export function NotesCard() {
   const [applied, setApplied] = useState("");
   const { run, error, clear } = useToolAction(UNAVAILABLE);
   const box = useRef<HTMLTextAreaElement>(null);
+  const search = useRef<HTMLInputElement>(null);
+  useFocusCard("notes", search, setQuery);
 
   useEffect(() => {
     if (query === applied) return; // aucun minuteur au repos
@@ -59,7 +62,7 @@ export function NotesCard() {
   return (
     <Card title="Notes" span={4} delay={0.3}
       aside={<label className="nsearch"><Search size={12} aria-hidden />
-        <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Rechercher"
+        <input ref={search} type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Rechercher"
           aria-label="Rechercher une note" autoComplete="off" spellCheck={false} /></label>}>
       <textarea ref={box} className="ninput" rows={1} value={text} onChange={(e) => { setText(e.target.value); clear(); }}
         onKeyDown={onKey} placeholder="Noter quelque chose…" aria-label="Nouvelle note" spellCheck={false} />

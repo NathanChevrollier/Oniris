@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ClipboardList, Pin, Search, SearchX, Trash2 } from "lucide-react";
 import { Empty } from "../../ui/Empty";
 import { Card } from "../../ui/Card";
 import { useTopic } from "../../lib/data";
 import { useNow } from "../../lib/time";
+import { useFocusCard } from "../../lib/focusCard";
 import { usePanelStore } from "../../panel/store";
 import { ago } from "../notes/NotesCard";
 import { clipboardIpc, type ClipItem } from "./api";
@@ -23,6 +24,8 @@ export function ClipboardCard() {
   const [query, setQuery] = useState("");
   const [applied, setApplied] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const search = useRef<HTMLInputElement>(null);
+  useFocusCard("clipboard", search, setQuery);
 
   useEffect(() => {
     if (query === applied) return; // aucun minuteur au repos
@@ -37,7 +40,7 @@ export function ClipboardCard() {
   return (
     <Card title="Presse-papiers" span={5} delay={0.35}
       aside={<label className="nsearch"><Search size={12} aria-hidden />
-        <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Rechercher"
+        <input ref={search} type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Rechercher"
           aria-label="Rechercher dans le presse-papiers" autoComplete="off" spellCheck={false} /></label>}>
       {error && <p className="err" role="alert">{error}</p>}
       <ul className="clips">

@@ -13,6 +13,9 @@ const KNOWN: Record<string, string> = {
   "note introuvable": "Cette note n'existe plus.",
   "minuteur introuvable": "Ce minuteur est déjà terminé.",
   "demande expirée": "Demande expirée, recommence.",
+  "bientôt": "Bientôt disponible.",
+  "chemin hors des dossiers autorisés": "Ce fichier est hors des dossiers de recherche.",
+  "application inconnue": "Cette application n'est plus installée.",
 };
 
 /** Message affichable pour une erreur brute du courtier (« échec : … », « arguments invalides : … »). */

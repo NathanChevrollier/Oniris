@@ -35,6 +35,8 @@
     "allow-clipboard-paste",
     "allow-weather-get",
     "allow-index-status",
+    "allow-search-query",
+    "allow-search-open",
     "allow-perf-frame",
     "allow-perf-open-cycles"
   ]

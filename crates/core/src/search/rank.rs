@@ -18,7 +18,7 @@ const PREFIX_BONUS: u32 = 100;
 const MIN_CHUNK: usize = 20_000;
 const SEPS: [char; 2] = ['/', '\\'];
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct Hit {
     pub item: Item,
     pub score: u32,

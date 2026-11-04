@@ -1,0 +1,305 @@
+//! Recherche universelle de la barre de commande : index de fichiers + sources (applications, notes, commandes « / »).
+//! Journal : jamais la requête ni une clé (chemins = contenu utilisateur).
+use crate::commands::dispatch_as_user;
+use crate::modules::indexer::Indexer;
+use crate::state::AppState;
+use oniris_core::apps::Inventory;
+use oniris_core::launch::is_executable;
+use oniris_core::search::{self, FileIndex, Hit, Item, ItemKind, UsageMap};
+use oniris_core::time_util::now_ms;
+use oniris_core::tools::{ToolError, ToolOutcome};
+use oniris_core::{notes, Db};
+use serde::Serialize;
+use serde_json::{json, Value};
+use std::path::Path;
+use std::sync::atomic::Ordering;
+use tauri::{AppHandle, Manager};
+
+const LIMIT: usize = 30;
+const NOTES_LIMIT: usize = 5;
+/// Miroir des commandes « / » de `src/panel/CommandPalette.tsx` (clé, description) : elles s'exécutent côté interface.
+const COMMANDS: [(&str, &str); 7] = [
+    ("minuteur", "Lancer un minuteur"),
+    ("focus", "Démarrer une session focus"),
+    ("note", "Noter quelque chose"),
+    ("rappel", "Créer un rappel"),
+    ("événement", "Ajouter un événement à l'agenda"),
+    ("météo", "Changer la ville de la météo"),
+    ("presse-papiers", "Ouvrir l'historique du presse-papiers"),
+];
+
+#[derive(Debug, Serialize)]
+pub struct SearchResult {
+    req: u32,
+    hits: Vec<Hit>,
+    indexing: bool,
+}
+
+/// Suite donnée par l'interface à `search_open`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Opened {
+    /// Ouvert : le panneau se ferme.
+    Done,
+    /// Carte de confirmation affichée (exécutable) : le panneau reste ouvert.
+    Pending,
+    /// L'interface montre la carte Notes.
+    Note,
+    /// L'interface exécute la commande « / ».
+    Command,
+}
+
+/// La portée « fichiers » couvre aussi les dossiers.
+fn wants(scope: Option<ItemKind>, k: ItemKind) -> bool {
+    match scope {
+        None => true,
+        Some(ItemKind::File) => matches!(k, ItemKind::File | ItemKind::Dir),
+        Some(s) => s == k,
+    }
+}
+
+/// Première ligne en titre, le reste (une ligne) en sous-titre : le classement flou voit tout le texte.
+fn note_items(db: &Db, q: &str) -> Vec<Item> {
+    let found = notes::search(&db.lock(), q, NOTES_LIMIT);
+    let found = found.inspect_err(|e| tracing::warn!("recherche : notes indisponibles : {e}")).unwrap_or_default();
+    found
+        .into_iter()
+        .map(|n| {
+            let (first, rest) = n.body.trim().split_once('\n').unwrap_or((n.body.trim(), ""));
+            let rest = rest.split_whitespace().collect::<Vec<_>>().join(" ");
+            let clip = |s: &str| s.chars().take(80).collect::<String>();
+            let subtitle = if rest.is_empty() { "Note".into() } else { clip(&rest) };
+            Item { kind: ItemKind::Note, key: n.id.to_string(), title: clip(first.trim()), subtitle }
+        })
+        .collect()
+}
+
+fn command_items() -> impl Iterator<Item = Item> {
+    COMMANDS.iter().map(|(key, desc)| Item { kind: ItemKind::Command, key: key.to_string(), title: format!("/{key}"), subtitle: desc.to_string() })
+}
+
+/// Sources hors index, une ligne par source (favoris : tâche 5, projets : tâche 7).
+fn extras(apps: &Inventory, db: &Db, q: &str, scope: Option<ItemKind>) -> Vec<Item> {
+    let mut v = Vec::new();
+    if wants(scope, ItemKind::App) {
+        v.extend(apps.items.read().iter().cloned());
+    }
+    if wants(scope, ItemKind::Note) {
+        v.extend(note_items(db, q));
+    }
+    if wants(scope, ItemKind::Command) {
+        v.extend(command_items());
+    }
+    v
+}
+
+fn run(index: &FileIndex, extra: &[Item], usage: &UsageMap, q: &str, scope: Option<ItemKind>, now: i64) -> Vec<Hit> {
+    let empty = FileIndex::new();
+    let index = if wants(scope, ItemKind::File) { index } else { &empty };
+    // Récents d'une portée : on trie tout l'usage puis on filtre, sinon les autres types prendraient les places.
+    let limit = if scope.is_some() && q.trim().is_empty() { usage.len().max(LIMIT) } else { LIMIT };
+    let mut hits = search::query_at(index, extra, usage, q, limit, now);
+    hits.retain(|h| wants(scope, h.item.kind));
+    hits.truncate(LIMIT);
+    hits
+}
+
+/// Vrai tant que le premier parcours complet n'est pas fini (l'instantané restauré peut être ancien).
+fn indexing(ix: Option<&Indexer>) -> bool {
+    ix.is_none_or(|i| !i.first_walk_done())
+}
+
+enum Route {
+    Tool(&'static str, Value),
+    Ui(Opened),
+}
+
+fn route(kind: ItemKind, key: &str) -> Result<Route, ToolError> {
+    Ok(match kind {
+        // files.open refuse les exécutables : files.run demande confirmation.
+        ItemKind::File if is_executable(Path::new(key)) => Route::Tool("files.run", json!({ "path": key })),
+        ItemKind::File | ItemKind::Dir => Route::Tool("files.open", json!({ "path": key })),
+        ItemKind::App => Route::Tool("apps.launch", json!({ "key": key })),
+        ItemKind::Note => Route::Ui(Opened::Note),
+        ItemKind::Command => Route::Ui(Opened::Command),
+        // shortcut: favoris et projets pas encore ouvrables, à router dans les tâches 5 et 7.
+        ItemKind::Favorite | ItemKind::Project => return Err(ToolError::BadArgs("bientôt".into())),
+    })
+}
+
+/// Une requête par frappe, numérotée par l'interface : une requête dépassée avant son tour ne calcule rien.
+#[tauri::command]
+pub async fn search_query(app: AppHandle, q: String, scope: Option<String>, req: u32) -> Result<SearchResult, String> {
+    let scope = scope.map(|s| ItemKind::parse(&s).ok_or("portée inconnue")).transpose()?;
+    let latest = &app.state::<AppState>().search_req;
+    // Le compteur de l'interface repart de 1 si la page est rechargée.
+    if req == 1 {
+        latest.store(1, Ordering::SeqCst);
+    } else {
+        latest.fetch_max(req, Ordering::SeqCst);
+    }
+    // Le parcours de l'index utilise des fils (scoped threads) : hors du runtime asynchrone.
+    tauri::async_runtime::spawn_blocking(move || {
+        let st = app.state::<AppState>();
+        let indexing = indexing(st.indexer.get());
+        if st.search_req.load(Ordering::SeqCst) > req {
+            return SearchResult { req, hits: Vec::new(), indexing };
+        }
+        let extra = extras(&st.apps, &st.db, &q, scope);
+        let empty = FileIndex::new();
+        let index = st.indexer.get().map(|i| i.index.read());
+        let hits = run(index.as_deref().unwrap_or(&empty), &extra, &st.usage.read(), &q, scope, now_ms());
+        SearchResult { req, hits, indexing }
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
+/// Ouvre un résultat via son outil (journalisé comme une action de l'utilisateur), puis retient l'usage.
+/// Ferme le panneau une fois ouvert ; pas pendant une confirmation, ni pour une note ou une commande « / ».
+#[tauri::command]
+pub async fn search_open(app: AppHandle, kind: String, key: String) -> Result<Opened, String> {
+    let kind = ItemKind::parse(&kind).ok_or("type inconnu")?;
+    let opened = match route(kind, &key).map_err(|e| e.to_string())? {
+        Route::Ui(o) => o,
+        Route::Tool(tool, args) => match dispatch_as_user(&app, tool, args).await {
+            ToolOutcome::Done { .. } => Opened::Done,
+            ToolOutcome::NeedsConfirmation(_) => Opened::Pending,
+            ToolOutcome::Rejected { .. } => return Err("action refusée".into()),
+            ToolOutcome::Failed { error, .. } => return Err(error),
+        },
+    };
+    // Usage retenu seulement après une ouverture réussie : pas de récent vers un fichier disparu.
+    let st = app.state::<AppState>();
+    let now = now_ms();
+    if let Err(e) = search::record(&st.db.lock(), kind, &key, now) {
+        tracing::warn!("recherche : usage non enregistré : {e}");
+    }
+    search::bump(&mut st.usage.write(), kind, &key, now);
+    if opened == Opened::Done {
+        crate::windows::close_panel(&app).map_err(|e| e.to_string())?;
+    }
+    Ok(opened)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+    use std::time::{Duration, Instant};
+
+    fn item(kind: ItemKind, key: &str, title: &str) -> Item {
+        Item { kind, key: key.into(), title: title.into(), subtitle: String::new() }
+    }
+    fn db() -> Db {
+        let mut c = rusqlite::Connection::open_in_memory().unwrap();
+        oniris_core::migrate(&mut c, oniris_core::CORE_MIGRATIONS).unwrap();
+        Arc::new(parking_lot::Mutex::new(c))
+    }
+    fn kinds(h: &[Hit]) -> Vec<ItemKind> {
+        let mut k: Vec<_> = h.iter().map(|h| h.item.kind).collect();
+        k.sort();
+        k.dedup();
+        k
+    }
+
+    #[test]
+    fn combine_fichiers_applications_notes_et_commandes() {
+        let db = db();
+        notes::insert(&db.lock(), "Rapport trimestriel\nchiffres à revoir").unwrap();
+        notes::insert(&db.lock(), "Penser au pain").unwrap();
+        let apps = Inventory::default();
+        apps.set(vec![item(ItemKind::App, r"C:\m\Rapports Pro.lnk", "Rapports Pro")], 1);
+        let mut ix = FileIndex::new();
+        ix.insert(r"C:\u\docs\rapport.pdf", false);
+        ix.insert(r"C:\u\rapports", true);
+        ix.insert(r"C:\u\vacances.jpg", false);
+        let usage = UsageMap::new();
+
+        let extra = extras(&apps, &db, "rapport", None);
+        let h = run(&ix, &extra, &usage, "rapport", None, 1);
+        assert_eq!(kinds(&h), [ItemKind::File, ItemKind::Dir, ItemKind::App, ItemKind::Note]);
+        let note = h.iter().find(|h| h.item.kind == ItemKind::Note).unwrap();
+        assert_eq!(note.item.title, "Rapport trimestriel");
+        assert!(note.item.key.parse::<i64>().is_ok(), "clé de note = id");
+        assert!(!h.iter().any(|h| h.item.title.contains("pain") || h.item.key.contains("vacances")));
+
+        // Commandes « / » : présentes dans la recherche universelle.
+        let h = run(&ix, &extras(&apps, &db, "minut", None), &usage, "minut", None, 1);
+        assert_eq!(h[0].item.kind, ItemKind::Command);
+        assert_eq!(h[0].item.key, "minuteur");
+    }
+
+    #[test]
+    fn la_portee_filtre_les_sources() {
+        let db = db();
+        notes::insert(&db.lock(), "rapport de note").unwrap();
+        let apps = Inventory::default();
+        apps.set(vec![item(ItemKind::App, r"C:\m\Rapport.lnk", "Rapport")], 1);
+        let mut ix = FileIndex::new();
+        ix.insert(r"C:\u\rapport.pdf", false);
+        ix.insert(r"C:\u\rapports", true);
+        let usage = UsageMap::new();
+        let go = |s: ItemKind| run(&ix, &extras(&apps, &db, "rapport", Some(s)), &usage, "rapport", Some(s), 1);
+        assert_eq!(kinds(&go(ItemKind::File)), [ItemKind::File, ItemKind::Dir], "f : fichiers et dossiers");
+        assert_eq!(kinds(&go(ItemKind::App)), [ItemKind::App]);
+        assert_eq!(kinds(&go(ItemKind::Note)), [ItemKind::Note]);
+        assert!(go(ItemKind::Project).is_empty(), "projets : tâche 7");
+    }
+
+    #[test]
+    fn requete_vide_recents_de_la_portee() {
+        let db = db();
+        let apps = Inventory::default();
+        apps.set(vec![item(ItemKind::App, "a.lnk", "Firefox")], 1);
+        let mut usage = UsageMap::new();
+        search::bump(&mut usage, ItemKind::File, r"C:\u\a.txt", 1);
+        search::bump(&mut usage, ItemKind::App, "a.lnk", 1);
+        search::bump(&mut usage, ItemKind::App, "disparue.lnk", 1);
+        let ix = FileIndex::new();
+        let h = run(&ix, &extras(&apps, &db, "", None), &usage, "", None, 2);
+        assert_eq!(h.len(), 2, "app inconnue de l'inventaire ignorée");
+        let h = run(&ix, &extras(&apps, &db, "", Some(ItemKind::App)), &usage, "", Some(ItemKind::App), 2);
+        assert_eq!(h.iter().map(|h| h.item.title.as_str()).collect::<Vec<_>>(), ["Firefox"]);
+    }
+
+    #[test]
+    fn indexation_vraie_jusqu_a_la_fin_du_premier_parcours() {
+        assert!(indexing(None), "indexeur pas encore lancé");
+        let t = tempfile::tempdir().unwrap();
+        std::fs::write(t.path().join("a.txt"), "x").unwrap();
+        let snap = tempfile::tempdir().unwrap();
+        let ix = Indexer::spawn(vec![t.path().to_path_buf()], snap.path().join("index.bin"), Arc::new(|_| {}));
+        let start = Instant::now();
+        while indexing(Some(&ix)) {
+            assert!(start.elapsed() < Duration::from_secs(10), "premier parcours jamais fini");
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(matches!(ix.status(), crate::modules::indexer::IndexStatus::Ready { .. }));
+    }
+
+    #[test]
+    fn routage_par_type() {
+        let tool = |k, key: &str| match route(k, key) {
+            Ok(Route::Tool(t, a)) => (t, a),
+            _ => panic!("outil attendu"),
+        };
+        assert_eq!(tool(ItemKind::File, r"C:\a.pdf"), ("files.open", json!({"path": r"C:\a.pdf"})));
+        assert_eq!(tool(ItemKind::File, r"C:\setup.EXE").0, "files.run", "exécutable : confirmation");
+        assert_eq!(tool(ItemKind::Dir, r"C:\d").0, "files.open");
+        assert_eq!(tool(ItemKind::App, "a.lnk"), ("apps.launch", json!({"key": "a.lnk"})));
+        assert!(matches!(route(ItemKind::Note, "3"), Ok(Route::Ui(Opened::Note))));
+        assert!(matches!(route(ItemKind::Command, "focus"), Ok(Route::Ui(Opened::Command))));
+        for k in [ItemKind::Favorite, ItemKind::Project] {
+            assert!(matches!(route(k, "x"), Err(ToolError::BadArgs(m)) if m == "bientôt"));
+        }
+    }
+
+    #[test]
+    fn commandes_synchronisees_avec_l_interface() {
+        let ts = include_str!("../../../src/panel/CommandPalette.tsx");
+        for (key, _) in COMMANDS {
+            assert!(ts.contains(&format!("key: \"{key}\"")), "commande absente de CommandPalette.tsx : {key}");
+        }
+    }
+}

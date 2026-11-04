@@ -2,6 +2,7 @@ import { render, screen, cleanup, act, fireEvent } from "@testing-library/react"
 import userEvent from "@testing-library/user-event";
 import { it, expect, vi, afterEach, beforeEach } from "vitest";
 import { Panel } from "./Panel";
+import { searchIpc } from "./CommandPalette";
 import { usePanelStore } from "./store";
 import { invoke, ipc, listen, type PendingAction } from "../lib/ipc";
 
@@ -71,18 +72,20 @@ it("l'horloge avance chaque seconde sans re-rendre l'en-tête", () => {
   expect(greet).toHaveTextContent("Bonjour");
 });
 
-it("la barre de commande prend le focus à chaque ouverture et envoie le texte", () => {
+it("la barre de commande prend le focus à chaque ouverture et envoie le texte", async () => {
+  vi.spyOn(searchIpc, "query").mockImplementation((_q, _s, req) => Promise.resolve({ req, hits: [], indexing: false }));
   usePanelStore.setState({ open: false });
   const onCommand = vi.fn();
   render(<Panel onCommand={onCommand} />);
-  const input = screen.getByRole("textbox", { name: "Commande" });
+  const input = screen.getByRole("combobox", { name: "Commande" });
   act(() => usePanelStore.setState({ open: true }));
   expect(input).toHaveFocus();
   act(() => { input.blur(); usePanelStore.setState({ open: false }); });
   act(() => usePanelStore.setState({ open: true }));
   expect(input).toHaveFocus();
   fireEvent.change(input, { target: { value: "  Mets ma playlist  " } });
-  fireEvent.submit(input.closest("form")!);
+  await act(async () => {}); // réponse (vide) de la recherche
+  fireEvent.keyDown(input, { key: "Enter" });
   expect(onCommand).toHaveBeenCalledWith("Mets ma playlist");
   expect(input).toHaveValue("");
 });

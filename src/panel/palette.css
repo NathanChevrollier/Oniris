@@ -1,0 +1,29 @@
+/* Palette de commande : résultats posés au-dessus de la barre, dans le panneau. Animations : transform/opacity. */
+.palette{position:relative}
+.pal-pop{position:absolute;left:0;right:0;bottom:calc(100% + 8px);z-index:5;padding:6px;border-radius:20px;
+  background:rgba(24,22,32,.97);-webkit-backdrop-filter:blur(24px);backdrop-filter:blur(24px);border:1px solid var(--line2);box-shadow:0 18px 50px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.06);
+  transform-origin:50% 100%;animation:pal-in .18s var(--ease)}
+@keyframes pal-in{from{opacity:0;transform:translateY(6px) scale(.985)}to{opacity:1;transform:none}}
+/* 8 lignes visibles au plus (44 px chacune), le reste défile. */
+.pal-list{list-style:none;max-height:352px;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.18) transparent}
+.pal-list li{position:relative;display:flex;align-items:center;gap:11px;height:44px;padding:0 10px;border-radius:13px;cursor:pointer}
+.pal-list li::before{content:"";position:absolute;inset:0;border-radius:inherit;background:rgba(255,255,255,.09);
+  box-shadow:inset 0 0 0 1px rgba(255,140,100,.28);opacity:0;transition:opacity .12s}
+.pal-list li.on::before{opacity:1}
+.pal-ico{position:relative;flex:none;width:28px;height:28px;border-radius:9px;display:grid;place-items:center;color:var(--txt2);background:rgba(255,255,255,.07)}
+.pal-ico.k-dir,.pal-ico.k-project{color:var(--yellow)}
+.pal-ico.k-app{color:var(--teal)}
+.pal-ico.k-note{color:#ffb35c}
+.pal-ico.k-command{color:var(--acc)}
+.pal-ico.k-favorite{color:var(--purple)}
+.pal-txt{position:relative;flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.pal-title{font-size:13.5px;color:var(--txt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pal-title mark{background:none;color:var(--acc);font-weight:600}
+.pal-sub{font-size:11.5px;color:var(--txt3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pal-enter{position:relative;flex:none;font:500 11px var(--font);border:1px solid var(--line2);border-radius:6px;padding:1px 6px;color:var(--txt2)}
+.pal-foot{padding:6px 10px 3px;font-size:11.5px;color:var(--txt2)}
+.pal-foot [role=alert]{color:#ff9f8a}
+.pal-idx{color:var(--txt3)}
+.pal-idx::before{content:"";display:inline-block;width:6px;height:6px;margin-right:7px;border-radius:50%;background:var(--acc);
+  vertical-align:1px;animation:pal-pulse 1.2s ease-in-out infinite}
+@keyframes pal-pulse{50%{opacity:.25}}

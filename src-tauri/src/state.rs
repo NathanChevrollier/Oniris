@@ -4,7 +4,7 @@ use oniris_core::events::Events;
 use oniris_core::tools::{Tool, ToolBroker};
 use oniris_core::{migrate, open_db, load_settings, Db, Settings, CORE_MIGRATIONS};
 use parking_lot::{Mutex, RwLock};
-use std::sync::atomic::{AtomicBool, AtomicIsize};
+use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicU32};
 use std::sync::{Arc, OnceLock};
 use tauri::{AppHandle, Manager};
 
@@ -34,6 +34,10 @@ pub struct AppState {
     pub indexer: OnceLock<crate::modules::indexer::Indexer>,
     /// Applications du menu Démarrer (rempli par `modules::apps`).
     pub apps: Arc<oniris_core::apps::Inventory>,
+    /// Copie mémoire de la table `usage`, chargée à l'ouverture : la frappe ne lit jamais la base.
+    pub usage: RwLock<oniris_core::search::UsageMap>,
+    /// Plus récent numéro de requête reçu par `search_query` (les plus anciennes abandonnent).
+    pub search_req: AtomicU32,
     /// Garde le journal fichier vivant (vidage à la fermeture).
     pub _log_guard: Option<tracing_appender::non_blocking::WorkerGuard>,
 }
@@ -48,6 +52,7 @@ impl AppState {
         let mut conn = open_db(&dir.join("oniris.db"))?;
         migrate(&mut conn, CORE_MIGRATIONS)?;
         let s = load_settings(&conn)?;
+        let usage = oniris_core::search::load(&conn)?;
         let db = Arc::new(Mutex::new(conn));
         let clock = Arc::new(|| oniris_core::time_util::now_ms() as u64);
         let events: Arc<dyn Events> = Arc::new(crate::events::TauriEvents(app.clone()));
@@ -82,6 +87,8 @@ impl AppState {
             scheduler: OnceLock::new(),
             indexer: OnceLock::new(),
             apps,
+            usage: RwLock::new(usage),
+            search_req: AtomicU32::new(0),
             http: oniris_core::weather::client()
                 .inspect_err(|e| tracing::error!("météo : client HTTP impossible, météo indisponible : {e}"))
                 .ok(),

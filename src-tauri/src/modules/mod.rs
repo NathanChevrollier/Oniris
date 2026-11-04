@@ -4,6 +4,7 @@ pub mod apps;
 pub mod clipboard;
 pub mod indexer;
 pub mod reminders;
+pub mod search;
 pub mod notes;
 pub mod timers;
 pub mod system;

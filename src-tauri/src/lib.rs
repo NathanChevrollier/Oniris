@@ -63,6 +63,8 @@ pub fn run() {
             modules::clipboard::clipboard_paste,
             modules::weather::weather_get,
             modules::indexer::index_status,
+            modules::search::search_query,
+            modules::search::search_open,
             #[cfg(any(debug_assertions, feature = "perf"))]
             perf::perf_frame,
             #[cfg(any(debug_assertions, feature = "perf"))]
@@ -115,6 +117,7 @@ mod tests {
             ("clipboard.rs", include_str!("modules/clipboard.rs")),
             ("notes.rs", include_str!("modules/notes.rs")),
             ("reminders.rs", include_str!("modules/reminders.rs")),
+            ("search.rs", include_str!("modules/search.rs")),
             ("system.rs", include_str!("modules/system.rs")),
             ("timers.rs", include_str!("modules/timers.rs")),
             ("weather.rs", include_str!("modules/weather.rs")),

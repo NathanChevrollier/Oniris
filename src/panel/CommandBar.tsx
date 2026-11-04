@@ -1,24 +1,15 @@
-import { useEffect, useRef, useState } from "react";
+import type { InputHTMLAttributes, Ref } from "react";
 import { Mic } from "lucide-react";
 import { Orb } from "../ui/Orb";
-import { usePanelStore } from "./store";
 
-export function CommandBar({ onSubmit }: { onSubmit: (text: string) => void }) {
-  const open = usePanelStore((s) => s.open);
-  const input = useRef<HTMLInputElement>(null);
-  const [text, setText] = useState("");
-  useEffect(() => { if (open) input.current?.focus(); }, [open]);
+/** Barre de commande (présentation) : la saisie et le clavier sont gérés par CommandPalette. */
+export function CommandBar({ inputRef, ...input }: InputHTMLAttributes<HTMLInputElement> & { inputRef: Ref<HTMLInputElement> }) {
   return (
-    <form className="cmd" onSubmit={(e) => {
-      e.preventDefault();
-      const t = text.trim();
-      if (t) { onSubmit(t); setText(""); }
-    }}>
+    <div className="cmd">
       <Orb state="idle" size={30} />
-      <input ref={input} value={text} onChange={(e) => setText(e.target.value)}
-        placeholder="Demande, cherche, lance…" aria-label="Commande" autoComplete="off" spellCheck={false} />
+      <input ref={inputRef} {...input} placeholder="Demande, cherche, lance…" aria-label="Commande" autoComplete="off" spellCheck={false} />
       <div className="k"><kbd>Alt</kbd><kbd>Espace</kbd> parler · <kbd>/</kbd> commandes</div>
       <button type="button" className="mic" aria-label="Parler (bientôt)" disabled><Mic size={16} /></button>
-    </form>
+    </div>
   );
 }

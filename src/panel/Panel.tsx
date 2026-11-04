@@ -15,7 +15,7 @@ import { useNow } from "../lib/time";
 import { agendaIpc, dayBounds, dayKey, type AgendaEvent } from "../modules/agenda/api";
 import { remindersIpc, type Reminder } from "../modules/reminders/api";
 import { CardGrid } from "./CardGrid";
-import { CommandBar } from "./CommandBar";
+import { CommandPalette } from "./CommandPalette";
 import { ConfirmQueue } from "./ConfirmQueue";
 import "../ui/tokens.css";
 import "../ui/glass.css";
@@ -68,7 +68,7 @@ export function Panel({ onCommand = logCommand }: { onCommand?: (text: string) =
           <Timeline startHour={settings.timeline_start_hour} endHour={settings.timeline_end_hour} items={[...items, ...dots]} />
           <ConfirmQueue subscribe={onConfirm} resolve={toolIpc.resolve} />
           <CardGrid slots={{ agenda: <AgendaCard />, notes: <NotesCard />, clipboard: <ClipboardCard />, pc: <PcCard />, timer: <TimerCard /> }} />
-          <CommandBar onSubmit={onCommand} />
+          <CommandPalette onCommand={onCommand} />
           <div className="handle" />
         </div>
       </section>

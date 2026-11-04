@@ -333,6 +333,18 @@
           "markdownDescription": "Enables the reminders_list command without any pre-configured scope."
         },
         {
+          "description": "Enables the search_open command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-search-open",
+          "markdownDescription": "Enables the search_open command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the search_query command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-search-query",
+          "markdownDescription": "Enables the search_query command without any pre-configured scope."
+        },
+        {
           "description": "Enables the settings_get command without any pre-configured scope.",
           "type": "string",
           "const": "allow-settings-get",
@@ -535,6 +547,18 @@
           "type": "string",
           "const": "deny-reminders-list",
           "markdownDescription": "Denies the reminders_list command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the search_open command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-search-open",
+          "markdownDescription": "Denies the search_open command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the search_query command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-search-query",
+          "markdownDescription": "Denies the search_query command without any pre-configured scope."
         },
         {
           "description": "Denies the settings_get command without any pre-configured scope.",

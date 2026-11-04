@@ -62,9 +62,10 @@ pub type Emit = Arc<dyn Fn(IndexStatus) + Send + Sync>;
 /// en tâche de fond le remplace, puis le watcher le tient à jour. S'arrête quand on le lâche.
 pub struct Indexer {
     /// Lisible pendant tout le parcours ; remplacé d'un bloc à la fin (verrou d'écriture bref).
-    #[allow(dead_code)] // lu par la recherche (tâche 4)
     pub index: Arc<RwLock<FileIndex>>,
     status: Arc<Mutex<IndexStatus>>,
+    /// Premier parcours complet fini (les suivants ne remettent pas l'index en « indexation »).
+    first_done: Arc<AtomicBool>,
     stop: Arc<AtomicBool>,
     #[allow(dead_code)] // lu par les tests
     walks: Arc<AtomicU64>,
@@ -229,6 +230,7 @@ fn build_adds(paths: &HashSet<PathBuf>, stop: &AtomicBool) -> Vec<(String, bool)
 struct Shared {
     index: Arc<RwLock<FileIndex>>,
     status: Arc<Mutex<IndexStatus>>,
+    first_done: Arc<AtomicBool>,
     stop: Arc<AtomicBool>,
     walks: Arc<AtomicU64>,
     emit: Emit,
@@ -297,6 +299,7 @@ impl Shared {
         // L'ancien index est libéré hors du verrou (sa libération est longue, des lecteurs attendent).
         let old = std::mem::replace(&mut *self.index.write(), fresh);
         drop(old);
+        self.first_done.store(true, Ordering::SeqCst);
         tracing::info!("indexeur : parcours terminé, {count} entrées");
         self.write_snapshot();
         self.publish(IndexStatus::Ready { count }, true);
@@ -410,6 +413,7 @@ impl Indexer {
         let shared = Arc::new(Shared {
             index: Arc::new(RwLock::new(restored)),
             status: Arc::new(Mutex::new(IndexStatus::Indexing { done: 0 })),
+            first_done: Arc::new(AtomicBool::new(false)),
             stop: Arc::new(AtomicBool::new(false)),
             walks: Arc::new(AtomicU64::new(0)),
             emit,
@@ -419,6 +423,7 @@ impl Indexer {
         let me = Self {
             index: shared.index.clone(),
             status: shared.status.clone(),
+            first_done: shared.first_done.clone(),
             stop: shared.stop.clone(),
             walks: shared.walks.clone(),
         };
@@ -431,6 +436,10 @@ impl Indexer {
     /// Dernier état connu.
     pub fn status(&self) -> IndexStatus {
         *self.status.lock()
+    }
+
+    pub fn first_walk_done(&self) -> bool {
+        self.first_done.load(Ordering::SeqCst)
     }
 
     #[cfg(test)]

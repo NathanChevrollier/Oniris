@@ -34,6 +34,8 @@ fn main() {
         "clipboard_paste",
         "weather_get",
         "index_status",
+        "search_query",
+        "search_open",
         "perf_frame",
         "perf_open_cycles",
     ]);

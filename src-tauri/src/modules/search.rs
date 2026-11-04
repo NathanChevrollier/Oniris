@@ -13,19 +13,21 @@ use serde::Serialize;
 use serde_json::{json, Value};
 use std::path::Path;
 use std::sync::atomic::Ordering;
+use std::sync::Arc;
 use tauri::{AppHandle, Manager};
 
 const LIMIT: usize = 30;
 const NOTES_LIMIT: usize = 5;
-/// Miroir des commandes « / » de `src/panel/CommandPalette.tsx` (clé, description) : elles s'exécutent côté interface.
-const COMMANDS: [(&str, &str); 7] = [
-    ("minuteur", "Lancer un minuteur"),
-    ("focus", "Démarrer une session focus"),
-    ("note", "Noter quelque chose"),
-    ("rappel", "Créer un rappel"),
-    ("événement", "Ajouter un événement à l'agenda"),
-    ("météo", "Changer la ville de la météo"),
-    ("presse-papiers", "Ouvrir l'historique du presse-papiers"),
+/// Miroir des commandes « / » de `src/panel/CommandPalette.tsx` (clé, description, argument attendu ou "") :
+/// elles s'exécutent côté interface. Un test vérifie les deux listes dans les deux sens.
+const COMMANDS: [(&str, &str, &str); 7] = [
+    ("minuteur", "Lancer un minuteur", "durée"),
+    ("focus", "Démarrer une session focus", ""),
+    ("note", "Noter quelque chose", "texte"),
+    ("rappel", "Créer un rappel", "texte"),
+    ("événement", "Ajouter un événement à l'agenda", "texte"),
+    ("météo", "Changer la ville de la météo", "ville"),
+    ("presse-papiers", "Ouvrir l'historique du presse-papiers", ""),
 ];
 
 #[derive(Debug, Serialize)]
@@ -60,6 +62,7 @@ fn wants(scope: Option<ItemKind>, k: ItemKind) -> bool {
 
 /// Première ligne en titre, le reste (une ligne) en sous-titre : le classement flou voit tout le texte.
 fn note_items(db: &Db, q: &str) -> Vec<Item> {
+    // Verrou de la base à chaque frappe : voulu par la spécification (notes::search), borné à 5 résultats.
     let found = notes::search(&db.lock(), q, NOTES_LIMIT);
     let found = found.inspect_err(|e| tracing::warn!("recherche : notes indisponibles : {e}")).unwrap_or_default();
     found
@@ -74,31 +77,42 @@ fn note_items(db: &Db, q: &str) -> Vec<Item> {
         .collect()
 }
 
-fn command_items() -> impl Iterator<Item = Item> {
-    COMMANDS.iter().map(|(key, desc)| Item { kind: ItemKind::Command, key: key.to_string(), title: format!("/{key}"), subtitle: desc.to_string() })
+/// Même sous-titre que l'interface : « description · argument ».
+fn command_items() -> Vec<Item> {
+    COMMANDS
+        .iter()
+        .map(|(key, hint, arg)| Item {
+            kind: ItemKind::Command,
+            key: key.to_string(),
+            title: format!("/{key}"),
+            subtitle: if arg.is_empty() { hint.to_string() } else { format!("{hint} · {arg}") },
+        })
+        .collect()
 }
 
 /// Sources hors index, une ligne par source (favoris : tâche 5, projets : tâche 7).
-fn extras(apps: &Inventory, db: &Db, q: &str, scope: Option<ItemKind>) -> Vec<Item> {
+/// Les applications ne sont pas copiées : seul l'`Arc` de l'inventaire est cloné.
+fn extras(apps: &Inventory, db: &Db, q: &str, scope: Option<ItemKind>) -> Vec<Arc<Vec<Item>>> {
     let mut v = Vec::new();
     if wants(scope, ItemKind::App) {
-        v.extend(apps.items.read().iter().cloned());
+        v.push(apps.items.read().clone());
     }
     if wants(scope, ItemKind::Note) {
-        v.extend(note_items(db, q));
+        v.push(Arc::new(note_items(db, q)));
     }
     if wants(scope, ItemKind::Command) {
-        v.extend(command_items());
+        v.push(Arc::new(command_items()));
     }
     v
 }
 
-fn run(index: &FileIndex, extra: &[Item], usage: &UsageMap, q: &str, scope: Option<ItemKind>, now: i64) -> Vec<Hit> {
+fn run(index: &FileIndex, extra: &[Arc<Vec<Item>>], usage: &UsageMap, q: &str, scope: Option<ItemKind>, now: i64) -> Vec<Hit> {
     let empty = FileIndex::new();
     let index = if wants(scope, ItemKind::File) { index } else { &empty };
     // Récents d'une portée : on trie tout l'usage puis on filtre, sinon les autres types prendraient les places.
     let limit = if scope.is_some() && q.trim().is_empty() { usage.len().max(LIMIT) } else { LIMIT };
-    let mut hits = search::query_at(index, extra, usage, q, limit, now);
+    let sources: Vec<&[Item]> = extra.iter().map(|s| s.as_slice()).collect();
+    let mut hits = search::query_at(index, &sources, usage, q, limit, now);
     hits.retain(|h| wants(scope, h.item.kind));
     hits.truncate(LIMIT);
     hits
@@ -169,6 +183,11 @@ pub async fn search_open(app: AppHandle, kind: String, key: String) -> Result<Op
             ToolOutcome::Failed { error, .. } => return Err(error),
         },
     };
+    // shortcut: un exécutable confirmé (Pending puis approuvé) n'entre pas dans les récents ; à brancher sur la
+    // résolution de la confirmation si l'utilisateur le demande.
+    if opened == Opened::Pending {
+        return Ok(opened);
+    }
     // Usage retenu seulement après une ouverture réussie : pas de récent vers un fichier disparu.
     let st = app.state::<AppState>();
     let now = now_ms();
@@ -298,8 +317,16 @@ mod tests {
     #[test]
     fn commandes_synchronisees_avec_l_interface() {
         let ts = include_str!("../../../src/panel/CommandPalette.tsx");
-        for (key, _) in COMMANDS {
-            assert!(ts.contains(&format!("key: \"{key}\"")), "commande absente de CommandPalette.tsx : {key}");
+        // Rust -> TS : clé, description et argument identiques.
+        for (key, hint, arg) in COMMANDS {
+            let want = if arg.is_empty() { format!("key: \"{key}\", hint: \"{hint}\", run:") } else { format!("key: \"{key}\", hint: \"{hint}\", arg: \"{arg}\"") };
+            assert!(ts.contains(&want), "commande différente ou absente de CommandPalette.tsx : {key}");
         }
+        // TS -> Rust : aucune clé côté interface seulement.
+        let ts_keys: Vec<&str> = ts.split("key: \"").skip(1).map(|s| &s[..s.find('"').unwrap()]).collect();
+        for k in &ts_keys {
+            assert!(COMMANDS.iter().any(|(key, _, _)| key == k), "commande absente de COMMANDS (Rust) : {k}");
+        }
+        assert_eq!(ts_keys.len(), COMMANDS.len());
     }
 }

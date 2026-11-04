@@ -52,22 +52,60 @@ export function parseQuery(text: string): { q: string; scope: ItemKind | null } 
   return m ? { q: m[2], scope: SCOPES[m[1]] } : { q: text, scope: null };
 }
 
+/** Texte replié (sans casse ni accents) caractère par caractère : `at[k]` = indice d'origine du k-ième caractère replié. */
+function folded(s: string): { f: string; at: number[]; n: number } {
+  const cps = Array.from(s);
+  let f = "";
+  const at: number[] = [];
+  cps.forEach((ch, i) => { const x = fold(ch); f += x; for (let k = 0; k < x.length; k++) at.push(i); });
+  return { f, at, n: cps.length };
+}
+
+/** Indices d'origine couverts par `len` caractères repliés depuis `start` (marques combinantes comprises). */
+function span(m: { at: number[]; n: number }, start: number, len: number): number[] {
+  const to = start + len < m.at.length ? m.at[start + len] : m.n;
+  return Array.from({ length: to - m.at[start] }, (_, k) => m.at[start] + k);
+}
+
+/** Occurrence de `w` en début de mot de préférence, sinon à l'intérieur d'un mot ; -1 si absent. */
+function find(f: string, w: string): number {
+  const first = f.indexOf(w);
+  for (let j = first; j >= 0; j = f.indexOf(w, j + 1)) if (j === 0 || !/[\p{L}\p{N}]/u.test(f[j - 1])) return j;
+  return first;
+}
+
 /**
- * Caractères à surligner : chaque mot de la requête cherché dans le titre (sans casse ni accents) ; un mot qui n'y est pas entier ne surligne rien. Calcul côté interface : le classement nucleo
- * porte aussi sur le chemin, ses indices ne correspondraient pas toujours au titre affiché.
+ * Indices à surligner (sur la chaîne d'origine, en points de code) : la requête entière si elle y est, sinon chaque
+ * mot (début de mot de préférence) s'ils y sont tous, sinon rien. Jamais de sous-séquence éparpillée : elle
+ * marquerait des lettres sans rapport (« oni » dans « Réunion client »). Calcul côté interface : nucleo classe
+ * aussi sur le chemin complet, ses indices ne correspondraient pas au texte affiché.
  */
-export function highlight(title: string, q: string): number[] {
-  const chars = Array.from(title).map(fold);
+export function highlight(text: string, q: string): number[] {
+  const words = q.split(/\s+/).filter((w) => w && !w.startsWith("!")).map((w) => fold(w.replace(/[\^$']/g, ""))).filter(Boolean);
+  if (!words.length) return [];
+  const m = folded(text);
+  const whole = words.join(" ");
+  const at = m.f.indexOf(whole);
+  if (at >= 0) return span(m, at, whole.length);
   const out = new Set<number>();
-  for (const w of q.split(/\s+/).filter((w) => w && !w.startsWith("!"))) {
-    const want = Array.from(fold(w.replace(/[\^$']/g, "")));
-    // Sous-chaîne d'abord (surlignage d'un seul tenant), sinon sous-séquence gloutonne.
-    const at = chars.findIndex((_, k) => want.every((c, j) => chars[k + j] === c));
-    const got: number[] = at >= 0 ? want.map((_, j) => at + j) : [];
-    for (let i = 0; at < 0 && i < chars.length && got.length < want.length; i++) if (chars[i] === want[got.length]) got.push(i);
-    if (got.length === want.length) got.forEach((i) => out.add(i));
+  for (const w of words) {
+    const i = find(m.f, w);
+    if (i < 0) return [];
+    span(m, i, w.length).forEach((k) => out.add(k));
   }
   return [...out].sort((a, b) => a - b);
+}
+
+/** Texte découpé en morceaux, les indices `marks` dans des <mark>. */
+function Marked({ text, marks }: { text: string; marks: number[] }) {
+  if (!marks.length) return <>{text}</>;
+  const on = new Set(marks);
+  const runs: { s: string; m: boolean }[] = [];
+  Array.from(text).forEach((ch, i) => {
+    const last = runs[runs.length - 1];
+    if (last && last.m === on.has(i)) last.s += ch; else runs.push({ s: ch, m: on.has(i) });
+  });
+  return <>{runs.map((r, i) => (r.m ? <mark key={i}>{r.s}</mark> : r.s))}</>;
 }
 
 /** Trois derniers segments d'un chemin long : `…\Projets\Oniris\docs`. */
@@ -142,6 +180,7 @@ export function CommandPalette({ onCommand = () => {} }: { onCommand?: (text: st
 
   const search = (t: string) => {
     setMsg(null); clear();
+    queued.current = null; // une Entrée en attente visait l'ancien texte
     const { q, scope } = parseQuery(t);
     if (scope === "command") { latest.current = 0; inflight.current = false; queued.current = null; setHits(commandHits(q)); setSel(0); return; }
     const req = ++seq;
@@ -228,25 +267,28 @@ export function CommandPalette({ onCommand = () => {} }: { onCommand?: (text: st
   const hq = scope === "command" ? `/${q.split(" ")[0]}` : q;
   const note = error ?? msg;
   const showHint = indexing && text.trim() !== "" && scope !== "command";
+  const visible = hits.length > 0 || note != null || showHint;
 
   return (
     <div className="palette">
-      {(hits.length > 0 || note || showHint) && (
-        <div className="pal-pop">
+      {/* Toujours monté : les zones d'annonce (status, alert) doivent exister avant que leur contenu change. */}
+      <div className={visible ? "pal-pop show" : "pal-pop"}>
           {hits.length > 0 && (
             <ul className="pal-list" id="pal-list" role="listbox" aria-label="Résultats">
               {hits.map((h, i) => {
                 const Icon = ICONS[h.item.kind];
-                const marks = new Set(highlight(h.item.title, hq));
                 const path = h.item.kind === "file" || h.item.kind === "dir";
+                const sub = path ? shortPath(h.item.subtitle) : h.item.subtitle;
+                const tm = highlight(h.item.title, hq);
+                const sm = tm.length ? [] : highlight(sub, hq); // correspondance dans le chemin : marquée sur le chemin affiché
                 return (
                   <li key={`${h.item.kind}:${h.item.key}`} id={`pal-opt-${i}`} role="option" aria-selected={i === sel}
                     className={i === sel ? "on" : undefined} onMouseMove={() => setSel(i)}
                     onMouseDown={(e) => e.preventDefault()} onClick={(e) => activate(h, e.ctrlKey, text)}>
                     <span className={`pal-ico k-${h.item.kind}`}><Icon size={15} aria-hidden /></span>
                     <span className="pal-txt">
-                      <span className="pal-title">{Array.from(h.item.title).map((ch, j) => marks.has(j) ? <mark key={j}>{ch}</mark> : ch)}</span>
-                      <span className="pal-sub" title={path ? h.item.subtitle : undefined}>{path ? shortPath(h.item.subtitle) : h.item.subtitle}</span>
+                      <span className="pal-title"><Marked text={h.item.title} marks={tm} /></span>
+                      <span className="pal-sub" title={path ? h.item.subtitle : undefined}><Marked text={sub} marks={sm} /></span>
                     </span>
                     {i === sel && <kbd className="pal-enter" aria-hidden>↵</kbd>}
                   </li>
@@ -254,14 +296,12 @@ export function CommandPalette({ onCommand = () => {} }: { onCommand?: (text: st
               })}
             </ul>
           )}
-          {(note || showHint) && (
-            <p className="pal-foot">
-              {note ? <span role={error ? "alert" : "status"}>{note}</span>
-                : <span className="pal-idx">indexation…{indexed != null && ` ${indexed.toLocaleString("fr-FR")} fichiers`}</span>}
-            </p>
-          )}
-        </div>
-      )}
+          <div className="pal-foot">
+            <span role="alert">{error}</span>
+            <span role="status">{error ? null : msg}</span>
+            {note == null && showHint && <span className="pal-idx">indexation…{indexed != null && ` ${indexed.toLocaleString("fr-FR")} fichiers`}</span>}
+          </div>
+      </div>
       <CommandBar inputRef={input} value={text} role="combobox" aria-expanded={hits.length > 0} aria-controls={hits.length ? "pal-list" : undefined}
         aria-autocomplete="list" aria-activedescendant={hits.length ? `pal-opt-${sel}` : undefined}
         onChange={(e) => edit(e.target.value)} onKeyDown={onKeyDown}

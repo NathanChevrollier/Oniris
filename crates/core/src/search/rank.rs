@@ -44,7 +44,7 @@ fn file_item(e: &Entry) -> Item {
     }
 }
 
-pub fn query(index: &FileIndex, extra: &[Item], usage: &UsageMap, q: &str, limit: usize) -> Vec<Hit> {
+pub fn query(index: &FileIndex, extra: &[&[Item]], usage: &UsageMap, q: &str, limit: usize) -> Vec<Hit> {
     query_at(index, extra, usage, q, limit, crate::time_util::now_ms())
 }
 
@@ -62,13 +62,15 @@ fn push(h: &mut Heap, limit: usize, score: u32, idx: usize) {
     }
 }
 
-pub fn query_at(index: &FileIndex, extra: &[Item], usage: &UsageMap, q: &str, limit: usize, now: i64) -> Vec<Hit> {
+/// `sources` : items hors index, en tranches (une par source) pour ne jamais les recopier à chaque frappe.
+pub fn query_at(index: &FileIndex, sources: &[&[Item]], usage: &UsageMap, q: &str, limit: usize, now: i64) -> Vec<Hit> {
+    let extra: Vec<&Item> = sources.iter().flat_map(|s| s.iter()).collect();
     let q = q.trim();
     if limit == 0 {
         return Vec::new();
     }
     if q.is_empty() {
-        return recent(extra, usage, limit, now);
+        return recent(&extra, usage, limit, now);
     }
     // Mots négatifs (!foo) : jugés sur le chemin complet (ils excluent). Mots positifs : le reste.
     let (neg_words, pos_words): (Vec<&str>, Vec<&str>) = q.split_whitespace().partition(|w| w.starts_with('!'));
@@ -165,8 +167,8 @@ pub fn query_at(index: &FileIndex, extra: &[Item], usage: &UsageMap, q: &str, li
 
 /// Requête vide : éléments d'usage classés par le même score que celui renvoyé (bonus de fréquence).
 /// Les fichiers/dossiers viennent de la table d'usage telle quelle : leur existence n'est PAS vérifiée.
-fn recent(extra: &[Item], usage: &UsageMap, limit: usize, now: i64) -> Vec<Hit> {
-    let known: HashMap<(ItemKind, &str), &Item> = extra.iter().map(|i| ((i.kind, i.key.as_str()), i)).collect();
+fn recent(extra: &[&Item], usage: &UsageMap, limit: usize, now: i64) -> Vec<Hit> {
+    let known: HashMap<(ItemKind, &str), &Item> = extra.iter().map(|&i| ((i.kind, i.key.as_str()), i)).collect();
     let mut v: Vec<_> = usage.iter().map(|(k, &(s, t))| (k, bonus_of(s, t, now) as u32)).collect();
     v.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(b.0)));
     v.into_iter()
@@ -308,9 +310,9 @@ mod tests {
         u.insert((ItemKind::File, "C:\\a\\recent".into()), (1.0, NOW - DAY));
         u.insert((ItemKind::App, "app1".into()), (1.0, NOW));
         u.insert((ItemKind::App, "disparu".into()), (1.0, NOW)); // inconnu : ignoré
-        let h = query_at(&i, &extra, &u, "  ", 10, NOW);
+        let h = query_at(&i, &[&extra], &u, "  ", 10, NOW);
         assert_eq!(keys(&h), ["app1", "C:\\a\\recent", "C:\\a\\vieux"]);
-        assert_eq!(query_at(&i, &extra, &u, "", 2, NOW).len(), 2);
+        assert_eq!(query_at(&i, &[&extra], &u, "", 2, NOW).len(), 2);
     }
 
     #[test]
@@ -318,9 +320,9 @@ mod tests {
         let extra = vec![Item { kind: ItemKind::Project, key: "p1".into(), title: "Zenytt".into(), subtitle: "gestion de VPS".into() }];
         let u = UsageMap::new();
         let e = FileIndex::new();
-        assert_eq!(query_at(&e, &extra, &u, "zen", 5, NOW).len(), 1);
-        assert_eq!(query_at(&e, &extra, &u, "vps", 5, NOW).len(), 1);
-        assert!(query_at(&e, &extra, &u, "xyz", 5, NOW).is_empty());
+        assert_eq!(query_at(&e, &[&extra], &u, "zen", 5, NOW).len(), 1);
+        assert_eq!(query_at(&e, &[&extra], &u, "vps", 5, NOW).len(), 1);
+        assert!(query_at(&e, &[&extra], &u, "xyz", 5, NOW).is_empty());
     }
 
     /// Lancer : `cargo test -p oniris-core --release search_perf -- --ignored --nocapture`

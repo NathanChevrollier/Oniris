@@ -7,6 +7,7 @@ use parking_lot::RwLock;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::Arc;
 
 pub const MAX_AGE_MS: i64 = 6 * 3600 * 1000;
 const EXCLUDED: [&str; 6] = ["uninstall", "désinstaller", "désinstallation", "help", "aide", "readme"];
@@ -58,13 +59,14 @@ pub fn scan(dirs: &[PathBuf]) -> Vec<Item> {
 /// Inventaire partagé et date du dernier balayage (0 = jamais).
 #[derive(Default)]
 pub struct Inventory {
-    pub items: RwLock<Vec<Item>>,
+    /// Partagé par `Arc` : la recherche le reprend à chaque frappe sans copier les items.
+    pub items: RwLock<Arc<Vec<Item>>>,
     scanned_ms: AtomicI64,
 }
 
 impl Inventory {
     pub fn set(&self, items: Vec<Item>, now_ms: i64) {
-        *self.items.write() = items;
+        *self.items.write() = Arc::new(items);
         self.scanned_ms.store(now_ms, Ordering::SeqCst);
     }
     pub fn stale(&self, now_ms: i64) -> bool {

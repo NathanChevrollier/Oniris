@@ -149,15 +149,22 @@ it("un exécutable en attente de confirmation : barre vidée, sans erreur", asyn
   await screen.findByRole("option");
   await userEvent.keyboard("{Enter}");
   expect(bar()).toHaveValue("");
-  expect(screen.queryByRole("alert")).toBeNull();
+  expect(screen.getByRole("alert")).toBeEmptyDOMElement();
 });
 
-it("surlignage par sous-séquence et chemin raccourci", () => {
-  expect(highlight("rapport.pdf", "rpdf")).toEqual([0, 2, 9, 10]);
+it("surlignage fidèle : sous-chaîne, sinon mot par mot, sinon rien ; chemin raccourci", () => {
+  expect(highlight("Réunion client jeudi", "oni")).toEqual([]); // sous-séquence éparpillée : aucune marque
+  expect(highlight("rapport.pdf", "rpdf")).toEqual([]);
   expect(highlight("Oniris", "ONI")).toEqual([0, 1, 2]);
-  expect(highlight("todo-oni", "oni")).toEqual([5, 6, 7]); // sous-chaîne préférée à la sous-séquence
-  expect(highlight("abc", "xyz")).toEqual([]);
+  expect(highlight("todo-oni", "oni")).toEqual([5, 6, 7]);
+  expect(highlight("plan-01-fondations.md", "plan fond")).toEqual([0, 1, 2, 3, 8, 9, 10, 11]);
+  expect(highlight("fondations plan", "plan fond")).toEqual([0, 1, 2, 3, 11, 12, 13, 14]);
+  expect(highlight("plan-01", "plan !old")).toEqual([0, 1, 2, 3]); // mots négatifs ignorés
+  expect(highlight("plan-01", "plan zzz")).toEqual([]); // un mot absent : rien
   expect(highlight("Météo", "meteo")).toEqual([0, 1, 2, 3, 4]);
+  // Accents décomposés (NFD) : indices sur la chaîne d'origine, marques combinantes incluses.
+  expect(highlight("Météo", "météo")).toEqual([0, 1, 2, 3, 4, 5, 6]);
+  expect(highlight("xét", "e")).toEqual([1, 2]);
   expect(shortPath("C:\\Users\\natha\\Desktop\\Utilitaires\\Projets\\Oniris\\docs")).toBe("…\\Projets\\Oniris\\docs");
   expect(shortPath("C:\\u\\docs")).toBe("C:\\u\\docs");
 });
@@ -169,4 +176,40 @@ it("récents : chargés au premier geste dans la barre vide (clic ou ↓), jamai
   await userEvent.keyboard("{ArrowDown}");
   expect(q).toHaveBeenCalledWith("", null, expect.any(Number));
   expect(await screen.findAllByRole("option")).toHaveLength(3);
+});
+
+it("une correspondance dans le sous-titre seulement y est surlignée", async () => {
+  answer([hit("note", "2", "Réunion client jeudi", "Préparer la démo Oniris")]);
+  render(<CommandPalette />);
+  await userEvent.type(bar(), "oni", { skipClick: true });
+  const opt = await screen.findByRole("option");
+  expect(opt.querySelector(".pal-title mark")).toBeNull();
+  expect([...opt.querySelectorAll(".pal-sub mark")].map((m) => m.textContent).join("")).toBe("Oni");
+});
+
+it("une Entrée en attente est oubliée si l'utilisateur retape avant la réponse", async () => {
+  const pending: ((r: SearchResult) => void)[] = [];
+  const reqs: number[] = [];
+  vi.spyOn(searchIpc, "query").mockImplementation((_q, _s, req) => { reqs.push(req); return new Promise((res) => pending.push(res)); });
+  const open = vi.spyOn(searchIpc, "open").mockResolvedValue("done");
+  render(<CommandPalette />);
+  await userEvent.type(bar(), "r{Enter}a", { skipClick: true });
+  await act(async () => pending[1]({ req: reqs[1], hits: HITS, indexing: false }));
+  expect(open).not.toHaveBeenCalled();
+  expect(screen.getAllByRole("option")).toHaveLength(3);
+});
+
+it("zones d'annonce (status, alert) toujours montées : seul leur contenu change", async () => {
+  answer([]);
+  render(<CommandPalette />);
+  const status = screen.getByRole("status");
+  const alert = screen.getByRole("alert");
+  expect(status).toBeEmptyDOMElement();
+  expect(alert).toBeEmptyDOMElement();
+  await userEvent.type(bar(), "zzz", { skipClick: true });
+  await act(async () => {});
+  await userEvent.keyboard("{Enter}");
+  expect(screen.getByRole("status")).toBe(status);
+  expect(status).toHaveTextContent("IRIS arrive bientôt");
+  expect(screen.getByRole("alert")).toBe(alert);
 });

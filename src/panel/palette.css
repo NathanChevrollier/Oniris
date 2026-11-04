@@ -2,8 +2,10 @@
 .palette{position:relative}
 .pal-pop{position:absolute;left:0;right:0;bottom:calc(100% + 8px);z-index:5;padding:6px;border-radius:20px;
   background:rgba(24,22,32,.97);-webkit-backdrop-filter:blur(24px);backdrop-filter:blur(24px);border:1px solid var(--line2);box-shadow:0 18px 50px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.06);
-  transform-origin:50% 100%;animation:pal-in .18s var(--ease)}
-@keyframes pal-in{from{opacity:0;transform:translateY(6px) scale(.985)}to{opacity:1;transform:none}}
+  transform-origin:50% 100%;opacity:0;transform:translateY(6px) scale(.985);pointer-events:none;
+  transition:opacity .16s,transform .18s var(--ease)}
+/* Toujours monté (zones d'annonce) : invisible et inerte tant qu'il n'y a rien à montrer. */
+.pal-pop.show{opacity:1;transform:none;pointer-events:auto}
 /* 8 lignes visibles au plus (44 px chacune), le reste défile. */
 .pal-list{list-style:none;max-height:352px;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.18) transparent}
 .pal-list li{position:relative;display:flex;align-items:center;gap:11px;height:44px;padding:0 10px;border-radius:13px;cursor:pointer}
@@ -18,10 +20,13 @@
 .pal-ico.k-favorite{color:var(--purple)}
 .pal-txt{position:relative;flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
 .pal-title{font-size:13.5px;color:var(--txt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.pal-title mark{background:none;color:var(--acc);font-weight:600}
+.pal-txt mark{background:none;color:var(--acc);font-weight:600}
 .pal-sub{font-size:11.5px;color:var(--txt3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pal-enter{position:relative;flex:none;font:500 11px var(--font);border:1px solid var(--line2);border-radius:6px;padding:1px 6px;color:var(--txt2)}
-.pal-foot{padding:6px 10px 3px;font-size:11.5px;color:var(--txt2)}
+.pal-foot{font-size:11.5px;color:var(--txt2)}
+/* Zones vides gardées dans l'arbre d'accessibilité (pas de display:none), sans hauteur. */
+.pal-foot>span{display:block}
+.pal-foot>span:not(:empty){padding:6px 10px 3px}
 .pal-foot [role=alert]{color:#ff9f8a}
 .pal-idx{color:var(--txt3)}
 .pal-idx::before{content:"";display:inline-block;width:6px;height:6px;margin-right:7px;border-radius:50%;background:var(--acc);

@@ -1,27 +1,37 @@
 //! Détection du plein écran par crochets WinEvent (aucune interrogation périodique), sur un thread dédié
 //! qui possède sa boucle de messages. Émet `oniris://fullscreen` seulement quand l'état change.
+//! LOCATIONCHANGE n'est écouté que pour le processus au premier plan (re-ciblé à chaque changement) :
+//! un crochet global réveillerait le thread à chaque mouvement de souris ou de curseur texte.
 
 use crate::state::AppState;
 use crate::windows::geometry::Rect;
-use ::windows::Win32::Foundation::{HMODULE, HWND, RECT};
+use ::windows::Win32::Foundation::{HWND, RECT};
 use ::windows::Win32::Graphics::Gdi::{
     GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST,
 };
-use ::windows::Win32::UI::Accessibility::{SetWinEventHook, HWINEVENTHOOK};
+use ::windows::Win32::UI::Accessibility::{SetWinEventHook, UnhookWinEvent, HWINEVENTHOOK};
 use ::windows::Win32::UI::Shell::{
     SHQueryUserNotificationState, QUNS_PRESENTATION_MODE, QUNS_RUNNING_D3D_FULL_SCREEN,
 };
 use ::windows::Win32::UI::WindowsAndMessaging::{
-    GetClassNameW, GetForegroundWindow, GetMessageW, GetWindowLongW, GetWindowRect, IsZoomed,
+    GetClassNameW, GetForegroundWindow, GetMessageW, GetWindowLongW, GetWindowRect,
+    GetWindowThreadProcessId, IsZoomed,
     GWL_STYLE, WS_CAPTION, EVENT_OBJECT_LOCATIONCHANGE,
     EVENT_SYSTEM_FOREGROUND, MSG, OBJID_WINDOW, WINEVENT_OUTOFCONTEXT, WINEVENT_SKIPOWNPROCESS,
 };
+use std::cell::Cell;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::OnceLock;
 use tauri::{AppHandle, Emitter, Manager};
 
 static APP: OnceLock<AppHandle> = OnceLock::new();
 static ACTIVE: AtomicBool = AtomicBool::new(false);
+const FLAGS: u32 = WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS;
+
+thread_local! {
+    /// Crochet LOCATIONCHANGE du processus au premier plan (thread du détecteur seulement).
+    static LOCATION_HOOK: Cell<Option<HWINEVENTHOOK>> = const { Cell::new(None) };
+}
 
 #[derive(Clone, serde::Serialize)]
 struct FullscreenState {
@@ -109,6 +119,28 @@ pub fn reapply(app: &AppHandle) {
     }
 }
 
+fn hook(ev: u32, pid: u32) -> Option<HWINEVENTHOOK> {
+    let h = unsafe { SetWinEventHook(ev, ev, None, Some(on_event), pid, 0, FLAGS) };
+    if h.is_invalid() {
+        eprintln!("oniris: SetWinEventHook a échoué pour l'événement {ev:#x}");
+        return None;
+    }
+    Some(h)
+}
+
+/// Nouvelle fenêtre au premier plan : LOCATIONCHANGE re-ciblé sur son processus, puis évaluation.
+fn on_foreground(fg: HWND) {
+    let mut pid = 0;
+    unsafe { GetWindowThreadProcessId(fg, Some(&mut pid)) };
+    if let Some(old) = LOCATION_HOOK.take() {
+        let _ = unsafe { UnhookWinEvent(old) };
+    }
+    if pid != 0 {
+        LOCATION_HOOK.set(hook(EVENT_OBJECT_LOCATIONCHANGE, pid));
+    }
+    apply(evaluate(fg));
+}
+
 unsafe extern "system" fn on_event(
     _hook: HWINEVENTHOOK,
     event: u32,
@@ -122,21 +154,22 @@ unsafe extern "system" fn on_event(
     if fg.0.is_null() {
         return;
     }
-    // LOCATIONCHANGE est très bavard : filtrer d'abord, avant tout travail.
-    if event == EVENT_OBJECT_LOCATIONCHANGE && (id_object != OBJID_WINDOW.0 || hwnd != fg) {
-        return;
+    if event == EVENT_SYSTEM_FOREGROUND {
+        on_foreground(fg);
+    } else if id_object == OBJID_WINDOW.0 && hwnd == fg {
+        // LOCATIONCHANGE reste bavard dans le processus ciblé (curseur, contrôles) : seule la fenêtre compte.
+        apply(evaluate(fg));
     }
-    apply(evaluate(fg));
 }
 
 pub fn start_watcher(app: AppHandle) {
     let _ = APP.set(app);
     std::thread::spawn(|| unsafe {
-        let flags = WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS;
-        for ev in [EVENT_SYSTEM_FOREGROUND, EVENT_OBJECT_LOCATIONCHANGE] {
-            if SetWinEventHook(ev, ev, Some(HMODULE::default()), Some(on_event), 0, 0, flags).is_invalid() {
-                eprintln!("oniris: SetWinEventHook a échoué pour l'événement {ev:#x}");
-            }
+        hook(EVENT_SYSTEM_FOREGROUND, 0);
+        // État initial : la fenêtre au premier plan au démarrage n'émettra pas d'événement FOREGROUND.
+        let fg = GetForegroundWindow();
+        if !fg.0.is_null() {
+            on_foreground(fg);
         }
         let mut msg = MSG::default();
         while GetMessageW(&mut msg, None, 0, 0).as_bool() {}

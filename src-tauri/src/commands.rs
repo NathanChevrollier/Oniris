@@ -33,8 +33,14 @@ pub fn settings_get(state: State<AppState>) -> Settings {
 }
 
 #[tauri::command(async)]
-pub fn settings_save(app: AppHandle, state: State<AppState>, settings: Settings) -> Result<(), String> {
-    let mut settings = settings;
+pub fn settings_save(app: AppHandle, settings: Settings) -> Result<(), String> {
+    apply_settings(&app, settings)
+}
+
+/// Seul chemin d'écriture des réglages (panneau, zone de notification) : valide, enregistre, applique,
+/// puis émet `oniris://settings`. Verrouille la base : jamais sur le fil principal.
+pub fn apply_settings(app: &AppHandle, mut settings: Settings) -> Result<(), String> {
+    let state = app.state::<AppState>();
     settings.weather_city = settings.weather_city.trim().to_string();
     settings.validate()?;
     save_settings(&state.db.lock(), &settings).map_err(|e| e.to_string())?;
@@ -43,12 +49,12 @@ pub fn settings_save(app: AppHandle, state: State<AppState>, settings: Settings)
     let hide = settings.hide_pill_in_fullscreen;
     let changed = state.hide_pill_in_fullscreen.swap(hide, Ordering::SeqCst) != hide;
     let old_city = std::mem::replace(&mut *state.settings.write(), settings.clone()).weather_city;
-    crate::tray::sync_autostart(&app, settings.autostart);
+    crate::tray::sync_autostart(app, settings.autostart);
     if changed {
-        fullscreen::reapply(&app);
+        fullscreen::reapply(app);
     }
     if old_city != settings.weather_city {
-        crate::modules::weather::city_changed(&app, &settings.weather_city);
+        crate::modules::weather::city_changed(app, &settings.weather_city);
     }
     app.emit("oniris://settings", settings).map_err(|e| e.to_string())
 }

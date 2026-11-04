@@ -12,8 +12,10 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
     let open = MenuItemBuilder::with_id("open", "Ouvrir Oniris").build(app)?;
     let settings = MenuItemBuilder::with_id("settings", "Paramètres").build(app)?;
     let pause = CheckMenuItemBuilder::with_id("pause", "Mettre la voix en pause").build(app)?;
+    let clip_on = app.state::<AppState>().settings.read().clipboard_enabled;
+    let clipboard = CheckMenuItemBuilder::with_id("clipboard", "Historique du presse-papiers").checked(clip_on).build(app)?;
     let quit = MenuItemBuilder::with_id("quit", "Quitter").build(app)?;
-    let menu = MenuBuilder::new(app).items(&[&open, &settings, &pause, &quit]).build()?;
+    let menu = MenuBuilder::new(app).items(&[&open, &settings, &pause, &clipboard, &quit]).build()?;
     let mut tray = TrayIconBuilder::with_id("oniris")
         .tooltip("Oniris")
         .menu(&menu)
@@ -29,6 +31,20 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
                 // Sans effet avant le plan 6 : on ne fait que mémoriser l'état.
                 let on = pause.is_checked().unwrap_or(false);
                 app.state::<AppState>().voice_paused.store(on, Ordering::SeqCst);
+            }
+            "clipboard" => {
+                // Windows coche ou décoche l'élément avant l'événement : on enregistre son nouvel état, hors du
+                // fil principal (la sauvegarde verrouille la base). Échec : l'élément revient à l'état enregistré.
+                let on = clipboard.is_checked().unwrap_or(false);
+                let (app, item) = (app.clone(), clipboard.clone());
+                tauri::async_runtime::spawn_blocking(move || {
+                    let mut s = app.state::<AppState>().settings.read().clone();
+                    s.clipboard_enabled = on;
+                    if let Err(e) = crate::commands::apply_settings(&app, s) {
+                        tracing::error!("tray: historique du presse-papiers : {e}");
+                        let _ = item.set_checked(!on);
+                    }
+                });
             }
             "quit" => app.exit(0),
             _ => {}

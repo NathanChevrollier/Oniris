@@ -12,7 +12,10 @@ export const fakeWeather = (): Weather => ({
   today_min: 8, today_max: 13, rain_from_hour: 18, fetched_ms: Date.now(),
 });
 
+/** `error` : nature du dernier échec quand il n'y a pas de donnée. */
+export type WeatherState = { weather: Weather | null; error: "not_found" | "offline" | "invalid" | null };
+
 export const weatherIpc = {
   /** Cache seulement : aucune requête réseau. */
-  get: (): Promise<Weather | null> => isTauri ? invoke("weather_get") : Promise.resolve(fakeWeather()),
+  get: (): Promise<WeatherState> => isTauri ? invoke("weather_get") : Promise.resolve({ weather: fakeWeather(), error: null }),
 };

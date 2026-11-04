@@ -26,7 +26,7 @@ Si tu laisses le champ « ville » vide, la météo est désactivée et Oniris n
 Si tu choisis une ville, Oniris contacte le service gratuit [Open-Meteo](https://open-meteo.com) (sans compte ni clé) :
 
 - il envoie le nom de la ville que tu as saisi pour trouver ses coordonnées, puis les coordonnées (latitude et longitude) pour obtenir la prévision ;
-- ces échanges se font au plus une fois toutes les 30 minutes environ, quand tu ouvres le panneau ;
+- ces échanges se font au plus une fois toutes les 30 minutes environ, quand tu ouvres le panneau, et aussi juste après chaque changement de ville ;
 - Open-Meteo voit, comme tout site web, l'adresse IP de ta connexion ;
 - Oniris n'envoie ni ton nom, ni ton adresse e-mail, et s'identifie seulement par « Oniris/0.1 ».
 
@@ -45,5 +45,5 @@ L'historique reste sur ton PC ; il n'est envoyé nulle part. Ses limites :
 
 Ces fonctions n'existent pas encore. Chacune ajoutera sa propre section ici avant d'être disponible :
 
-- comptes Google, Microsoft et Spotify (plan 4) ;
-- Claude, via Claude Code (plan 5).
+- comptes Google, Microsoft et Spotify : à venir ;
+- Claude, via Claude Code : à venir.

@@ -118,7 +118,7 @@ pub async fn fetch(client: &reqwest::Client, city: &str, cached_place: Option<Pl
         ("hourly", "precipitation_probability".into()),
         ("daily", "temperature_2m_min,temperature_2m_max".into()),
         ("timezone", "auto".into()),
-        ("forecast_days", "1".into()),
+        ("forecast_days", "2".into()),
     ];
     let now = chrono::Utc::now().timestamp_millis();
     let w = parse_forecast(&get_text(client, FORECAST_URL, &q).await?, &place.name, now)?;

@@ -5,10 +5,12 @@ import { ipc } from "../../lib/ipc";
 import { useSettings } from "../../lib/settings";
 import { hhmm, useNow } from "../../lib/time";
 import { usePanelStore } from "../../panel/store";
-import { weatherIpc, type Weather } from "./api";
+import { weatherIpc, type WeatherState } from "./api";
 import "./weather.css";
 
 const STALE_MS = 3 * 60 * 60 * 1000;
+const NO_DATA: WeatherState = { weather: null, error: null };
+const ERRORS = { not_found: "Ville introuvable", offline: "Météo hors ligne", invalid: "Météo indisponible" };
 const ICONS: Record<string, LucideIcon> = { Sun, CloudSun, Cloud, CloudFog, CloudDrizzle, CloudRain, CloudSnow, CloudLightning };
 
 /** « 13h05 ». */
@@ -20,7 +22,8 @@ export function WeatherBadge() {
   const now = useNow(60_000, open);
   const settings = useSettings();
   const city = settings.weather_city;
-  const { data } = useTopic<Weather | null>("weather", weatherIpc.get, null);
+  const { data: state } = useTopic<WeatherState>("weather", weatherIpc.get, NO_DATA);
+  const data = state.weather;
   const [editing, setEditing] = useState(false);
 
   const save = (value: string) => {
@@ -44,7 +47,13 @@ export function WeatherBadge() {
   if (!city) {
     return <div className="w"><button type="button" className="wlink" onClick={() => setEditing(true)}>Choisir une ville</button></div>;
   }
-  if (!data) return <div className="w stale">Météo…</div>;
+  if (!data) {
+    return (
+      <div className="w stale">
+        {state.error ? <button type="button" className="wplace" title="Changer de ville" onClick={() => setEditing(true)}>{ERRORS[state.error]}</button> : "Météo…"}
+      </div>
+    );
+  }
 
   const old = now.getTime() - data.fetched_ms > STALE_MS;
   const Icon = ICONS[data.icon] ?? Cloud;

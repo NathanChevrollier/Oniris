@@ -38,7 +38,7 @@ it("Entrée enregistre la ville par settings_save ; Échap annule sans fermer le
 
 it("pluie à venir : « pluie vers 18 h », température arrondie et ville", async () => {
   withCity("Paris");
-  vi.spyOn(weatherIpc, "get").mockResolvedValue({ ...fakeWeather(), temp_c: 11.6 });
+  vi.spyOn(weatherIpc, "get").mockResolvedValue({ weather: { ...fakeWeather(), temp_c: 11.6 }, error: null });
   const { container } = render(<WeatherBadge />);
   expect(await screen.findByText("12° · pluie vers 18 h")).toBeInTheDocument();
   expect(screen.getByText("Paris")).toBeInTheDocument();
@@ -48,7 +48,7 @@ it("pluie à venir : « pluie vers 18 h », température arrondie et ville", asy
 it("donnée de 4 h : grisée (stale) avec l'heure de la mesure", async () => {
   withCity("Paris");
   const at = new Date(Date.now() - 4 * 3600_000);
-  vi.spyOn(weatherIpc, "get").mockResolvedValue({ ...fakeWeather(), fetched_ms: at.getTime(), rain_from_hour: null });
+  vi.spyOn(weatherIpc, "get").mockResolvedValue({ weather: { ...fakeWeather(), fetched_ms: at.getTime(), rain_from_hour: null }, error: null });
   const { container } = render(<WeatherBadge />);
   await waitFor(() => expect(container.querySelector(".w")).toHaveClass("stale"));
   const hm = `${String(at.getHours()).padStart(2, "0")}h${String(at.getMinutes()).padStart(2, "0")}`;
@@ -57,5 +57,20 @@ it("donnée de 4 h : grisée (stale) avec l'heure de la mesure", async () => {
 });
 
 it("hors Tauri : données factices de la maquette", async () => {
-  expect((await weatherIpc.get())?.place).toBe("Paris");
+  expect((await weatherIpc.get()).weather?.place).toBe("Paris");
+});
+
+it("sans donnée : la cause du dernier échec est affichée", async () => {
+  withCity("Atlantis");
+  const get = vi.spyOn(weatherIpc, "get").mockResolvedValue({ weather: null, error: "not_found" });
+  const { unmount } = render(<WeatherBadge />);
+  expect(await screen.findByText("Ville introuvable")).toBeInTheDocument();
+  unmount();
+  get.mockResolvedValue({ weather: null, error: "offline" });
+  render(<WeatherBadge />);
+  expect(await screen.findByText("Météo hors ligne")).toBeInTheDocument();
+  cleanup();
+  get.mockResolvedValue({ weather: null, error: "invalid" });
+  render(<WeatherBadge />);
+  expect(await screen.findByText("Météo indisponible")).toBeInTheDocument();
 });

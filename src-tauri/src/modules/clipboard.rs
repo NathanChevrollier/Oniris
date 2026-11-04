@@ -203,10 +203,9 @@ pub fn clipboard_paste(app: AppHandle, id: i64) -> Result<(), String> {
 
 // ---------- Démarrage, écoute et enregistrement ----------
 
-/// À appeler dans `setup`, état géré : purge, thread d'enregistrement, puis thread d'écoute.
+/// À appeler dans `setup`, état géré : thread d'enregistrement (qui purge d'abord), puis thread d'écoute.
 pub fn start(app: &AppHandle) {
     let _ = APP.set(app.clone());
-    purge_now(&app.state::<AppState>());
     let (tx, rx) = channel();
     let _ = TX.set(tx);
     let h = app.clone();
@@ -224,6 +223,7 @@ fn purge_now(state: &AppState) {
 }
 
 fn record_loop(app: AppHandle, rx: Receiver<Captured>) {
+    purge_now(&app.state::<AppState>()); // ici plutôt que dans `setup` : ne retarde pas le démarrage
     for cap in rx {
         let state = app.state::<AppState>();
         let now = Local::now().timestamp_millis();

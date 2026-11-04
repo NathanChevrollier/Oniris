@@ -73,14 +73,22 @@ fn fire_due(app: &AppHandle) {
     state.events.changed(Topic::Timers); // reprogramme et rafraîchit l'UI
 }
 
-/// À appeler dans `setup`, ordonnanceur en place : gestionnaire d'abord, puis rattrapage des minuteurs
-/// échus pendant l'absence (une notification chacun, jamais de pause automatique), puis première échéance.
+/// À appeler dans `setup`, ordonnanceur en place : gestionnaire d'abord, puis, sur un autre fil pour ne pas
+/// retarder `setup`, rattrapage des minuteurs échus pendant l'absence (une notification chacun, jamais de
+/// pause automatique) et première échéance.
 pub fn start(app: &AppHandle) {
     let Some(scheduler) = app.state::<AppState>().scheduler.get().cloned() else { return };
     let h = app.clone();
     scheduler.on_due(KEY, Arc::new(move |_| fire_due(&h)));
+    let app = app.clone();
+    tauri::async_runtime::spawn_blocking(move || catch_up(&app));
+}
+
+fn catch_up(app: &AppHandle) {
     let state = app.state::<AppState>();
-    match timers::take_finished(&state.db.lock(), Local::now().timestamp_millis()) {
+    // `let` d'abord : le verrou de la base est relâché avant les notifications et `changed`.
+    let missed = timers::take_finished(&state.db.lock(), Local::now().timestamp_millis());
+    match missed {
         Ok(missed) => for t in &missed {
             tracing::info!("minuteur {} terminé pendant l'absence", t.id);
             tray::notify(app, "Minuteur", &format!("Terminé pendant ton absence : {}", t.label));

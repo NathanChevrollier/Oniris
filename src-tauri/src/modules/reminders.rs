@@ -66,11 +66,12 @@ fn fire_due(app: &AppHandle) {
     reschedule_reminders(app);
 }
 
-/// À appeler dans `setup`, ordonnanceur en place : gestionnaire d'abord, puis rattrapage des rappels
-/// échus pendant l'absence (notifiés « en retard »), puis première échéance.
+/// À appeler dans `setup`, ordonnanceur en place : gestionnaire d'abord, puis, sur un autre fil pour ne pas
+/// retarder `setup`, rattrapage des rappels échus pendant l'absence (notifiés « en retard ») et première échéance.
 pub fn start(app: &AppHandle) {
     let Some(scheduler) = app.state::<AppState>().scheduler.get().cloned() else { return };
     let h = app.clone();
     scheduler.on_due(KEY, Arc::new(move |_| fire_due(&h)));
-    fire_due(app);
+    let h = app.clone();
+    tauri::async_runtime::spawn_blocking(move || fire_due(&h));
 }

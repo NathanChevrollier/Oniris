@@ -81,14 +81,15 @@ pub fn run() {
             let autostart = st.settings.read().autostart;
             app.manage(st);
             let _ = app.state::<state::AppState>().scheduler.set(scheduler::Scheduler::start(app.handle().clone()));
-            modules::reminders::start(app.handle());
-            modules::timers::start(app.handle());
-            modules::clipboard::start(app.handle());
-            modules::weather::load(app.handle());
+            // La pilule d'abord : rattrapages et purge partent sur d'autres fils.
             // Pas encore d'écran (session qui s'ouvre) : on continue sans pilule plutôt que d'échouer.
             if let Err(e) = windows::show_pill(app.handle()) {
                 tracing::error!("pilule : affichage au démarrage impossible : {e}");
             }
+            modules::reminders::start(app.handle());
+            modules::timers::start(app.handle());
+            modules::clipboard::start(app.handle());
+            modules::weather::load(app.handle());
             tray::build(app.handle())?;
             tray::sync_autostart(app.handle(), autostart);
             hotkey::start_hook(app.handle().clone(), hotkey_cfg);

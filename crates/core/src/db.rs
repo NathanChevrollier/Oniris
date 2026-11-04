@@ -31,6 +31,21 @@ Migration {
         undo TEXT,
         expires_at_ms INTEGER
     ) STRICT;",
+},
+Migration {
+    version: 3,
+    sql: "CREATE TABLE events (
+        id INTEGER PRIMARY KEY,
+        title TEXT NOT NULL,
+        start_ms INTEGER NOT NULL,
+        end_ms INTEGER,
+        all_day INTEGER NOT NULL DEFAULT 0,
+        color TEXT,
+        notes TEXT,
+        deleted INTEGER NOT NULL DEFAULT 0,
+        created_ms INTEGER NOT NULL
+    ) STRICT;
+    CREATE INDEX events_start ON events(start_ms) WHERE deleted = 0;",
 }];
 
 pub fn open_db(path: &Path) -> Result<Connection, CoreError> {

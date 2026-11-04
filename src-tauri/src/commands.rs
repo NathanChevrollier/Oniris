@@ -49,7 +49,6 @@ pub fn settings_save(app: AppHandle, state: State<AppState>, settings: Settings)
 }
 
 /// Point d'entrée des futurs appelants (IA, MCP, UI) : ouvre le panneau et émet `oniris://confirm` si besoin.
-#[allow(dead_code)] // utilisée par les plans 2 à 5
 pub async fn dispatch_tool_call(app: &AppHandle, call: ToolCall) -> ToolOutcome {
     let broker: Arc<ToolBroker> = app.state::<AppState>().broker.clone();
     let outcome = broker.call(call).await;

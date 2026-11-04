@@ -22,7 +22,7 @@ pub struct AppState {
     /// Relu par le crochet clavier à chaque touche : n'écrire que brièvement, sans E/S.
     pub hotkey: Arc<RwLock<HotkeyConfig>>,
     /// Notifie panneau et pilule qu'un sujet de données a changé.
-    #[allow(dead_code)] // lu par les modules à partir de la tâche 3
+    #[allow(dead_code)] // les outils en gardent un clone ; le champ servira aux commandes qui notifient hors outil
     pub events: Arc<dyn Events>,
     /// Rempli dans `setup` après `manage` (il a besoin de l'`AppHandle`).
     pub scheduler: OnceLock<Arc<Scheduler>>,
@@ -43,7 +43,8 @@ impl AppState {
         let db = Arc::new(Mutex::new(conn));
         let clock = Arc::new(|| std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64));
         let events: Arc<dyn Events> = Arc::new(crate::events::TauriEvents(app.clone()));
-        let tools: Vec<Arc<dyn Tool>> = vec![]; // les plans 2 à 5 ajoutent leurs outils ici
+        let mut tools: Vec<Arc<dyn Tool>> = vec![]; // les plans 2 à 5 ajoutent leurs outils ici
+        tools.extend(oniris_core::agenda::tools::all(&db, &events));
         let broker = Arc::new(ToolBroker::new(db.clone(), clock, tools)?);
         broker.mark_interrupted();
         broker.expire_stale();

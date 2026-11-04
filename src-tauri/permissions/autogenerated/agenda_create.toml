@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-agenda-create"
+description = "Enables the agenda_create command without any pre-configured scope."
+commands.allow = ["agenda_create"]
+
+[[permission]]
+identifier = "deny-agenda-create"
+description = "Denies the agenda_create command without any pre-configured scope."
+commands.deny = ["agenda_create"]

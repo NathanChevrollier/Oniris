@@ -12,6 +12,10 @@
     "allow-tool-resolve",
     "allow-tool-undo",
     "allow-journal-list",
+    "allow-agenda-between",
+    "allow-agenda-month-days",
+    "allow-agenda-create",
+    "allow-agenda-delete",
     "allow-perf-frame",
     "allow-perf-open-cycles"
   ]

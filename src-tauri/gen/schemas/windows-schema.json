@@ -177,6 +177,30 @@
       "description": "Permission identifier",
       "oneOf": [
         {
+          "description": "Enables the agenda_between command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-agenda-between",
+          "markdownDescription": "Enables the agenda_between command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the agenda_create command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-agenda-create",
+          "markdownDescription": "Enables the agenda_create command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the agenda_delete command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-agenda-delete",
+          "markdownDescription": "Enables the agenda_delete command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the agenda_month_days command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-agenda-month-days",
+          "markdownDescription": "Enables the agenda_month_days command without any pre-configured scope."
+        },
+        {
           "description": "Enables the journal_list command without any pre-configured scope.",
           "type": "string",
           "const": "allow-journal-list",
@@ -241,6 +265,30 @@
           "type": "string",
           "const": "allow-tool-undo",
           "markdownDescription": "Enables the tool_undo command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the agenda_between command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-agenda-between",
+          "markdownDescription": "Denies the agenda_between command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the agenda_create command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-agenda-create",
+          "markdownDescription": "Denies the agenda_create command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the agenda_delete command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-agenda-delete",
+          "markdownDescription": "Denies the agenda_delete command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the agenda_month_days command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-agenda-month-days",
+          "markdownDescription": "Denies the agenda_month_days command without any pre-configured scope."
         },
         {
           "description": "Denies the journal_list command without any pre-configured scope.",

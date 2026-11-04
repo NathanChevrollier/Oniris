@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-agenda-between"
+description = "Enables the agenda_between command without any pre-configured scope."
+commands.allow = ["agenda_between"]
+
+[[permission]]
+identifier = "deny-agenda-between"
+description = "Denies the agenda_between command without any pre-configured scope."
+commands.deny = ["agenda_between"]

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-agenda-month-days"
+description = "Enables the agenda_month_days command without any pre-configured scope."
+commands.allow = ["agenda_month_days"]
+
+[[permission]]
+identifier = "deny-agenda-month-days"
+description = "Denies the agenda_month_days command without any pre-configured scope."
+commands.deny = ["agenda_month_days"]

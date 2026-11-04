@@ -6,7 +6,7 @@ import { listen as tauriListen, type EventCallback, type UnlistenFn } from "@tau
 export const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
 // Hors de Tauri, les appels sont inertes (promesse jamais résolue) et les écoutes ne reçoivent rien.
-const invoke = <T,>(cmd: string, args?: InvokeArgs): Promise<T> =>
+export const invoke = <T,>(cmd: string, args?: InvokeArgs): Promise<T> =>
   isTauri ? tauriInvoke<T>(cmd, args) : new Promise<T>(() => {});
 export const listen = <T,>(event: string, cb: EventCallback<T>): Promise<UnlistenFn> =>
   isTauri ? tauriListen<T>(event, cb) : Promise.resolve(() => {});

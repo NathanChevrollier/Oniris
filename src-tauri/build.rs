@@ -11,6 +11,10 @@ fn main() {
         "tool_resolve",
         "tool_undo",
         "journal_list",
+        "agenda_between",
+        "agenda_month_days",
+        "agenda_create",
+        "agenda_delete",
         "perf_frame",
         "perf_open_cycles",
     ]);

@@ -39,6 +39,10 @@ pub fn run() {
             commands::tool_resolve,
             commands::tool_undo,
             commands::journal_list,
+            modules::agenda::agenda_between,
+            modules::agenda::agenda_month_days,
+            modules::agenda::agenda_create,
+            modules::agenda::agenda_delete,
             #[cfg(any(debug_assertions, feature = "perf"))]
             perf::perf_frame,
             #[cfg(any(debug_assertions, feature = "perf"))]

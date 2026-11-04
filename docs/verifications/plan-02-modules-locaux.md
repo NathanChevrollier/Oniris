@@ -14,15 +14,21 @@ pnpm tauri dev
 
 Ouvre le panneau avec Alt+Espace. Pour voir les logs, ouvre le dossier `%APPDATA%\Oniris\logs` (fichier `oniris.log.<date>`).
 
-## 1. Journal
+Deux remarques sur ce mode :
+
+- les notifications (rappels, minuteurs) apparaissent sous le nom « Windows PowerShell », et non « Oniris ». C'est normal en développement ;
+- les chiffres de performance ne se mesurent pas ici : ils viennent du build de mesure (section 11 et [`tools/perf/README.md`](../../tools/perf/README.md)), pas de `pnpm tauri dev`.
+
+## 1. Confirmation
+
+L'annulation d'une action (undo) n'a pas encore de bouton dans le panneau : elle n'est pas à vérifier ici.
 
 - [ ] Dans la carte Agenda, supprime un événement : une carte de confirmation apparaît et ouvre le panneau. Rien n'est supprimé avant ton accord.
-- [ ] Après avoir approuvé la suppression, annule-la depuis le journal : l'événement revient dans la liste et sur la frise.
-- [ ] Annule de même la création d'un événement, la création d'un rappel et la complétion d'un rappel : la liste et la frise se rafraîchissent à chaque fois.
+- [ ] Approuve la suppression : l'événement disparaît de la liste et de la frise. Supprime-en un autre et refuse : il reste affiché.
 
 ## 2. Agenda et frise
 
-- [ ] Dans le champ de commande, tape « demain 14h-15h dentiste » : un événement « dentiste » apparaît demain de 14 h à 15 h, avec un repère sur la frise.
+- [ ] Dans le champ « Ajouter… » de la carte Agenda, tape « demain 14h-15h dentiste » puis Entrée : un événement « dentiste » apparaît demain de 14 h à 15 h, avec un repère sur la frise.
 - [ ] Un événement qui finit à minuit n'apparaît pas le lendemain.
 - [ ] Une journée entière s'affiche de minuit à minuit.
 - [ ] Le calendrier du mois : les jours avec événements sont marqués, et un clic sur un jour affiche sa liste.
@@ -36,6 +42,7 @@ Ouvre le panneau avec Alt+Espace. Pour voir les logs, ouvre le dossier `%APPDATA
 - [ ] ⚠️ à vérifier en priorité : crée un rappel dans 3 minutes, mets le PC en veille avant l'échéance, puis réveille-le après l'échéance. La notification arrive dans la minute qui suit le réveil.
 - [ ] Coche un rappel : il est barré et vert, et il reste jusqu'à minuit puis disparaît le lendemain. Un clic sur la coche le rouvre. Aucune notification n'est envoyée pour lui.
 - [ ] Un rappel du jour met un point jaune sur la frise. Une échéance à moins de 2 h est en jaune dans la liste.
+- [ ] Crée deux rappels dans 2 minutes, quitte Oniris, attends l'échéance, puis relance-le : la pilule apparaît tout de suite, et les notifications « Rappel en retard » arrivent ensuite.
 
 ## 4. Notes
 
@@ -48,10 +55,11 @@ Ouvre le panneau avec Alt+Espace. Pour voir les logs, ouvre le dossier `%APPDATA
 ## 5. Minuteur et focus
 
 - [ ] Clique sur « 25 min » : le minuteur démarre, l'anneau avance chaque seconde, mm:ss et le libellé sont au centre.
-- [ ] Tape « minuteur 10 min thé » : le libellé est « thé ». Tape « bientôt » : le message « durée introuvable » s'affiche.
-- [ ] Lance « 5 min » puis « 25 min » : les deux sont dans la liste, et la croix du second l'annule.
+- [ ] Tape « minuteur 10 min thé » : le libellé est « thé ». Tape « bientôt » : un message commençant par « Durée introuvable » s'affiche, avec un exemple à suivre.
+- [ ] Lance « 5 min » puis « 25 min » : les deux sont dans la liste, et la croix du second l'annule. Le bouton « Arrêter » en haut de la carte arrête le minuteur de l'anneau.
 - [ ] Lance un minuteur de 1 min : le compte à rebours mm:ss s'affiche dans la pilule avant la sphère, puis disparaît à la fin. Une notification « terminé » apparaît.
 - [ ] Lance un minuteur de 1 min, quitte Oniris, relance après plus d'1 min : une seule notification « Terminé pendant ton absence », sans pause automatique. Relance encore : aucune notification.
+- [ ] ⚠️ à vérifier en priorité : lance un minuteur de 10 min, quitte Oniris, relance-le 2 min plus tard. Le minuteur est toujours là, avec environ 8 min restantes (le temps a continué de courir pendant la fermeture), dans la carte et dans la pilule.
 - [ ] Lance « Focus » : à la fin, notification « Focus terminé — pause de 5 min » et la pause démarre. À la fin de la pause, notification « Pause terminée » et rien ne démarre ensuite.
 
 ## 6. Presse-papiers
@@ -59,14 +67,14 @@ Ouvre le panneau avec Alt+Espace. Pour voir les logs, ouvre le dossier `%APPDATA
 - [ ] Copie un texte depuis le Bloc-notes : l'entrée apparaît en haut de la carte en 1 s environ. Copie le même texte : pas de doublon, l'entrée remonte avec une heure à jour.
 - [ ] Copie une image (Win+Maj+S, ou une image depuis Edge) : une miniature apparaît, avec les bonnes couleurs et dans le bon sens.
 - [ ] Copie un mot de passe depuis l'application de bureau 1Password : rien n'est enregistré, et le log indique `copie exclue par sa source`.
-- [ ] Attention : une copie faite par l'**extension de navigateur** d'un gestionnaire de mots de passe (1Password, Bitwarden dans Edge ou Chrome) **sera enregistrée**, car elle passe par le presse-papiers ordinaire du navigateur. Teste-le avec ton extension. Si ça te gêne, désactive l'historique : mets `clipboard_enabled` à faux dans les paramètres. Copie ensuite quelque chose : rien n'est enregistré. Remets-le à vrai : c'est de nouveau enregistré.
+- [ ] Attention : une copie faite par l'**extension de navigateur** d'un gestionnaire de mots de passe (1Password, Bitwarden dans Edge ou Chrome) **sera enregistrée**, car elle passe par le presse-papiers ordinaire du navigateur. Teste-le avec ton extension. Si ça te gêne, désactive l'historique : clic droit sur l'icône d'Oniris dans la zone de notification, puis décoche « Historique du presse-papiers ». Copie ensuite quelque chose : rien n'est enregistré. Recoche-le : c'est de nouveau enregistré. Quitte et relance Oniris : la coche a gardé ton dernier choix.
 - [ ] ⚠️ à vérifier en priorité : ouvre le Bloc-notes toi-même et clique dans son champ de texte. Ouvre le panneau avec Alt+Espace, puis clique une entrée de texte du presse-papiers. Le panneau se ferme et le texte est collé dans le Bloc-notes. Cette copie n'est pas enregistrée une seconde fois.
 - [ ] ⚠️ à vérifier en priorité : ouvre le panneau depuis le Bloc-notes, passe à une autre application avec Alt+Tab, reviens, puis clique une entrée. Rien n'est collé dans la mauvaise fenêtre (le contenu reste seulement dans le presse-papiers).
 - [ ] Ouvre le panneau en cliquant sur la pilule, puis clique une entrée : le contenu est mis dans le presse-papiers sans être collé. Colle-le toi-même avec Ctrl+V.
 - [ ] Avec Paint ouvert et au premier plan, clique une entrée image : l'image est collée avec les bonnes couleurs.
 - [ ] Après un collage par clic, la touche Ctrl n'est pas restée bloquée et le raccourci Alt+Espace fonctionne toujours.
 - [ ] Au survol d'une entrée, les boutons épingler et supprimer apparaissent. La suppression est définitive. Une entrée épinglée survit au nettoyage.
-- [ ] Règle la rétention à 1 jour et le maximum à 20 éléments, puis copie plus de 20 textes : les plus anciens non épinglés sont purgés, les épinglés restent.
+- [ ] Plus tard : la durée de rétention et le nombre maximal d'éléments se régleront dans l'écran des paramètres, qui arrive avec le plan 7. La purge (les plus anciens non épinglés partent, les épinglés restent) se vérifiera à ce moment-là.
 - [ ] Copie un très long texte (environ 10 Mo) : l'entrée est tronquée (elle finit par `…`), et ni Oniris ni l'application source ne se bloquent.
 - [ ] Les logs ne contiennent jamais le texte copié, seulement des lignes comme `texte de N octets`.
 
@@ -82,7 +90,7 @@ Ouvre le panneau avec Alt+Espace. Pour voir les logs, ouvre le dossier `%APPDATA
 
 - [ ] Sans ville, un lien « Choisir une ville » s'affiche sous l'horloge. Clique-le, tape « Paris » puis Entrée : la météo (icône, température, libellé, ville) apparaît en quelques secondes.
 - [ ] Échap dans le champ de ville l'annule sans fermer le panneau. Un clic sur le nom de la ville permet de la changer.
-- [ ] Tape une ville inconnue : pas de plantage, le badge reste sur « Météo… ».
+- [ ] Tape une ville inconnue : pas de plantage, le badge affiche « Ville introuvable ».
 - [ ] Coupe le Wi-Fi ou débranche le câble : la dernière météo reste affichée. Au bout de plus de 3 h hors ligne, elle est grisée avec « à HHhMM ». L'ouverture du panneau reste instantanée, sans attendre le réseau.
 - [ ] Reconnecte le réseau : la météo se met à jour.
 - [ ] Vide le champ de ville : le badge redevient « Choisir une ville ».
@@ -100,10 +108,11 @@ Ouvre le panneau avec Alt+Espace. Pour voir les logs, ouvre le dossier `%APPDATA
 
 - [ ] Le dossier `%APPDATA%\Oniris\logs` existe et contient `oniris.log.<date>` avec des lignes.
 - [ ] Il ne contient ni texte de note, ni contenu copié, ni ville, ni mot de passe. Fais une recherche sur un mot de tes notes pour t'en assurer.
+- [ ] Les lignes `DEBUG` et `INFO` viennent toutes d'Oniris (`oniris_lib`, `oniris_core`). Les autres bibliothèques (`tao`, `reqwest`…) n'écrivent que des `WARN` ou des `ERROR`.
 
 ## 11. Performance
 
-Suis la procédure de [`tools/perf/README.md`](../../tools/perf/README.md), avec l'écoute du presse-papiers active et le panneau fermé. Ne touche pas au PC pendant la mesure.
+Les chiffres viennent du build de mesure décrit dans [`tools/perf/README.md`](../../tools/perf/README.md), jamais de `pnpm tauri dev` (non optimisé, il fausse tout). Suis cette procédure avec l'écoute du presse-papiers active et le panneau fermé. Ne touche pas au PC pendant la mesure.
 
 - [ ] Le CPU au repos reste à environ 0 %, sans régression par rapport au plan 1 (l'écoute du presse-papiers ne se réveille qu'à une copie).
 - [ ] L'ouverture du panneau reste sous 100 ms et la RAM sous 200 Mo.
@@ -112,4 +121,4 @@ Envoie-moi le tableau affiché ou le fichier `tools/perf/results-*.json`.
 
 ## Si quelque chose ne va pas
 
-Note le numéro de la case (par exemple 3.4) et ce que tu as vu, puis envoie-le-moi. Les points les plus incertains sont le collage dans la bonne fenêtre (6.5 et 6.6), les jauges GPU (7.2), le rappel échu pendant la fermeture (3.3) et le réveil de veille (3.4). Les cases sont numérotées par section, dans l'ordre.
+Note le numéro de la case (par exemple 3.4) et ce que tu as vu, puis envoie-le-moi. Les points les plus incertains sont le collage dans la bonne fenêtre (6.5 et 6.6), les jauges GPU (7.2), le rappel échu pendant la fermeture (3.3), le réveil de veille (3.4) et la reprise d'un minuteur après un redémarrage (5.6). Les cases sont numérotées par section, dans l'ordre.

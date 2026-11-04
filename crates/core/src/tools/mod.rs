@@ -26,6 +26,9 @@ pub struct ToolSpec {
     pub description: String,
     pub args_schema: Value,
     pub permission: Permission,
+    /// Sortie à ne jamais journaliser (contenu utilisateur) : le journal n'en garde que `{redacted, count}`.
+    #[serde(default)]
+    pub sensitive_output: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

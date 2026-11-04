@@ -115,7 +115,7 @@ Migration {
 pub fn open_db(path: &Path) -> Result<Connection, CoreError> {
     let c = Connection::open(path)?;
     c.execute_batch(
-        "PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000; PRAGMA synchronous=NORMAL;",
+        "PRAGMA journal_mode=WAL; PRAGMA secure_delete=ON; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000; PRAGMA synchronous=NORMAL;",
     )?;
     Ok(c)
 }
@@ -151,6 +151,8 @@ mod tests {
         let mut c = open_db(&dir.path().join("t.db")).unwrap();
         let mode: String = c.query_row("PRAGMA journal_mode", [], |r| r.get(0)).unwrap();
         assert_eq!(mode, "wal");
+        let secure: i64 = c.query_row("PRAGMA secure_delete", [], |r| r.get(0)).unwrap();
+        assert_eq!(secure, 1, "le contenu supprimé (presse-papiers) est écrasé sur disque");
         migrate(&mut c, CORE_MIGRATIONS).unwrap();
         assert!(c.execute("INSERT INTO settings(id, json) VALUES ('a', 1)", []).is_err());
     }

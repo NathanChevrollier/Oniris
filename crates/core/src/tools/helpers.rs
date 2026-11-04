@@ -14,9 +14,9 @@ pub fn parse<T: for<'a> Deserialize<'a>>(a: &Value) -> Result<T, ToolError> {
     serde_json::from_value(a.clone()).map_err(bad)
 }
 
-/// Construit un `ToolSpec`.
+/// Construit un `ToolSpec` (sortie journalisée ; `ToolSpec { sensitive_output: true, ..spec(..) }` sinon).
 pub fn spec(name: &str, description: &str, args_schema: Value, permission: Permission) -> ToolSpec {
-    ToolSpec { name: name.into(), description: description.into(), args_schema, permission }
+    ToolSpec { name: name.into(), description: description.into(), args_schema, permission, sensitive_output: false }
 }
 
 /// Texte de confirmation sans détail et à risque faible (outils libres : jamais affiché).

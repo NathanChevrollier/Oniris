@@ -74,15 +74,21 @@ impl ToolBroker {
             Ok(id) => id,
             Err(e) => return ToolOutcome::Failed { action_id: -1, error: e.to_string() },
         };
-        self.finish_run(id, tool.run(&call.args).await)
+        self.finish_run(id, tool.spec().sensitive_output, tool.run(&call.args).await)
     }
 
     /// Journalise le résultat d'une action `running`. Une erreur de journal n'efface jamais un résultat obtenu.
-    fn finish_run(&self, id: i64, res: Result<ToolResult, ToolError>) -> ToolOutcome {
+    /// `sensitive` : le journal ne garde que le nombre d'éléments, l'appelant reçoit tout.
+    fn finish_run(&self, id: i64, sensitive: bool, res: Result<ToolResult, ToolError>) -> ToolOutcome {
         let c = self.db.lock();
         match res {
             Ok(r) => {
-                if let Err(e) = journal::finish(&c, id, "done", &r.output, r.undo.as_ref()) {
+                let logged = if sensitive {
+                    json!({ "redacted": true, "count": r.output.as_array().map_or(1, Vec::len) })
+                } else {
+                    r.output.clone()
+                };
+                if let Err(e) = journal::finish(&c, id, "done", &logged, r.undo.as_ref()) {
                     tracing::error!("oniris: journal de l'action {id} non mis à jour : {e}");
                 }
                 ToolOutcome::Done { action_id: id, output: r.output }
@@ -122,11 +128,11 @@ impl ToolBroker {
         }
         // Action `running` : elle ne repassera jamais par `pending`, donc `run` part au plus une fois.
         let Some(row) = row else { return fail(ToolError::NotPending) };
-        let outcome = match self.tools.get(&row.tool) {
-            None => Err(ToolError::UnknownTool(row.tool.clone())),
-            Some(t) => t.run(&row.args).await,
+        let (sensitive, outcome) = match self.tools.get(&row.tool) {
+            None => (false, Err(ToolError::UnknownTool(row.tool.clone()))),
+            Some(t) => (t.spec().sensitive_output, t.run(&row.args).await),
         };
-        self.finish_run(action_id, outcome)
+        self.finish_run(action_id, sensitive, outcome)
     }
 
     pub async fn undo(&self, action_id: i64) -> Result<(), ToolError> {
@@ -174,12 +180,12 @@ mod tests {
     use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
     use std::sync::Arc;
 
-    struct Echo { perm: Permission, undoable: bool, runs: Arc<AtomicUsize>, db: Arc<Mutex<Connection>>, during: Arc<Mutex<Vec<String>>> }
+    struct Echo { perm: Permission, undoable: bool, sensitive: bool, runs: Arc<AtomicUsize>, db: Arc<Mutex<Connection>>, during: Arc<Mutex<Vec<String>>> }
 
     #[async_trait]
     impl Tool for Echo {
         fn spec(&self) -> ToolSpec {
-            ToolSpec { name: "echo".into(), description: "echo".into(), args_schema: json!({}), permission: self.perm }
+            ToolSpec { name: "echo".into(), description: "echo".into(), args_schema: json!({}), permission: self.perm, sensitive_output: self.sensitive }
         }
         fn describe(&self, a: &Value) -> ConfirmationText {
             ConfirmationText { summary: "Echo".into(), details: a.to_string(), risk: Risk::Low }
@@ -197,7 +203,9 @@ mod tests {
 
     struct Fx { during: Arc<Mutex<Vec<String>>>, broker: ToolBroker, runs: Arc<AtomicUsize>, now: Arc<AtomicU64>, db: Arc<Mutex<Connection>>, _dir: tempfile::TempDir }
 
-    fn fx(perm: Permission, undoable: bool) -> Fx {
+    fn fx(perm: Permission, undoable: bool) -> Fx { fx_with(perm, undoable, false) }
+
+    fn fx_with(perm: Permission, undoable: bool, sensitive: bool) -> Fx {
         let dir = tempfile::tempdir().unwrap();
         let mut c = open_db(&dir.path().join("t.db")).unwrap();
         migrate(&mut c, CORE_MIGRATIONS).unwrap();
@@ -206,7 +214,7 @@ mod tests {
         let n = now.clone();
         let runs = Arc::new(AtomicUsize::new(0));
         let during = Arc::new(Mutex::new(vec![]));
-        let echo = Arc::new(Echo { perm, undoable, runs: runs.clone(), db: db.clone(), during: during.clone() });
+        let echo = Arc::new(Echo { perm, undoable, sensitive, runs: runs.clone(), db: db.clone(), during: during.clone() });
         let broker = ToolBroker::new(db.clone(), Arc::new(move || n.load(Ordering::SeqCst)), vec![echo]).unwrap();
         Fx { during, broker, runs, now, db, _dir: dir }
     }
@@ -228,6 +236,23 @@ mod tests {
         assert_eq!(output, json!({"x": 1}));
         assert_eq!(status(&f, action_id), "done");
         assert_eq!(f.runs.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn sortie_sensible_masquee_dans_le_journal_mais_rendue_a_l_appelant() {
+        for perm in [Permission::Free, Permission::Confirm] {
+            let f = fx_with(perm, false, true);
+            let o = f.broker.call(call(Provenance::User)).await;
+            let o = if perm == Permission::Confirm { f.broker.resolve(pending(o).action_id, true).await } else { o };
+            let ToolOutcome::Done { action_id, output } = o else { panic!() };
+            assert_eq!(output, json!({"x": 1}), "l'appelant reçoit tout");
+            let result: String = f.db.lock().query_row("SELECT result FROM actions WHERE id=?", [action_id], |r| r.get(0)).unwrap();
+            assert_eq!(serde_json::from_str::<Value>(&result).unwrap(), json!({"redacted": true, "count": 1}));
+        }
+        let f = fx(Permission::Free, false);
+        let ToolOutcome::Done { action_id, .. } = f.broker.call(call(Provenance::User)).await else { panic!() };
+        let result: String = f.db.lock().query_row("SELECT result FROM actions WHERE id=?", [action_id], |r| r.get(0)).unwrap();
+        assert_eq!(result, r#"{"x":1}"#, "outil ordinaire : journal complet");
     }
 
     #[tokio::test]
@@ -305,7 +330,7 @@ mod tests {
     fn nom_d_outil_en_double_refuse() {
         let f = fx(Permission::Free, false);
         let echo = || -> Arc<dyn Tool> {
-            Arc::new(Echo { perm: Permission::Free, undoable: false, runs: f.runs.clone(), db: f.db.clone(), during: f.during.clone() })
+            Arc::new(Echo { perm: Permission::Free, undoable: false, sensitive: false, runs: f.runs.clone(), db: f.db.clone(), during: f.during.clone() })
         };
         let res = ToolBroker::new(f.db.clone(), Arc::new(|| 0), vec![echo(), echo()]);
         assert!(matches!(res, Err(crate::CoreError::Invalid(m)) if m.contains("echo")));

@@ -18,7 +18,8 @@ use ::windows::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalSize, Glob
 use ::windows::Win32::System::Ole::{CF_DIB, CF_DIBV5, CF_UNICODETEXT};
 use ::windows::Win32::UI::Input::KeyboardAndMouse::{SendInput, INPUT, KEYBD_EVENT_FLAGS, KEYEVENTF_KEYUP, VK_CONTROL, VK_V};
 use ::windows::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DefWindowProcW, DispatchMessageW, GetMessageW, RegisterClassW, HWND_MESSAGE, MSG,
+    CreateWindowExW, DefWindowProcW, DispatchMessageW, GetForegroundWindow, GetMessageW, RegisterClassW,
+    SetForegroundWindow, HWND_MESSAGE, MSG,
     WINDOW_EX_STYLE, WINDOW_STYLE, WM_CLIPBOARDUPDATE, WNDCLASSW,
 };
 use base64::Engine;
@@ -30,12 +31,13 @@ use serde::Serialize;
 use std::sync::atomic::{AtomicIsize, Ordering};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::OnceLock;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Manager, State};
 
 /// Au-delà, une image n'est pas enregistrée.
-const MAX_IMAGE_BYTES: usize = 20 * 1024 * 1024;
-const THUMB_W: u32 = 160;
+const MAX_IMAGE_BYTES: usize = 40 * 1024 * 1024; // une capture 4K en 32 bits fait 33 Mo
+/// Miniature : dans un carré de 160 px, proportions gardées.
+const THUMB_MAX: u32 = 160;
 const LIST_LIMIT: usize = 50;
 const BI_RGB: u32 = 0;
 const BI_BITFIELDS: u32 = 3;
@@ -69,11 +71,11 @@ impl From<ClipEntry> for ClipItem {
 
 // ---------- Fonctions pures (testées) ----------
 
-/// DIB (`CF_DIB` / `CF_DIBV5` : en-tête puis pixels) vers (PNG, miniature PNG de 160 px de large au plus).
+/// DIB (`CF_DIB` / `CF_DIBV5` : en-tête puis pixels) vers (PNG, miniature PNG dans 160×160, proportions gardées).
 /// 24 et 32 bits, BI_RGB et BI_BITFIELDS, de bas en haut ou de haut en bas. Alpha 32 bits tout à zéro : opaque.
 pub fn dib_to_png(dib: &[u8]) -> Result<(Vec<u8>, Vec<u8>), String> {
     if dib.len() > MAX_IMAGE_BYTES {
-        return Err(format!("image de plus de 20 Mo ({} octets)", dib.len()));
+        return Err(format!("image de plus de 40 Mo ({} octets)", dib.len()));
     }
     let u32_at = |o: usize| dib.get(o..o + 4).map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]])).ok_or("en-tête DIB tronqué");
     let header = u32_at(0)? as usize;
@@ -113,9 +115,11 @@ pub fn dib_to_png(dib: &[u8]) -> Result<(Vec<u8>, Vec<u8>), String> {
     }
     let img = RgbaImage::from_raw(w as u32, h as u32, rgba).ok_or("dimensions DIB incohérentes")?;
     let png = encode_png(&img)?;
-    let thumb = if img.width() > THUMB_W {
-        let th = (u64::from(img.height()) * u64::from(THUMB_W) / u64::from(img.width())).max(1) as u32;
-        encode_png(&imageops::resize(&img, THUMB_W, th, imageops::FilterType::Triangle))?
+    let (iw, ih) = img.dimensions();
+    let thumb = if iw > THUMB_MAX || ih > THUMB_MAX {
+        let fit = |a: u32, b: u32| (u64::from(a) * u64::from(THUMB_MAX) / u64::from(b)).max(1) as u32;
+        let (tw, th) = if iw >= ih { (THUMB_MAX, fit(ih, iw)) } else { (fit(iw, ih), THUMB_MAX) };
+        encode_png(&imageops::resize(&img, tw, th, imageops::FilterType::Triangle))?
     } else {
         png.clone()
     };
@@ -180,16 +184,19 @@ pub fn clipboard_delete(state: State<AppState>, id: i64) -> Result<(), String> {
     Ok(())
 }
 
-/// Remet l'entrée dans le presse-papiers (marquée `Oniris.Self`), ferme le panneau, puis Ctrl+V après 80 ms.
-#[tauri::command]
-pub fn clipboard_paste(app: AppHandle, state: State<AppState>, id: i64) -> Result<(), String> {
+/// Remet l'entrée dans le presse-papiers (marquée `Oniris.Self`), ferme le panneau, puis après 80 ms rend le
+/// premier plan à la fenêtre d'avant l'ouverture et y colle. Hors du thread principal (ouverture du presse-papiers).
+#[tauri::command(async)]
+pub fn clipboard_paste(app: AppHandle, id: i64) -> Result<(), String> {
+    let state = app.state::<AppState>();
     let content = clipboard::get(&state.db.lock(), id).map_err(|e| e.to_string())?.ok_or("entrée introuvable")?;
     write_clipboard(&content)?;
     tracing::info!("presse-papiers : entrée {id} remise pour collage");
+    let prev = state.prev_foreground.load(Ordering::SeqCst);
     crate::windows::close_panel(&app).map_err(|e| e.to_string())?;
-    std::thread::spawn(|| {
+    std::thread::spawn(move || {
         std::thread::sleep(Duration::from_millis(80));
-        send_ctrl_v();
+        paste_into(prev);
     });
     Ok(())
 }
@@ -239,16 +246,25 @@ fn record_loop(app: AppHandle, rx: Receiver<Captured>) {
 
 struct Formats { own: u32, exclude: u32, history: u32, cloud: u32 }
 
-fn formats() -> &'static Formats {
-    static F: OnceLock<Formats> = OnceLock::new();
-    F.get_or_init(|| unsafe {
-        Formats {
-            own: RegisterClipboardFormatW(w!("Oniris.Self")),
-            exclude: RegisterClipboardFormatW(w!("ExcludeClipboardContentFromMonitorProcessing")),
-            history: RegisterClipboardFormatW(w!("CanIncludeInClipboardHistory")),
-            cloud: RegisterClipboardFormatW(w!("CanUploadToCloudClipboard")),
+/// `None` si un format n'a pas pu être enregistré : plus rien n'est lu ni écrit (échec fermé, journalisé une fois).
+fn formats() -> Option<&'static Formats> {
+    static F: OnceLock<Option<Formats>> = OnceLock::new();
+    F.get_or_init(|| {
+        let f = unsafe {
+            Formats {
+                own: RegisterClipboardFormatW(w!("Oniris.Self")),
+                exclude: RegisterClipboardFormatW(w!("ExcludeClipboardContentFromMonitorProcessing")),
+                history: RegisterClipboardFormatW(w!("CanIncludeInClipboardHistory")),
+                cloud: RegisterClipboardFormatW(w!("CanUploadToCloudClipboard")),
+            }
+        };
+        if [f.own, f.exclude, f.history, f.cloud].contains(&0) {
+            tracing::error!("presse-papiers : formats d'exclusion non enregistrés, historique désactivé");
+            return None;
         }
+        Some(f)
     })
+    .as_ref()
 }
 
 fn listen() {
@@ -267,13 +283,14 @@ fn listen() {
             Ok(h) => h,
             Err(e) => return tracing::error!("presse-papiers : fenêtre d'écoute impossible : {e}"),
         };
-        LISTENER.store(hwnd.0 as isize, Ordering::SeqCst);
         if let Err(e) = AddClipboardFormatListener(hwnd) {
             return tracing::error!("presse-papiers : écoute refusée : {e}");
         }
+        LISTENER.store(hwnd.0 as isize, Ordering::SeqCst);
         let _ = formats();
         let mut msg = MSG::default();
-        while GetMessageW(&mut msg, None, 0, 0).as_bool() {
+        // -1 (erreur) arrête la boucle au lieu de la faire tourner à vide.
+        while GetMessageW(&mut msg, None, 0, 0).0 > 0 {
             DispatchMessageW(&msg);
         }
     }
@@ -326,7 +343,7 @@ unsafe fn with_data<T>(fmt: u32, f: impl FnOnce(&[u8]) -> Option<T>) -> Option<T
 
 /// Presse-papiers déjà ouvert. Exclusions d'abord : un format présent mais illisible vaut « ne pas garder ».
 unsafe fn read_open_clipboard() -> Option<Captured> {
-    let f = formats();
+    let f = formats()?;
     let has = |fmt: u32| unsafe { IsClipboardFormatAvailable(fmt) }.is_ok();
     if has(f.own) {
         return None;
@@ -346,7 +363,7 @@ unsafe fn read_open_clipboard() -> Option<Captured> {
     unsafe {
         with_data(fmt, |b| {
             if b.len() > MAX_IMAGE_BYTES {
-                tracing::warn!("presse-papiers : image de {} octets ignorée (plus de 20 Mo)", b.len());
+                tracing::warn!("presse-papiers : image de {} octets ignorée (plus de 40 Mo)", b.len());
                 return None;
             }
             Some(Captured::Dib(b.to_vec()))
@@ -360,6 +377,7 @@ fn write_clipboard(content: &ClipContent) -> Result<(), String> {
         ClipContent::Text(t) => (u32::from(CF_UNICODETEXT.0), t.encode_utf16().chain([0]).flat_map(u16::to_le_bytes).collect()),
         ClipContent::Image(png) => (u32::from(CF_DIB.0), png_to_dib(png)?),
     };
+    let own = formats().ok_or("formats du presse-papiers indisponibles")?.own;
     let hwnd = HWND(LISTENER.load(Ordering::SeqCst) as *mut _);
     if hwnd.0.is_null() {
         return Err("écoute du presse-papiers absente".into());
@@ -370,7 +388,7 @@ fn write_clipboard(content: &ClipContent) -> Result<(), String> {
     let res = unsafe {
         EmptyClipboard().map_err(|e| e.to_string())
             .and_then(|_| set_data(fmt, &bytes))
-            .and_then(|_| set_data(formats().own, &[1, 0, 0, 0]))
+            .and_then(|_| set_data(own, &[1, 0, 0, 0]))
     };
     let _ = unsafe { CloseClipboard() };
     res
@@ -393,6 +411,28 @@ unsafe fn set_data(fmt: u32, bytes: &[u8]) -> Result<(), String> {
     Ok(())
 }
 
+/// Coller seulement si la fenêtre d'origine est connue et de nouveau au premier plan.
+fn should_inject(prev: isize, fg_now: isize) -> bool {
+    prev != 0 && prev == fg_now
+}
+
+/// Code produit seulement, jamais appelé par les tests (R8). Rend le premier plan à `prev` et attend 100 ms au
+/// plus qu'il l'ait ; sinon pas de Ctrl+V (le contenu reste dans le presse-papiers, à coller à la main).
+fn paste_into(prev: isize) {
+    if prev == 0 {
+        return tracing::info!("presse-papiers : fenêtre d'origine inconnue, collage non envoyé");
+    }
+    let _ = unsafe { SetForegroundWindow(HWND(prev as *mut _)) };
+    let deadline = Instant::now() + Duration::from_millis(100);
+    while !should_inject(prev, unsafe { GetForegroundWindow() }.0 as isize) {
+        if Instant::now() >= deadline {
+            return tracing::info!("presse-papiers : fenêtre d'origine pas revenue au premier plan, collage non envoyé");
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    send_ctrl_v();
+}
+
 /// Code produit seulement, jamais appelé par les tests (R8) : Ctrl+V marqué vers la fenêtre au premier plan.
 fn send_ctrl_v() {
     let down = KEYBD_EVENT_FLAGS(0);
@@ -402,9 +442,12 @@ fn send_ctrl_v() {
         marked_key(VK_V.0, KEYEVENTF_KEYUP),
         marked_key(VK_CONTROL.0, KEYEVENTF_KEYUP),
     ];
-    let sent = unsafe { SendInput(&inputs, std::mem::size_of::<INPUT>() as i32) };
+    let size = std::mem::size_of::<INPUT>() as i32;
+    let sent = unsafe { SendInput(&inputs, size) };
     if sent as usize != inputs.len() {
-        tracing::warn!("presse-papiers : Ctrl+V injecté en partie ({sent}/4)");
+        tracing::warn!("presse-papiers : Ctrl+V injecté en partie ({sent}/4), touches relâchées");
+        // Ctrl ne doit jamais rester enfoncé.
+        unsafe { SendInput(&[marked_key(VK_V.0, KEYEVENTF_KEYUP), marked_key(VK_CONTROL.0, KEYEVENTF_KEYUP)], size) };
     }
 }
 
@@ -501,18 +544,41 @@ mod tests {
         assert!(dib_to_png(&big).is_err());
     }
 
-    #[test]
-    fn miniature_160_px_de_large_au_plus() {
-        let (w, h) = (400u32, 10u32);
+    /// DIB 32 bits de haut en bas, `w`×`h`, tous les pixels identiques.
+    fn plain(w: u32, h: u32) -> Vec<u8> {
         let mut d = dib(32, true, BI_RGB, 40, ROWS);
         d.truncate(40);
         d[4..8].copy_from_slice(&(w as i32).to_le_bytes());
         d[8..12].copy_from_slice(&(-(h as i32)).to_le_bytes());
         d.resize(40 + (w * h * 4) as usize, 200);
-        let (png, thumb) = dib_to_png(&d).unwrap();
-        assert_eq!(pixels(&png).0, w);
-        let (tw, th, _) = pixels(&thumb);
-        assert_eq!((tw, th), (160, 4));
+        d
+    }
+
+    #[test]
+    fn miniature_dans_160_par_160_proportions_gardees() {
+        for ((w, h), want) in [((400, 10), (160, 4)), ((10, 400), (4, 160)), ((320, 640), (80, 160)), ((150, 100), (150, 100))] {
+            let (png, thumb) = dib_to_png(&plain(w, h)).unwrap();
+            assert_eq!((pixels(&png).0, pixels(&png).1), (w, h));
+            let (tw, th, _) = pixels(&thumb);
+            assert_eq!((tw, th), want, "{w}×{h}");
+        }
+    }
+
+    #[test]
+    fn capture_4k_gardee_sous_le_plafond_de_40_mo() {
+        assert_eq!(MAX_IMAGE_BYTES, 40 * 1024 * 1024);
+        let d = plain(3840, 2160); // 33 Mo en 32 bits
+        assert!(d.len() > 20 * 1024 * 1024 && d.len() <= MAX_IMAGE_BYTES);
+        let (_, thumb) = dib_to_png(&d).unwrap();
+        assert_eq!((pixels(&thumb).0, pixels(&thumb).1), (160, 90));
+    }
+
+    #[test]
+    fn injection_seulement_dans_la_fenetre_d_origine() {
+        assert!(should_inject(42, 42));
+        assert!(!should_inject(42, 43), "autre fenêtre au premier plan");
+        assert!(!should_inject(0, 0), "fenêtre d'origine inconnue");
+        assert!(!should_inject(0, 42));
     }
 
     #[test]

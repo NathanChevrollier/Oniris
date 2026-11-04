@@ -22,8 +22,9 @@ const SNIPPET_CHARS: usize = 200;
 #[async_trait]
 impl Tool for Search {
     fn spec(&self) -> ToolSpec {
-        spec("clipboard.search", "Cherche dans l'historique du presse-papiers : { query }. Textes seulement (200 premiers caractères).",
-            json!({"type":"object","required":["query"],"properties":{"query":{"type":"string"}}}), Permission::Free)
+        // Sortie sensible : le texte copié ne doit pas survivre dans le journal des actions.
+        ToolSpec { sensitive_output: true, ..spec("clipboard.search", "Cherche dans l'historique du presse-papiers : { query }. Textes seulement (200 premiers caractères).",
+            json!({"type":"object","required":["query"],"properties":{"query":{"type":"string"}}}), Permission::Free) }
     }
     fn describe(&self, _: &Value) -> ConfirmationText { low("Chercher dans le presse-papiers") }
     async fn run(&self, args: &Value) -> Result<ToolResult, ToolError> {
@@ -63,6 +64,9 @@ mod tests {
         assert_eq!(list[0]["id"], id);
         assert_eq!(list[0]["text"].as_str().unwrap().chars().count(), SNIPPET_CHARS);
         assert!(list[0].get("thumb").is_none() && list[0].get("png").is_none());
+        let journal: Vec<String> = db.lock().prepare("SELECT result FROM actions").unwrap()
+            .query_map([], |r| r.get(0)).unwrap().collect::<Result<_, _>>().unwrap();
+        assert_eq!(journal, vec![r#"{"count":1,"redacted":true}"#], "aucun texte copié dans le journal");
         let ToolOutcome::Done { output, .. } = broker.call(call("CLé")).await else { panic!() };
         assert_eq!(output.as_array().unwrap().len(), 1);
         let ToolOutcome::Done { output, .. } = broker.call(call("absent")).await else { panic!() };

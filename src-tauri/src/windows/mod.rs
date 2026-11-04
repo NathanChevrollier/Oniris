@@ -61,8 +61,22 @@ fn set_panel_state(app: &AppHandle, open: bool) -> tauri::Result<()> {
     app.emit("oniris://panel-state", PanelState { open, at_ms: now_ms() })
 }
 
+/// Fenêtre au premier plan si elle n'est pas à nous (0 sinon).
+fn foreign_foreground() -> isize {
+    use ::windows::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowThreadProcessId};
+    let fg = unsafe { GetForegroundWindow() };
+    let mut pid = 0;
+    unsafe { GetWindowThreadProcessId(fg, Some(&mut pid)) };
+    if fg.0.is_null() || pid == std::process::id() { 0 } else { fg.0 as isize }
+}
+
 pub fn open_panel(app: &AppHandle) -> tauri::Result<()> {
     let win = window(app, "panel")?;
+    let state = app.state::<AppState>();
+    // Avant de prendre le focus : cible du collage. Panneau déjà ouvert : la cible déjà notée reste.
+    if !state.panel_open.load(Ordering::SeqCst) {
+        state.prev_foreground.store(foreign_foreground(), Ordering::SeqCst);
+    }
     apply(&win, panel_rect(primary(app)?.0))?;
     win.show()?;
     win.set_focus()?;

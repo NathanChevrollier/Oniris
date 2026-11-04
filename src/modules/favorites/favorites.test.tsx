@@ -1,8 +1,9 @@
 import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { it, expect, vi, afterEach, beforeEach } from "vitest";
-import { FavoritesCard } from "./FavoritesCard";
+import { FavoritesCard, hueOf } from "./FavoritesCard";
 import { favoritesIpc, type Favorite } from "./api";
+import { contrastRatio, hslToRgb, SAT, LIGHT, DARK } from "./contrast";
 import { usePanelStore } from "../../panel/store";
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
@@ -152,4 +153,54 @@ it("un renommage qui échoue affiche une erreur", async () => {
   await userEvent.click(screen.getByRole("menuitem", { name: "Renommer" }));
   await userEvent.type(screen.getByLabelText("Nouveau titre"), "x{Enter}");
   expect(await screen.findByRole("alert")).toHaveTextContent("Renommage impossible");
+});
+
+it("texte blanc sur le dégradé : contraste >= 4,5 sur 12 teintes, au bord clair comme au bord sombre", () => {
+  for (let h = 0; h < 360; h += 30) {
+    for (const l of [LIGHT, DARK]) expect(contrastRatio([255, 255, 255], hslToRgb(h, SAT, l)), `teinte ${h}, l ${l}`).toBeGreaterThanOrEqual(4.5);
+  }
+  expect(contrastRatio([0, 0, 0], [255, 255, 255])).toBeCloseTo(21, 0);
+});
+
+it("la teinte reste dans 0..359", () => {
+  for (const host of ["a.com", "github.com", "nexus.example.com", "zzzzzzzzzzzzzzzzzzzz.org", "é.fr", "", "x".repeat(500)]) {
+    const h = hueOf(host);
+    expect(Number.isInteger(h) && h >= 0 && h < 360, host).toBe(true);
+  }
+});
+
+it("l'écouteur de fenêtre retiré est bien celui qui a été ajouté", async () => {
+  vi.spyOn(favoritesIpc, "list").mockResolvedValue(three);
+  const add = vi.spyOn(window, "addEventListener");
+  const rem = vi.spyOn(window, "removeEventListener");
+  const { unmount } = render(<FavoritesCard />);
+  const alpha = await screen.findByRole("button", { name: "Alpha" });
+  fireEvent.pointerDown(alpha, { clientX: 25, clientY: 20, button: 0, pointerId: 1 });
+  const added = add.mock.calls.find((c) => c[0] === "pointerup")![1];
+  fireEvent.pointerUp(alpha, { pointerId: 1 });
+  expect(rem.mock.calls.some((c) => c[0] === "pointerup" && c[1] === added)).toBe(true);
+  fireEvent.pointerDown(alpha, { clientX: 25, clientY: 20, button: 0, pointerId: 1 });
+  rem.mockClear();
+  unmount(); // démontage en plein appui
+  expect(rem.mock.calls.some((c) => c[0] === "pointerup" && c[1] === added)).toBe(true);
+});
+
+it("reorder refusé : message inline, ordre d'origine rétabli", async () => {
+  vi.spyOn(favoritesIpc, "list").mockResolvedValue(three);
+  vi.spyOn(favoritesIpc, "reorder").mockRejectedValue("ordre incomplet ou inconnu");
+  render(<FavoritesCard />);
+  const beta = await screen.findByRole("button", { name: "Beta" });
+  beta.focus();
+  await userEvent.keyboard("{Alt>}{ArrowLeft}{/Alt}");
+  expect(await screen.findByRole("alert")).toHaveTextContent("Liste modifiée ailleurs — réessaie");
+  expect(screen.getAllByRole("listitem").map((li) => li.textContent?.slice(0, 1))[0]).toBe("A");
+});
+
+it("Échap rend le focus au bouton « … » ; titres de liste par catégorie", async () => {
+  vi.spyOn(favoritesIpc, "list").mockResolvedValue([fav(1, "Alpha", "Outils"), fav(2, "Beta", "Sites")]);
+  render(<FavoritesCard />);
+  expect(await screen.findByRole("list", { name: "Favoris — Sites" })).toBeInTheDocument();
+  fireEvent.contextMenu(screen.getByRole("button", { name: "Alpha" }));
+  await userEvent.keyboard("{Escape}");
+  expect(screen.getByRole("button", { name: "Options de Alpha" })).toHaveFocus();
 });

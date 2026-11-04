@@ -5,6 +5,7 @@ import { Empty } from "../../ui/Empty";
 import { useTopic } from "../../lib/data";
 import { useToolAction } from "../../lib/toolAction";
 import { favoritesIpc, type Favorite } from "./api";
+import { DARK, LIGHT, hsl } from "./contrast";
 import "./favorites.css";
 
 const UNAVAILABLE = "Favoris indisponibles, réessaie.";
@@ -22,8 +23,10 @@ export function hueOf(host: string) {
   let h = 2166136261; // FNV-1a, puis mélange final : les domaines proches s'étalent sur tout le cercle
   for (const c of host) h = Math.imul(h ^ c.charCodeAt(0), 16777619) >>> 0;
   h = Math.imul(h ^ (h >>> 15), 2246822519) >>> 0;
-  return (h ^ (h >>> 13)) % 360;
+  return ((h ^ (h >>> 13)) >>> 0) % 360;
 }
+
+const iconStyle = (h: number) => ({ "--g1": hsl(h, LIGHT), "--g2": hsl((h + 40) % 360, DARK) }) as CSSProperties;
 
 const move = <T,>(a: T[], from: number, to: number) => { const b = [...a]; b.splice(to, 0, b.splice(from, 1)[0]); return b; };
 
@@ -46,10 +49,18 @@ export function FavoritesCard() {
   const justDragged = useRef(false);
   const root = useRef<HTMLDivElement>(null);
   const upRef = useRef<() => void>(() => {});
+  const onWinUp = useRef(() => upRef.current()).current; // identité stable : removeEventListener retire bien ce qui a été ajouté
   const [announce, setAnnounce] = useState("");
   const [renameError, setRenameError] = useState<string | null>(null);
+  const [reorderError, setReorderError] = useState<string | null>(null);
+  const fresh = () => { setRenameError(null); setReorderError(null); clear(); };
+  const refocusMore = (id: number) => root.current?.querySelector<HTMLElement>(`[data-id="${id}"] .fav-more`)?.focus();
 
-  const persist = (next: Favorite[]) => { setLocal(next); favoritesIpc.reorder(next.map((f) => f.id)).catch(() => setLocal(null)); };
+  const persist = (next: Favorite[]) => {
+    fresh();
+    setLocal(next);
+    favoritesIpc.reorder(next.map((f) => f.id)).catch(() => { setLocal(null); setReorderError("Liste modifiée ailleurs — réessaie"); });
+  };
 
   /** Index de la tuile sous le pointeur, dans la même catégorie que la tuile saisie. */
   const target = (x: number, y: number, from: number) => {
@@ -67,7 +78,6 @@ export function FavoritesCard() {
     try { d.el.setPointerCapture?.(d.pid); } catch { /* pointeur déjà relâché */ }
   };
   // Le relâchement peut avoir lieu hors de la tuile (ou de la fenêtre) : on l'écoute sur la fenêtre.
-  const onWinUp = () => upRef.current();
   const down = (e: PointerEvent, id: number) => {
     if (e.button !== 0) return;
     const d: Drag = { id, x: e.clientX, y: e.clientY, active: false, over: null, timer: 0, el: e.currentTarget as HTMLElement, pid: e.pointerId };
@@ -102,12 +112,12 @@ export function FavoritesCard() {
   };
 
   upRef.current = up;
-  useEffect(() => () => { clearTimeout(drag.current?.timer); window.removeEventListener("pointerup", onWinUp); window.removeEventListener("pointercancel", onWinUp); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => { clearTimeout(drag.current?.timer); window.removeEventListener("pointerup", onWinUp); window.removeEventListener("pointercancel", onWinUp); }, [onWinUp]);
   // Menu : se ferme au clic en dehors et sur Échap.
   useEffect(() => {
     if (menu === null) return;
     const out = (e: Event) => { if (!(e.target as Element).closest?.(".fav-menu, .fav-more")) setMenu(null); };
-    const esc = (e: globalThis.KeyboardEvent) => { if (e.key === "Escape") setMenu(null); };
+    const esc = (e: globalThis.KeyboardEvent) => { if (e.key === "Escape") { setMenu(null); refocusMore(menu); } };
     document.addEventListener("pointerdown", out);
     document.addEventListener("keydown", esc);
     return () => { document.removeEventListener("pointerdown", out); document.removeEventListener("keydown", esc); };
@@ -124,24 +134,25 @@ export function FavoritesCard() {
 
   const submit = async () => {
     if (!url.trim()) return;
+    fresh();
     if (await run(favoritesIpc.add(url.trim(), title.trim() || undefined))) { setAdding(false); setUrl(""); setTitle(""); }
   };
 
   const categories = [...new Set(list.map((f) => f.category))];
   const grouped = categories.length > 1;
   const groups = grouped ? categories : [null];
-  const open = (f: Favorite) => { if (!justDragged.current) void run(favoritesIpc.open(f.id)); };
+  const open = (f: Favorite) => { if (!justDragged.current) fresh(), void run(favoritesIpc.open(f.id)); };
   const draggedAt = dragging === null ? -1 : list.findIndex((x) => x.id === dragging);
 
   const tile = (f: Favorite) => {
     const i = list.indexOf(f);
     const drop = over === i && draggedAt >= 0 ? (i > draggedAt ? "drop-after" : "drop-before") : "";
     return (
-      <li key={f.id} data-index={i} className={`fav ${dragging === f.id ? "dragging" : ""} ${drop}`} onContextMenu={(e) => { e.preventDefault(); setMenu(f.id); }}>
+      <li key={f.id} data-index={i} data-id={f.id} className={`fav ${dragging === f.id ? "dragging" : ""} ${drop}`} onContextMenu={(e) => { e.preventDefault(); setMenu(f.id); }}>
         <button type="button" className="fav-btn" aria-label={f.title} onClick={() => open(f)}
           onPointerDown={(e) => down(e, f.id)} onPointerMove={moved} onLostPointerCapture={up}
           aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight" onKeyDown={(e) => key(e, i)}>
-          <span className="fav-ico" style={{ "--hue": hueOf(hostOf(f.url)) } as CSSProperties}>
+          <span className="fav-ico" style={iconStyle(hueOf(hostOf(f.url)))}>
             {f.icon ? <img src={f.icon} alt="" draggable={false} /> : <span aria-hidden>{initials(f.title)}</span>}
           </span>
           {renaming === f.id ? null : <span className="fav-t" aria-hidden>{f.title}</span>}
@@ -151,14 +162,14 @@ export function FavoritesCard() {
             onBlur={() => setRenaming(null)}
             onKeyDown={(e) => {
               if (e.key === "Escape") setRenaming(null);
-              if (e.key === "Enter") { const v = e.currentTarget.value.trim(); setRenaming(null); if (v) favoritesIpc.rename(f.id, v).then(() => setRenameError(null), () => setRenameError("Renommage impossible, réessaie.")); }
+              if (e.key === "Enter") { const v = e.currentTarget.value.trim(); setRenaming(null); if (v) fresh(), favoritesIpc.rename(f.id, v).then(() => setRenameError(null), () => setRenameError("Renommage impossible, réessaie.")); }
             }} />
         )}
-        <button type="button" className="fav-more" aria-label={`Options de ${f.title}`} aria-haspopup="menu" onClick={() => setMenu(menu === f.id ? null : f.id)}><MoreHorizontal size={12} /></button>
+        <button type="button" className="fav-more" aria-label={`Options de ${f.title}`} aria-haspopup="menu" onClick={() => { fresh(); setMenu(menu === f.id ? null : f.id); }}><MoreHorizontal size={12} /></button>
         {menu === f.id && (
-          <div className="fav-menu" role="menu" onKeyDown={(e) => e.key === "Escape" && setMenu(null)}>
+          <div className="fav-menu" role="menu">
             <button type="button" role="menuitem" autoFocus onClick={() => { setMenu(null); setRenaming(f.id); }}>Renommer</button>
-            <button type="button" role="menuitem" onClick={() => { setMenu(null); void run(favoritesIpc.remove(f.id)); }}>Supprimer</button>
+            <button type="button" role="menuitem" onClick={() => { setMenu(null); refocusMore(f.id); fresh(); void run(favoritesIpc.remove(f.id)); }}>Supprimer</button>
           </div>
         )}
       </li>
@@ -177,7 +188,7 @@ export function FavoritesCard() {
         {groups.map((cat, g) => (
           <div key={cat ?? "∅"}>
             {grouped && <h4 className="fav-cat">{cat ?? "Sans catégorie"}</h4>}
-            <ul className="favs" role="list" aria-label="Favoris">
+            <ul className="favs" role="list" aria-label={grouped ? `Favoris — ${cat ?? "Sans catégorie"}` : "Favoris"}>
               {list.filter((f) => !grouped || f.category === cat).map(tile)}
               {g === groups.length - 1 && (
                 <li><button type="button" className="fav-btn fav-add" aria-label="Ajouter un favori" onClick={() => { setAdding(!adding); clear(); }}>
@@ -194,7 +205,7 @@ export function FavoritesCard() {
           <button type="submit">Ajouter</button>
         </form>
       )}
-      {(error ?? renameError) && <p className="err" role="alert">{error ?? renameError}</p>}
+      {[error, renameError, reorderError].map((m) => m && <p key={m} className="err" role="alert">{m}</p>)}
       <span className="sr-only" role="status" aria-live="polite">{announce}</span>
     </Card>
   );

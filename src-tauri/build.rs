@@ -15,6 +15,10 @@ fn main() {
         "agenda_month_days",
         "agenda_create",
         "agenda_delete",
+        "reminders_list",
+        "reminders_create",
+        "reminders_complete",
+        "reminders_delete",
         "perf_frame",
         "perf_open_cycles",
     ]);

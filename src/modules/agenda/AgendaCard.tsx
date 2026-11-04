@@ -5,6 +5,7 @@ import { useTopic } from "../../lib/data";
 import { useNow } from "../../lib/time";
 import { usePanelStore } from "../../panel/store";
 import { agendaIpc, dayBounds, dayKey, type AgendaEvent } from "./api";
+import { ReminderList } from "../reminders/ReminderList";
 import { MonthGrid } from "./MonthGrid";
 import { DayList } from "./DayList";
 import "./agenda.css";
@@ -69,6 +70,7 @@ export function AgendaCard() {
           aria-label="Ajouter un événement" autoComplete="off" spellCheck={false} />
         {error && <p className="err" role="alert">{error}</p>}
       </form>
+      <ReminderList />
     </Card>
   );
 }

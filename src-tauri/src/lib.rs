@@ -43,6 +43,10 @@ pub fn run() {
             modules::agenda::agenda_month_days,
             modules::agenda::agenda_create,
             modules::agenda::agenda_delete,
+            modules::reminders::reminders_list,
+            modules::reminders::reminders_create,
+            modules::reminders::reminders_complete,
+            modules::reminders::reminders_delete,
             #[cfg(any(debug_assertions, feature = "perf"))]
             perf::perf_frame,
             #[cfg(any(debug_assertions, feature = "perf"))]
@@ -61,6 +65,7 @@ pub fn run() {
             let autostart = st.settings.read().autostart;
             app.manage(st);
             let _ = app.state::<state::AppState>().scheduler.set(scheduler::Scheduler::start(app.handle().clone()));
+            modules::reminders::start(app.handle());
             // Pas encore d'écran (session qui s'ouvre) : on continue sans pilule plutôt que d'échouer.
             if let Err(e) = windows::show_pill(app.handle()) {
                 tracing::error!("pilule : affichage au démarrage impossible : {e}");

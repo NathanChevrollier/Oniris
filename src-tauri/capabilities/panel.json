@@ -16,6 +16,10 @@
     "allow-agenda-month-days",
     "allow-agenda-create",
     "allow-agenda-delete",
+    "allow-reminders-list",
+    "allow-reminders-create",
+    "allow-reminders-complete",
+    "allow-reminders-delete",
     "allow-perf-frame",
     "allow-perf-open-cycles"
   ]

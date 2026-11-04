@@ -46,6 +46,19 @@ Migration {
         created_ms INTEGER NOT NULL
     ) STRICT;
     CREATE INDEX events_start ON events(start_ms) WHERE deleted = 0;",
+},
+Migration {
+    version: 4,
+    sql: "CREATE TABLE reminders (
+        id INTEGER PRIMARY KEY,
+        text TEXT NOT NULL,
+        due_ms INTEGER,
+        done INTEGER NOT NULL DEFAULT 0,
+        notified INTEGER NOT NULL DEFAULT 0,
+        deleted INTEGER NOT NULL DEFAULT 0,
+        created_ms INTEGER NOT NULL
+    ) STRICT;
+    CREATE INDEX reminders_due ON reminders(due_ms) WHERE done = 0 AND deleted = 0 AND notified = 0;",
 }];
 
 pub fn open_db(path: &Path) -> Result<Connection, CoreError> {

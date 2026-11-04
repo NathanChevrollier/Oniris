@@ -243,6 +243,30 @@
           "markdownDescription": "Enables the pill_resize command without any pre-configured scope."
         },
         {
+          "description": "Enables the reminders_complete command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-reminders-complete",
+          "markdownDescription": "Enables the reminders_complete command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the reminders_create command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-reminders-create",
+          "markdownDescription": "Enables the reminders_create command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the reminders_delete command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-reminders-delete",
+          "markdownDescription": "Enables the reminders_delete command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the reminders_list command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-reminders-list",
+          "markdownDescription": "Enables the reminders_list command without any pre-configured scope."
+        },
+        {
           "description": "Enables the settings_get command without any pre-configured scope.",
           "type": "string",
           "const": "allow-settings-get",
@@ -331,6 +355,30 @@
           "type": "string",
           "const": "deny-pill-resize",
           "markdownDescription": "Denies the pill_resize command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the reminders_complete command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-reminders-complete",
+          "markdownDescription": "Denies the reminders_complete command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the reminders_create command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-reminders-create",
+          "markdownDescription": "Denies the reminders_create command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the reminders_delete command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-reminders-delete",
+          "markdownDescription": "Denies the reminders_delete command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the reminders_list command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-reminders-list",
+          "markdownDescription": "Denies the reminders_list command without any pre-configured scope."
         },
         {
           "description": "Denies the settings_get command without any pre-configured scope.",

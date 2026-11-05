@@ -1,9 +1,12 @@
 //! Projets : inventaire recalculé en tâche de fond (disque, puis git à 4 de front), jamais sur le chemin d'ouverture.
 //! Journal : des comptes seulement (chemins, titres de session et branches sont du contenu utilisateur).
+use crate::commands::dispatch_as_user;
 use crate::launch::spawn_hidden;
 use crate::state::AppState;
 use oniris_core::events::Topic;
+use oniris_core::projects::resume::{self, Env, Prompts};
 use oniris_core::projects::{self, git, Project};
+use oniris_core::tools::ToolOutcome;
 use oniris_core::time_util::now_ms;
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -175,6 +178,58 @@ pub async fn projects_set_roots(app: AppHandle, roots: Vec<String>) -> Result<()
     crate::commands::apply_settings(&app, s)?;
     refresh(&app);
     Ok(())
+}
+
+const VSCODE_TTL_MS: i64 = 60 * 60 * 1000;
+/// Dernière détection de l'extension Claude Code `(instant, résultat)` : relue au plus une fois par heure.
+static VSCODE_OK: Mutex<Option<(i64, bool)>> = Mutex::new(None);
+
+fn vscode_ok_cached() -> bool {
+    let mut c = VSCODE_OK.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some((at, ok)) = *c {
+        if now_ms() - at < VSCODE_TTL_MS {
+            return ok;
+        }
+    }
+    let ok = dirs::home_dir().is_some_and(|h| resume::vscode_ok(&h.join(".vscode").join("extensions")));
+    *c = Some((now_ms(), ok));
+    ok
+}
+
+/// Sortie de `where <prog>` (sans fenêtre) ; `None` si introuvable.
+fn where_is(prog: &str) -> Option<String> {
+    let out = spawn_hidden("where", &[prog.to_string()], None, &[]).ok()?.wait_with_output().ok()?;
+    out.status.success().then(|| String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
+/// Environnement de « Reprendre » (bloquant : `where`, lecture de l'extension) et invites des réglages.
+pub fn resume_env(app: &AppHandle) -> (Env, Prompts) {
+    let var = |k: &str| std::env::var(k).ok();
+    let code = resume::vscode_exe(&var, &|p: &Path| p.is_file(), || where_is("code"));
+    // Alias d'exécution (WindowsApps) : `metadata` ne suit pas ce point d'analyse, `symlink_metadata` le voit.
+    let alias = var("LOCALAPPDATA").map(|l| PathBuf::from(l).join(r"Microsoft\WindowsApps\wt.exe")).filter(|p| p.symlink_metadata().is_ok());
+    let wt = alias.map(|p| p.to_string_lossy().into_owned()).or_else(|| where_is("wt")?.lines().next().map(|l| l.trim().to_string()));
+    let s = app.state::<AppState>().settings.read().clone();
+    (Env { vscode_ok: vscode_ok_cached(), code, wt }, Prompts { normal: s.resume_prompt_normal, orchestrator: s.resume_prompt_orchestrator })
+}
+
+/// « Reprendre » depuis l'interface (journalisé comme une action de l'utilisateur). Ferme le panneau une fois les
+/// étapes lancées ; renvoie le message à afficher si Claude doit être lancé à la main (le panneau reste alors ouvert).
+#[tauri::command]
+pub async fn projects_resume(app: AppHandle, path: String, mode: String) -> Result<Option<String>, String> {
+    let name = app.state::<AppState>().projects.read().list.iter().find(|p| p.path == path).map(|p| p.name.clone()).ok_or("projet inconnu")?;
+    match dispatch_as_user(&app, "projects.resume", serde_json::json!({ "name": name, "path": path, "mode": mode })).await {
+        ToolOutcome::Done { output, .. } => {
+            let info = output["info"].as_str().map(str::to_string);
+            if info.is_none() {
+                crate::windows::close_panel(&app).map_err(|e| e.to_string())?;
+            }
+            Ok(info)
+        }
+        ToolOutcome::NeedsConfirmation(_) => Err("confirmation inattendue".into()),
+        ToolOutcome::Rejected { .. } => Err("action refusée".into()),
+        ToolOutcome::Failed { error, .. } => Err(error),
+    }
 }
 
 #[cfg(test)]

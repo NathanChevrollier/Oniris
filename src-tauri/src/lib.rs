@@ -74,6 +74,7 @@ pub fn run() {
             modules::projects::projects_pin,
             modules::projects::projects_hide,
             modules::projects::projects_set_roots,
+            modules::projects::projects_resume,
             modules::weather::weather_get,
             modules::indexer::index_status,
             modules::search::search_query,

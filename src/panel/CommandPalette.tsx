@@ -145,6 +145,9 @@ export const searchIpc = {
       ? FAKE.filter((h) => (!scope || h.item.kind === scope) && highlight(`${h.item.title} ${h.item.subtitle}`, q).length > 0)
       : FAKE.slice(3, 7) }),
   open: (kind: ItemKind, key: string): Promise<Opened> => isTauri ? invoke("search_open", { kind, key }) : Promise.resolve("done"),
+  /** « Reprendre » un projet (VS Code + Claude) ; renvoie un message si Claude doit être lancé à la main. */
+  resume: (path: string, mode: "normal" | "orchestrator"): Promise<string | null> =>
+    isTauri ? invoke("projects_resume", { path, mode }) : Promise.resolve(null),
 };
 
 /** Numéro de requête, croissant pour toute la vie de la page ; seules les requêtes Rust le consomment : la première
@@ -213,6 +216,11 @@ export function CommandPalette({ onCommand = () => {} }: { onCommand?: (text: st
   const activate = (h: Hit, ctrl: boolean, t: string) => {
     const it = h.item;
     if (it.kind === "command") { void runCommand(it.key, t); return; }
+    if (ctrl && it.kind === "project") {
+      searchIpc.resume(it.key, "normal").then((info) => { if (info) setMsg(info); else reset(); },
+        (e) => setMsg(friendlyError(String(e), OPEN_FAILED)));
+      return;
+    }
     const [kind, key]: [ItemKind, string] = ctrl && (it.kind === "file" || it.kind === "dir") ? ["dir", parentOf(it.key)] : [it.kind, it.key];
     searchIpc.open(kind, key).then((r) => {
       if (r === "note") focusCard("notes", it.title);
@@ -300,6 +308,7 @@ export function CommandPalette({ onCommand = () => {} }: { onCommand?: (text: st
             <span role="alert">{error}</span>
             <span role="status">{error ? null : msg}</span>
             {note == null && showHint && <span className="pal-idx">indexation…{indexed != null && ` ${indexed.toLocaleString("fr-FR")} fichiers`}</span>}
+            {note == null && !showHint && hits[sel]?.item.kind === "project" && <span className="pal-tip">Ctrl+↵ reprendre avec Claude</span>}
           </div>
       </div>
       <CommandBar inputRef={input} value={text} role="combobox" aria-expanded={hits.length > 0} aria-controls={hits.length ? "pal-list" : undefined}

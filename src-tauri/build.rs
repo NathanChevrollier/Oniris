@@ -44,6 +44,7 @@ fn main() {
         "projects_pin",
         "projects_hide",
         "projects_set_roots",
+        "projects_resume",
         "weather_get",
         "index_status",
         "search_query",

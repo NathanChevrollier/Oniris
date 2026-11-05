@@ -1,7 +1,9 @@
-//! Outils `projects.list` et `projects.status` (libres, en lecture) ; l'inventaire est fourni par l'appelant.
+//! Outils `projects.list`, `projects.status` (libres, en lecture) et `projects.resume` (libre) ; l'inventaire est fourni par l'appelant.
+use super::resume::{execute, plan, Env, LaunchStep, Mode, Prompts};
 use super::{find, sort, status_text, Project};
+use crate::launch::Opener;
 use crate::time_util::now_ms;
-use crate::tools::helpers::{bad, low, parse, spec};
+use crate::tools::helpers::{bad, failed, low, parse, spec};
 use crate::tools::{ConfirmationText, Permission, Tool, ToolError, ToolResult, ToolSpec};
 use async_trait::async_trait;
 use serde::Deserialize;
@@ -61,6 +63,56 @@ impl Tool for Status {
     }
 }
 
+/// Environnement de reprise (lu sur un fil bloquant : processus `where`, lecture de l'extension) et invites des réglages.
+pub type ResumeEnv = Arc<dyn Fn() -> (Env, Prompts) + Send + Sync>;
+
+#[derive(Deserialize)]
+struct ResumeArgs {
+    name: String,
+    mode: Mode,
+    #[serde(default)]
+    path: Option<String>,
+}
+
+pub struct Resume {
+    pub source: Source,
+    pub env: ResumeEnv,
+    pub opener: Arc<dyn Opener>,
+}
+
+#[async_trait]
+impl Tool for Resume {
+    fn spec(&self) -> ToolSpec {
+        spec(
+            "projects.resume",
+            "Reprend un projet : ouvre VS Code sur le dossier puis la dernière session Claude Code avec une invite de reprise              (mode « orchestrator » : sous-agents et graphify). Le nom est cherché sans tenir compte de la casse, par préfixe.",
+            json!({"type":"object","properties":{
+                "name":{"type":"string"},
+                "mode":{"type":"string","enum":["normal","orchestrator"]},
+                "path":{"type":"string","description":"Chemin exact du projet (prioritaire sur le nom)."}
+            },"required":["name","mode"]}),
+            Permission::Free,
+        )
+    }
+    fn describe(&self, _: &Value) -> ConfirmationText { low("Reprendre un projet") }
+    async fn run(&self, args: &Value) -> Result<ToolResult, ToolError> {
+        let a: ResumeArgs = parse(args)?;
+        let list = (self.source)();
+        let found = match &a.path {
+            Some(path) => list.iter().find(|p| &p.path == path),
+            None => find(&list, &a.name),
+        };
+        let p = found.ok_or_else(|| bad("projet inconnu"))?.clone();
+        let env = self.env.clone();
+        let (env, prompts) = tokio::task::spawn_blocking(move || env()).await.map_err(failed)?;
+        let (steps, info) = plan(&p, a.mode, &prompts, &env);
+        let kinds: Vec<&str> = steps.iter().map(LaunchStep::kind).collect();
+        let opener = self.opener.clone();
+        std::thread::Builder::new().name("oniris-resume".into()).spawn(move || execute(&*opener, &steps)).map_err(failed)?;
+        Ok(ToolResult { output: json!({"steps": kinds, "info": info}), undo: None })
+    }
+}
+
 pub fn all(source: &Source) -> Vec<Arc<dyn Tool>> {
     vec![Arc::new(List { source: source.clone() }), Arc::new(Status { source: source.clone() })]
 }
@@ -94,5 +146,40 @@ mod tests {
         let ToolOutcome::Done { output, .. } = call("projects.status", json!({"name": "myemp"})).await else { panic!("Free") };
         assert!(output.as_str().unwrap().starts_with("MyEmpire — "));
         assert!(matches!(call("projects.status", json!({"name": "secret"})).await, ToolOutcome::Failed { .. }));
+    }
+
+    /// Faux `Opener` : chaque lancement part dans le canal, rien n'est réellement ouvert (R8).
+    struct Rec(Mutex<std::sync::mpsc::Sender<String>>);
+    impl Opener for Rec {
+        fn open_path(&self, _: &std::path::Path) {}
+        fn open_url(&self, u: &str) {
+            let _ = self.0.lock().send(u.to_string());
+        }
+        fn spawn_detached(&self, program: &str, args: &[String], _: Option<&std::path::Path>) -> std::io::Result<()> {
+            let _ = self.0.lock().send(format!("{program} {}", args.join("|")));
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn reprise_libre_par_prefixe_et_mode() {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let src: Source = Arc::new(|| vec![p("MyEmpire", false), p("Secret", true)]);
+        let env: ResumeEnv = Arc::new(|| {
+            (Env { vscode_ok: false, code: Some("Code.exe".into()), wt: Some("wt".into()) }, Prompts { normal: "N".into(), orchestrator: "O".into() })
+        });
+        let resume: Arc<dyn Tool> = Arc::new(Resume { source: src, env, opener: Arc::new(Rec(Mutex::new(tx))) });
+        let broker = ToolBroker::new(Arc::new(Mutex::new(db())), Arc::new(|| 0), vec![resume]).unwrap();
+        let go = |args: Value| broker.call(ToolCall { tool: "projects.resume".into(), args, provenance: Provenance::User, origin: Origin::User });
+        let ToolOutcome::Done { output, .. } = go(json!({"name": "myemp", "mode": "orchestrator"})).await else { panic!("Free") };
+        assert_eq!(output, json!({"steps": ["code", "terminal"], "info": null}));
+        let t = std::time::Duration::from_secs(5);
+        assert_eq!(rx.recv_timeout(t).unwrap(), r"Code.exe C:\p\MyEmpire");
+        assert_eq!(rx.recv_timeout(t).unwrap(), r"wt -d|C:\p\MyEmpire|claude|--continue|O");
+        assert!(matches!(go(json!({"name": "secret", "mode": "normal"})).await, ToolOutcome::Failed { .. }), "caché");
+        assert!(matches!(go(json!({"name": "myemp", "mode": "fou"})).await, ToolOutcome::Failed { .. }));
+        // Chemin exact (interface) prioritaire sur le nom.
+        let ToolOutcome::Done { .. } = go(json!({"name": "x", "path": r"C:\p\MyEmpire", "mode": "normal"})).await else { panic!("chemin") };
+        assert_eq!(rx.recv_timeout(t).unwrap(), r"Code.exe C:\p\MyEmpire");
     }
 }

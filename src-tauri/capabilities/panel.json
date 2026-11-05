@@ -45,6 +45,7 @@
     "allow-projects-pin",
     "allow-projects-hide",
     "allow-projects-set-roots",
+    "allow-projects-resume",
     "dialog:allow-open",
     "allow-weather-get",
     "allow-index-status",

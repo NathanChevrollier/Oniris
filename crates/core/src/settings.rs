@@ -43,6 +43,9 @@ pub struct Settings {
     pub search_roots: Vec<String>,
     /// Dossiers où chercher des projets, indexés en plus de `search_roots`. Mêmes limites.
     pub projects_roots: Vec<String>,
+    /// Invites de « Reprendre » (Claude Code), non vides, 2000 caractères au plus.
+    pub resume_prompt_normal: String,
+    pub resume_prompt_orchestrator: String,
 }
 
 impl Default for Settings {
@@ -66,6 +69,8 @@ impl Default for Settings {
             weather_city: String::new(),
             search_roots: Vec::new(),
             projects_roots: Vec::new(),
+            resume_prompt_normal: RESUME_NORMAL.into(),
+            resume_prompt_orchestrator: format!("{RESUME_NORMAL} {RESUME_ORCHESTRATOR}"),
         }
     }
 }
@@ -92,6 +97,11 @@ fn check_hotkey(h: &HotkeySetting) -> Result<(), String> {
     }
     Ok(())
 }
+
+const RESUME_NORMAL: &str =
+    "Reprends là où tu en étais sur ce projet. Appuie-toi sur le plan de développement et l'historique git. Commence par me dire où on en est.";
+const RESUME_ORCHESTRATOR: &str = "Travaille en mode orchestrateur, comme décrit dans mon CLAUDE.md global : graphify pour t'orienter, sous-agents haiku/sonnet/opus selon la tâche, parallélisation des tâches indépendantes, et relecture avant intégration.";
+const MAX_PROMPT: usize = 2000;
 
 const MAX_ROOTS: usize = 20;
 const MAX_ROOT_LEN: usize = 260;
@@ -167,6 +177,14 @@ impl Settings {
         if let Err(e) = check_roots(&self.projects_roots, "dossiers de projets") {
             errs.push(e);
             self.projects_roots = d.projects_roots.clone();
+        }
+        if self.resume_prompt_normal.trim().is_empty() || self.resume_prompt_normal.chars().count() > MAX_PROMPT {
+            errs.push(format!("invite de reprise : non vide, {MAX_PROMPT} caractères au plus"));
+            self.resume_prompt_normal = d.resume_prompt_normal.clone();
+        }
+        if self.resume_prompt_orchestrator.trim().is_empty() || self.resume_prompt_orchestrator.chars().count() > MAX_PROMPT {
+            errs.push(format!("invite de reprise (orchestrateur) : non vide, {MAX_PROMPT} caractères au plus"));
+            self.resume_prompt_orchestrator = d.resume_prompt_orchestrator.clone();
         }
         if let Err(e) = check_hotkey(&self.hotkey) {
             errs.push(e);
@@ -301,6 +319,14 @@ mod tests {
         assert!(Settings { timeline_end_hour: 24, hover_delay_ms: 3000, ..Settings::default() }.validate().is_ok());
         assert!(Settings { focus_minutes: 5, break_minutes: 60, ..Settings::default() }.validate().is_ok());
         assert!(Settings { focus_minutes: 120, break_minutes: 1, ..Settings::default() }.validate().is_ok());
+        assert!(bad(|s| s.resume_prompt_normal = "  ".into()));
+        assert!(bad(|s| s.resume_prompt_orchestrator = "x".repeat(2001)));
+        assert!(Settings { resume_prompt_normal: "é".repeat(2000), ..Settings::default() }.validate().is_ok());
+    }
+    #[test] fn invites_de_reprise_par_defaut() {
+        let d = Settings::default();
+        assert_eq!(d.resume_prompt_normal, "Reprends là où tu en étais sur ce projet. Appuie-toi sur le plan de développement et l'historique git. Commence par me dire où on en est.");
+        assert_eq!(d.resume_prompt_orchestrator, format!("{} Travaille en mode orchestrateur, comme décrit dans mon CLAUDE.md global : graphify pour t'orienter, sous-agents haiku/sonnet/opus selon la tâche, parallélisation des tâches indépendantes, et relecture avant intégration.", d.resume_prompt_normal));
     }
     #[test] fn champs_invalides_en_base_remplaces_un_par_un() {
         let dir = tempfile::tempdir().unwrap();

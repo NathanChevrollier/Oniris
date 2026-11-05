@@ -83,6 +83,9 @@ impl AppState {
         let handle = app.clone();
         let projects: oniris_core::projects::tools::Source = Arc::new(move || handle.state::<AppState>().projects.read().list.clone());
         tools.extend(oniris_core::projects::tools::all(&projects));
+        let handle = app.clone();
+        let env: oniris_core::projects::tools::ResumeEnv = Arc::new(move || crate::modules::projects::resume_env(&handle));
+        tools.push(Arc::new(oniris_core::projects::tools::Resume { source: projects, env, opener: opener.clone() }));
         let broker = Arc::new(ToolBroker::new(db.clone(), clock, tools)?);
         broker.mark_interrupted();
         broker.expire_stale();

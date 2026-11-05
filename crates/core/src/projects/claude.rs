@@ -32,7 +32,7 @@ fn matching_dirs(base: &Path, project: &Path) -> Vec<PathBuf> {
     rd.flatten().filter(|e| e.file_name().to_string_lossy().eq_ignore_ascii_case(&want)).map(|e| e.path()).collect()
 }
 
-fn is_uuid(s: &str) -> bool {
+pub(crate) fn is_uuid(s: &str) -> bool {
     s.len() == 36 && s.bytes().enumerate().all(|(i, b)| if matches!(i, 8 | 13 | 18 | 23) { b == b'-' } else { b.is_ascii_hexdigit() })
 }
 

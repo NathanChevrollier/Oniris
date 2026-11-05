@@ -3,6 +3,7 @@
 pub mod claude;
 pub mod git;
 pub mod plan;
+pub mod resume;
 pub mod tools;
 
 use crate::search::{Item, ItemKind};

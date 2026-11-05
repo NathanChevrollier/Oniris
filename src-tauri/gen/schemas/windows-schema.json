@@ -375,6 +375,12 @@
           "markdownDescription": "Enables the projects_pin command without any pre-configured scope."
         },
         {
+          "description": "Enables the projects_resume command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-projects-resume",
+          "markdownDescription": "Enables the projects_resume command without any pre-configured scope."
+        },
+        {
           "description": "Enables the projects_set_roots command without any pre-configured scope.",
           "type": "string",
           "const": "allow-projects-set-roots",
@@ -661,6 +667,12 @@
           "type": "string",
           "const": "deny-projects-pin",
           "markdownDescription": "Denies the projects_pin command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the projects_resume command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-projects-resume",
+          "markdownDescription": "Denies the projects_resume command without any pre-configured scope."
         },
         {
           "description": "Denies the projects_set_roots command without any pre-configured scope.",

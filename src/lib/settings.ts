@@ -35,7 +35,12 @@ export type Settings = {
   search_roots: string[];
   /** Dossiers de projets, indexés en plus ; mêmes limites. */
   projects_roots: string[];
+  /** Invites de « Reprendre » (Claude Code) : non vides, 2000 caractères au plus. */
+  resume_prompt_normal: string;
+  resume_prompt_orchestrator: string;
 };
+
+const RESUME_NORMAL = "Reprends là où tu en étais sur ce projet. Appuie-toi sur le plan de développement et l'historique git. Commence par me dire où on en est.";
 
 /** Miroir de `Settings::default()` côté Rust : valeurs affichées avant la réponse de `settings_get`. */
 export const DEFAULT_SETTINGS: Settings = {
@@ -57,6 +62,8 @@ export const DEFAULT_SETTINGS: Settings = {
   weather_city: "",
   search_roots: [],
   projects_roots: [],
+  resume_prompt_normal: RESUME_NORMAL,
+  resume_prompt_orchestrator: `${RESUME_NORMAL} Travaille en mode orchestrateur, comme décrit dans mon CLAUDE.md global : graphify pour t'orienter, sous-agents haiku/sonnet/opus selon la tâche, parallélisation des tâches indépendantes, et relecture avant intégration.`,
 };
 
 /** Paramètres courants : chargés au montage, puis suivis via `oniris://settings`. */

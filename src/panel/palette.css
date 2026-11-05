@@ -29,6 +29,7 @@
 .pal-foot>span:not(:empty){padding:6px 10px 3px}
 .pal-foot [role=alert]{color:#ff9f8a}
 .pal-idx{color:var(--txt3)}
+.pal-tip{color:var(--txt3)}
 .pal-idx::before{content:"";display:inline-block;width:6px;height:6px;margin-right:7px;border-radius:50%;background:var(--acc);
   vertical-align:1px;animation:pal-pulse 1.2s ease-in-out infinite}
 @keyframes pal-pulse{50%{opacity:.25}}

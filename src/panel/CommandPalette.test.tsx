@@ -62,6 +62,22 @@ it("navigation au clavier : ↑/↓ bornés, Entrée ouvre, Ctrl+Entrée ouvre l
   expect(open).toHaveBeenLastCalledWith("dir", "C:\\u\\docs");
 });
 
+it("projet : Entrée ouvre le dossier, Ctrl+Entrée reprend avec Claude", async () => {
+  answer([hit("project", "C:\\p\\Oniris", "Oniris", "Task 8")]);
+  const open = vi.spyOn(searchIpc, "open").mockResolvedValue("done");
+  const resume = vi.spyOn(searchIpc, "resume").mockResolvedValue("Lance Claude manuellement : claude --continue");
+  render(<CommandPalette />);
+  await userEvent.type(bar(), "oni");
+  await screen.findAllByRole("option");
+  expect(screen.getByText(/reprendre avec Claude/)).toBeInTheDocument();
+  await userEvent.keyboard("{Control>}{Enter}{/Control}");
+  expect(resume).toHaveBeenCalledWith("C:\\p\\Oniris", "normal");
+  expect(open).not.toHaveBeenCalled();
+  expect(await screen.findByText("Lance Claude manuellement : claude --continue")).toBeInTheDocument();
+  await userEvent.keyboard("{Enter}");
+  expect(open).toHaveBeenCalledWith("project", "C:\\p\\Oniris");
+});
+
 it("les réponses périmées sont ignorées", async () => {
   const pending: ((r: SearchResult) => void)[] = [];
   const reqs: number[] = [];

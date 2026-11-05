@@ -68,7 +68,7 @@ it("changer la couleur appelle setColor", async () => {
   const setColor = vi.spyOn(accountsIpc, "setColor").mockResolvedValue();
   sheet();
   await userEvent.click(await screen.findByRole("button", { name: "Couleur de a@gmail.com" }));
-  await userEvent.click(screen.getByRole("button", { name: `Couleur ${PALETTE[4]}` }));
+  await userEvent.click(screen.getByRole("button", { name: "Couleur violet" }));
   expect(setColor).toHaveBeenCalledWith(1, PALETTE[4]);
 });
 
@@ -86,7 +86,7 @@ it("« Ouvrir la console » ouvre la page du guide ; le formulaire Google envoie
   const setApp = vi.spyOn(accountsIpc, "setGoogleApp").mockResolvedValue();
   sheet();
   const google = (await screen.findByText("Configurer Google (Gmail et Agenda)")).closest("details")!;
-  await userEvent.click(within(google).getAllByRole("button", { name: "Ouvrir la console" })[0]);
+  await userEvent.click(within(google).getAllByRole("button", { name: /^Ouvrir la console/ })[0]);
   expect(openGuide).toHaveBeenCalledWith("https://console.cloud.google.com/projectcreate");
   await userEvent.type(within(google).getByLabelText("Identifiant client Google"), "mon-id");
   await userEvent.type(within(google).getByLabelText("Secret client Google"), "mon-secret");
@@ -102,4 +102,32 @@ it("s'ouvre seule au premier lancement (une fois)", async () => {
   render(<AccountsSheet open={false} onClose={() => {}} onAutoOpen={auto} />);
   await waitFor(() => expect(auto).toHaveBeenCalledTimes(1));
   expect(accountsIpc.introTake).toHaveBeenCalledTimes(1);
+});
+
+it("Annuler apparaît pendant l'attente et appelle cancel", async () => {
+  settings = { ...DEFAULT_SETTINGS, spotify_client_id: "abc" };
+  vi.spyOn(accountsIpc, "list").mockResolvedValue([]);
+  let reject: (e: string) => void = () => {};
+  vi.spyOn(accountsIpc, "connect").mockReturnValue(new Promise((_, rej) => { reject = rej; }));
+  const cancel = vi.spyOn(accountsIpc, "cancel").mockImplementation(() => { reject("Connexion annulée."); return Promise.resolve(); });
+  sheet();
+  await userEvent.click(await screen.findByRole("button", { name: "Connecter Spotify" }));
+  expect((await screen.findByRole("status")).textContent).toBe("En attente du navigateur…");
+  await userEvent.click(screen.getByRole("button", { name: "Annuler" }));
+  expect(cancel).toHaveBeenCalled();
+  await waitFor(() => expect(screen.queryByRole("status")).toBeNull());
+  expect(screen.queryByRole("alert")).toBeNull();
+});
+
+it("Échap ferme la feuille sans atteindre le panneau", async () => {
+  vi.spyOn(accountsIpc, "list").mockResolvedValue([]);
+  const onClose = vi.fn();
+  const panelEsc = vi.fn();
+  window.addEventListener("keydown", panelEsc);
+  render(<AccountsSheet open onClose={onClose} onAutoOpen={() => {}} />);
+  await screen.findByRole("dialog");
+  await userEvent.keyboard("{Escape}");
+  window.removeEventListener("keydown", panelEsc);
+  expect(onClose).toHaveBeenCalledTimes(1);
+  expect(panelEsc).not.toHaveBeenCalled();
 });

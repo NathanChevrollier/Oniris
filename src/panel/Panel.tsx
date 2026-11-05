@@ -34,7 +34,11 @@ export function Panel({ onCommand = logCommand }: { onCommand?: (text: string) =
   const open = usePanelStore((s) => s.open);
   const [accountsOpen, setAccountsOpen] = useState(false);
   const openAccounts = useCallback(() => setAccountsOpen(true), []);
-  const closeAccounts = useCallback(() => setAccountsOpen(false), []);
+  const closeAccounts = useCallback(() => {
+    setAccountsOpen(false);
+    // Le contenu derrière la feuille redevient actif au rendu suivant : on lui rend le focus après.
+    setTimeout(() => document.querySelector<HTMLElement>(".hdr-btn")?.focus(), 0);
+  }, []);
   const settings = useSettings();
   const now = useNow(60_000, open);
   // La clé du jour recharge la frise après minuit (ou à la réouverture le lendemain).
@@ -65,7 +69,7 @@ export function Panel({ onCommand = logCommand }: { onCommand?: (text: string) =
       <div className="scrim" onClick={() => ipc.panelClose()} />
       <section className="panel" aria-label="Oniris">
         <div className="ambient"><i /><i /><i /></div>
-        <div className="inner">
+        <div className="inner" inert={accountsOpen}>
           <Header name={settings.user_name} onAccounts={openAccounts} />
           <div className="brief">
             <div className="spark"><Sparkles size={15} /></div>

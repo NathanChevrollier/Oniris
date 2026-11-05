@@ -53,6 +53,7 @@ fn main() {
         "accounts_set_google_app",
         "accounts_set_spotify_app",
         "accounts_connect",
+        "accounts_cancel",
         "accounts_remove",
         "accounts_set_color",
         "accounts_intro_take",

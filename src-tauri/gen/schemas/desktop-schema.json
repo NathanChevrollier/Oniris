@@ -177,6 +177,12 @@
       "description": "Permission identifier",
       "oneOf": [
         {
+          "description": "Enables the accounts_cancel command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-accounts-cancel",
+          "markdownDescription": "Enables the accounts_cancel command without any pre-configured scope."
+        },
+        {
           "description": "Enables the accounts_connect command without any pre-configured scope.",
           "type": "string",
           "const": "allow-accounts-connect",
@@ -517,6 +523,12 @@
           "type": "string",
           "const": "allow-weather-get",
           "markdownDescription": "Enables the weather_get command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the accounts_cancel command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-accounts-cancel",
+          "markdownDescription": "Denies the accounts_cancel command without any pre-configured scope."
         },
         {
           "description": "Denies the accounts_connect command without any pre-configured scope.",

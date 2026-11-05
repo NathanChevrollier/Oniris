@@ -30,6 +30,8 @@ pub struct AppState {
     pub secrets: Arc<dyn SecretStore>,
     /// Jetons d'accès en mémoire, actualisés à la demande.
     pub accounts: Arc<TokenCache>,
+    /// Connexion OAuth en cours (une seule, annulable).
+    pub flight: crate::modules::accounts::Flight,
     pub settings: RwLock<Settings>,
     /// Seul point de passage des actions d'IRIS ; ses outils sont fixés dans `AppState::open`.
     pub broker: Arc<ToolBroker>,
@@ -123,6 +125,7 @@ impl AppState {
             account_http,
             secrets,
             accounts,
+            flight: Default::default(),
             _log_guard: None,
             db,
             broker,

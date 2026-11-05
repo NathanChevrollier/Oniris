@@ -19,6 +19,7 @@
 .acc-sw.on{border-color:#fff}
 .acc-adds{display:flex;flex-wrap:wrap;gap:16px;margin-top:12px}
 .acc-add{display:flex;align-items:center;gap:10px}
+.acc-wait{font-size:12px;color:var(--txt2)}
 .acc-btn{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 12px;border-radius:12px;border:1px solid var(--line);background:rgba(255,255,255,.06);color:var(--txt);font:12px var(--font);cursor:pointer}
 .acc-btn:hover:enabled{background:rgba(255,255,255,.11)}
 .acc-btn.primary{border-color:rgba(255,140,100,.4);background:rgba(255,116,72,.18)}

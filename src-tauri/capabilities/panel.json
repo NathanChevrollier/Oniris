@@ -55,6 +55,7 @@
     "allow-accounts-set-google-app",
     "allow-accounts-set-spotify-app",
     "allow-accounts-connect",
+    "allow-accounts-cancel",
     "allow-accounts-remove",
     "allow-accounts-set-color",
     "allow-accounts-intro-take",

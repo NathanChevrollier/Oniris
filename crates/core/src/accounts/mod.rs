@@ -160,14 +160,35 @@ pub async fn complete_connect(
         return Err(format!("Identité du compte illisible (HTTP {}).", resp.status().as_u16()));
     }
     let body: serde_json::Value = resp.json().await.map_err(|_| "Identité du compte illisible.".to_string())?;
-    let field = if cfg.provider == Provider::Google { "email" } else { "display_name" };
-    let label = body.get(field).and_then(|v| v.as_str()).map(str::trim).filter(|l| !l.is_empty()).ok_or("Identité du compte introuvable.")?;
-    let account = {
+    let text = |f: &str| body.get(f).and_then(|v| v.as_str()).map(str::trim).filter(|l| !l.is_empty()).map(str::to_string);
+    let label = match cfg.provider {
+        Provider::Google => text("email"),
+        // `display_name` est null pour certains comptes Spotify : repli sur l'identifiant.
+        Provider::Spotify => text("display_name").or_else(|| text("id")),
+    }
+    .ok_or("Identité du compte introuvable.")?;
+    let (account, existed) = {
         let c = db.lock();
-        let id = add(&c, cfg.provider, label, crate::time_util::now_ms()).map_err(|e| e.to_string())?;
-        get(&c, id).map_err(|e| e.to_string())?.ok_or("compte introuvable")?
+        let existed = c
+            .query_row("SELECT 1 FROM accounts WHERE provider = ?1 AND label = ?2", params![cfg.provider.as_str(), label], |_| Ok(()))
+            .optional()
+            .map_err(|e| e.to_string())?
+            .is_some();
+        let id = add(&c, cfg.provider, &label, crate::time_util::now_ms()).map_err(|e| e.to_string())?;
+        (get(&c, id).map_err(|e| e.to_string())?.ok_or("compte introuvable")?, existed)
     };
-    tokens.insert(account.id, t).map_err(|_| "Le coffre Windows a refusé le jeton.".to_string())?;
+    if tokens.insert(account.id, t).is_err() {
+        // Coffre refusé : pas de compte « ok » sans jeton d'actualisation.
+        {
+            let c = db.lock();
+            let r = if existed { set_status(&c, account.id, Status::Reauth) } else { c.execute("DELETE FROM accounts WHERE id = ?1", [account.id]).map(drop).map_err(CoreError::from) };
+            if let Err(e) = r {
+                tracing::warn!("compte {} : état non rétabli : {e}", account.id);
+            }
+        }
+        events.changed(Topic::Accounts);
+        return Err("Le coffre Windows a refusé le jeton, réessaie.".into());
+    }
     events.changed(Topic::Accounts);
     Ok(AccountView::from(&account))
 }
@@ -352,6 +373,44 @@ mod tests {
         let bad_url = format!("{}/absent", server.uri());
         assert!(complete_connect(&db, &tc, &*events, &reqwest::Client::new(), &cfg, "c", "v", oauth::REDIRECT_URI, &bad_url).await.is_err());
         assert_eq!(list(&db.lock()).unwrap().len(), 2);
+    }
+
+    #[tokio::test] async fn identite_spotify_sans_nom_et_coffre_refuse() {
+        struct Refuse;
+        impl SecretStore for Refuse {
+            fn get(&self, _: &str) -> Option<String> { None }
+            fn set(&self, _: &str, _: &str) -> Result<(), String> { Err("refus".into()) }
+            fn delete(&self, _: &str) {}
+        }
+        let server = MockServer::start().await;
+        Mock::given(method("POST")).and(path("/token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"access_token": "a", "expires_in": 3600, "refresh_token": "r"})))
+            .mount(&server).await;
+        Mock::given(method("GET")).and(path("/me"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"display_name": null, "id": "user42"})))
+            .mount(&server).await;
+        let db: Db = Arc::new(parking_lot::Mutex::new(crate::test_util::db()));
+        let events = Arc::new(Count::default());
+        let cfg = ProviderConfig { token_url: format!("{}/token", server.uri()), ..oauth::providers::spotify("cid") };
+        let url = format!("{}/me", server.uri());
+        let configs: Configs = Arc::new(|_| None);
+        let good = TokenCache::new(db.clone(), Arc::new(MemorySecrets::default()), events.clone(), reqwest::Client::new(), configs.clone());
+        let v = complete_connect(&db, &good, &*events, &reqwest::Client::new(), &cfg, "c", "v", oauth::REDIRECT_URI, &url).await.unwrap();
+        assert_eq!(v.label, "user42", "repli sur l'identifiant");
+        // Coffre qui refuse : compte existant -> reauth, événement émis.
+        let bad = TokenCache::new(db.clone(), Arc::new(Refuse), events.clone(), reqwest::Client::new(), configs.clone());
+        let before = events.0.load(Ordering::SeqCst);
+        assert!(complete_connect(&db, &bad, &*events, &reqwest::Client::new(), &cfg, "c", "v", oauth::REDIRECT_URI, &url).await.is_err());
+        assert_eq!(get(&db.lock(), v.id).unwrap().unwrap().status, Status::Reauth);
+        assert_eq!(events.0.load(Ordering::SeqCst), before + 1);
+        // Compte neuf : la ligne insérée est retirée.
+        Mock::given(method("GET")).and(path("/me2"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"display_name": "Neuf"})))
+            .mount(&server).await;
+        let url2 = format!("{}/me2", server.uri());
+        assert!(complete_connect(&db, &bad, &*events, &reqwest::Client::new(), &cfg, "c", "v", oauth::REDIRECT_URI, &url2).await.is_err());
+        assert_eq!(list(&db.lock()).unwrap().len(), 1, "pas de compte neuf sans jeton");
+        assert_eq!(events.0.load(Ordering::SeqCst), before + 2);
     }
 
     #[test] fn couleur_de_la_palette_seulement() {

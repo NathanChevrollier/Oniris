@@ -82,6 +82,7 @@ pub fn run() {
             modules::accounts::accounts_set_google_app,
             modules::accounts::accounts_set_spotify_app,
             modules::accounts::accounts_connect,
+            modules::accounts::accounts_cancel,
             modules::accounts::accounts_remove,
             modules::accounts::accounts_set_color,
             modules::accounts::accounts_intro_take,

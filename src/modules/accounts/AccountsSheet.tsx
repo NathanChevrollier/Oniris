@@ -2,19 +2,19 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Check, Copy, ExternalLink, RefreshCw, Trash2, X } from "lucide-react";
 import { useTopic } from "../../lib/data";
 import { useSettings } from "../../lib/settings";
-import { accountsIpc, errorText, PALETTE, type AccountView } from "./api";
+import { accountsIpc, COLOR_NAMES, errorText, PALETTE, type AccountView } from "./api";
 import { GUIDES, type Guide, type Step } from "./guide";
 import "./accounts.css";
 
 const PROVIDER_NAME = { google: "Gmail", spotify: "Spotify" } as const;
 
-function CopyButton({ label, value }: { label: string; value: string }) {
+function CopyButton({ label, value, hint }: { label: string; value: string; hint: string }) {
   const [done, setDone] = useState(false);
   const copy = async () => {
     try { await navigator.clipboard.writeText(value); setDone(true); setTimeout(() => setDone(false), 1500); } catch { /* presse-papiers refusé */ }
   };
   return (
-    <button type="button" className="acc-btn" onClick={() => void copy()}>
+    <button type="button" className="acc-btn" aria-label={`${label} : ${hint}`} onClick={() => void copy()}>
       {done ? <Check size={13} /> : <Copy size={13} />}{done ? "Copié" : label}
     </button>
   );
@@ -61,10 +61,10 @@ function GuideView({ guide, clientIds, onSaved }: { guide: Guide; clientIds: { g
       {s.copy && (
         <div className="acc-copy">
           <code>{s.copy.value}</code>
-          <CopyButton label={s.copy.label} value={s.copy.value} />
+          <CopyButton label={s.copy.label} value={s.copy.value} hint={s.text} />
         </div>
       )}
-      {s.open && <button type="button" className="acc-btn" onClick={() => void open(s.open!.url)}><ExternalLink size={13} />{s.open.label}</button>}
+      {s.open && <button type="button" className="acc-btn" aria-label={`${s.open.label} : ${s.text}`} onClick={() => void open(s.open!.url)}><ExternalLink size={13} />{s.open.label}</button>}
       {s.form && <CredentialsForm kind={s.form} clientId={clientIds[s.form]} onSaved={onSaved} />}
     </li>
   );
@@ -92,8 +92,8 @@ function AccountRow({ a, busy, onReconnect, onChange }: { a: AccountView; busy: 
       </div>
       {picking && (
         <div className="acc-palette" role="group" aria-label="Couleurs">
-          {PALETTE.map((c) => (
-            <button key={c} type="button" className={c === a.color ? "acc-sw on" : "acc-sw"} style={{ background: c }} aria-label={`Couleur ${c}`} aria-pressed={c === a.color}
+          {PALETTE.map((c, i) => (
+            <button key={c} type="button" className={c === a.color ? "acc-sw on" : "acc-sw"} style={{ background: c }} aria-label={`Couleur ${COLOR_NAMES[i]}`} aria-pressed={c === a.color}
               onClick={() => { setPicking(false); void act(accountsIpc.setColor(a.id, c)); }} />
           ))}
         </div>
@@ -124,7 +124,7 @@ export function AccountsSheet({ open, onClose, onAutoOpen }: { open: boolean; on
   const connect = async (provider: AccountView["provider"]) => {
     setBusy(provider); setError(null);
     try { await accountsIpc.connect(provider); }
-    catch (e) { setError(errorText(e, "Connexion impossible, réessaie.")); }
+    catch (e) { const m = errorText(e, "Connexion impossible, réessaie."); if (m !== "Connexion annulée.") setError(m); }
     finally { setBusy(null); reload(); }
   };
   const configure = (id: "google" | "spotify") => {
@@ -134,7 +134,13 @@ export function AccountsSheet({ open, onClose, onAutoOpen }: { open: boolean; on
   const list = data ?? [];
   const add = (provider: AccountView["provider"], ready: boolean, label: string) => (
     <div className="acc-add">
-      <button type="button" className="acc-btn primary" disabled={!ready || busy !== null} onClick={() => void connect(provider)}>{busy === provider ? "En attente du navigateur…" : label}</button>
+      <button type="button" className="acc-btn primary" disabled={!ready || busy !== null} onClick={() => void connect(provider)}>{label}</button>
+      {busy === provider && (
+        <>
+          <span role="status" className="acc-wait">En attente du navigateur…</span>
+          <button type="button" className="acc-btn" onClick={() => void accountsIpc.cancel().catch(() => {})}>Annuler</button>
+        </>
+      )}
       {!ready && <button type="button" className="acc-link" onClick={() => configure(provider)}>Configurer d'abord</button>}
     </div>
   );

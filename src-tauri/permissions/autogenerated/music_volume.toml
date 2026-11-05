@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-music-volume"
+description = "Enables the music_volume command without any pre-configured scope."
+commands.allow = ["music_volume"]
+
+[[permission]]
+identifier = "deny-music-volume"
+description = "Denies the music_volume command without any pre-configured scope."
+commands.deny = ["music_volume"]

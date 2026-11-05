@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-music-play-search"
+description = "Enables the music_play_search command without any pre-configured scope."
+commands.allow = ["music_play_search"]
+
+[[permission]]
+identifier = "deny-music-play-search"
+description = "Denies the music_play_search command without any pre-configured scope."
+commands.deny = ["music_play_search"]

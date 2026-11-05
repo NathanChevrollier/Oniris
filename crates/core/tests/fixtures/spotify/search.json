@@ -1,0 +1,3 @@
+{"tracks":{"items":[{"uri":"spotify:track:t1","name":"Titre Un","artists":[{"name":"Artiste A"}]}]},
+"artists":{"items":[{"uri":"spotify:artist:a1","name":"Artiste A"}]},
+"playlists":{"items":[null,{"uri":"spotify:playlist:p9","name":"Mix","owner":{"id":"x"}}]}}

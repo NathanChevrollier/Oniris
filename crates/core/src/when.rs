@@ -52,7 +52,7 @@ const MONTHS: [&str; 12] = [
     "octobre", "novembre", "decembre",
 ];
 
-fn norm(s: &str) -> String {
+pub(crate) fn norm(s: &str) -> String {
     let s: String = s
         .to_lowercase()
         .chars()

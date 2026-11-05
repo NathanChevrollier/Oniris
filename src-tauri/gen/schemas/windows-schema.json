@@ -399,6 +399,12 @@
           "markdownDescription": "Enables the mail_status command without any pre-configured scope."
         },
         {
+          "description": "Enables the music_devices command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-music-devices",
+          "markdownDescription": "Enables the music_devices command without any pre-configured scope."
+        },
+        {
           "description": "Enables the music_next command without any pre-configured scope.",
           "type": "string",
           "const": "allow-music-next",
@@ -411,10 +417,34 @@
           "markdownDescription": "Enables the music_now command without any pre-configured scope."
         },
         {
+          "description": "Enables the music_play_playlist command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-music-play-playlist",
+          "markdownDescription": "Enables the music_play_playlist command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the music_play_search command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-music-play-search",
+          "markdownDescription": "Enables the music_play_search command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the music_playlists command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-music-playlists",
+          "markdownDescription": "Enables the music_playlists command without any pre-configured scope."
+        },
+        {
           "description": "Enables the music_previous command without any pre-configured scope.",
           "type": "string",
           "const": "allow-music-previous",
           "markdownDescription": "Enables the music_previous command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the music_queue command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-music-queue",
+          "markdownDescription": "Enables the music_queue command without any pre-configured scope."
         },
         {
           "description": "Enables the music_seek command without any pre-configured scope.",
@@ -423,10 +453,28 @@
           "markdownDescription": "Enables the music_seek command without any pre-configured scope."
         },
         {
+          "description": "Enables the music_set_favorites command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-music-set-favorites",
+          "markdownDescription": "Enables the music_set_favorites command without any pre-configured scope."
+        },
+        {
           "description": "Enables the music_toggle command without any pre-configured scope.",
           "type": "string",
           "const": "allow-music-toggle",
           "markdownDescription": "Enables the music_toggle command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the music_transfer command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-music-transfer",
+          "markdownDescription": "Enables the music_transfer command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the music_volume command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-music-volume",
+          "markdownDescription": "Enables the music_volume command without any pre-configured scope."
         },
         {
           "description": "Enables the notes_create command without any pre-configured scope.",
@@ -831,6 +879,12 @@
           "markdownDescription": "Denies the mail_status command without any pre-configured scope."
         },
         {
+          "description": "Denies the music_devices command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-music-devices",
+          "markdownDescription": "Denies the music_devices command without any pre-configured scope."
+        },
+        {
           "description": "Denies the music_next command without any pre-configured scope.",
           "type": "string",
           "const": "deny-music-next",
@@ -843,10 +897,34 @@
           "markdownDescription": "Denies the music_now command without any pre-configured scope."
         },
         {
+          "description": "Denies the music_play_playlist command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-music-play-playlist",
+          "markdownDescription": "Denies the music_play_playlist command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the music_play_search command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-music-play-search",
+          "markdownDescription": "Denies the music_play_search command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the music_playlists command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-music-playlists",
+          "markdownDescription": "Denies the music_playlists command without any pre-configured scope."
+        },
+        {
           "description": "Denies the music_previous command without any pre-configured scope.",
           "type": "string",
           "const": "deny-music-previous",
           "markdownDescription": "Denies the music_previous command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the music_queue command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-music-queue",
+          "markdownDescription": "Denies the music_queue command without any pre-configured scope."
         },
         {
           "description": "Denies the music_seek command without any pre-configured scope.",
@@ -855,10 +933,28 @@
           "markdownDescription": "Denies the music_seek command without any pre-configured scope."
         },
         {
+          "description": "Denies the music_set_favorites command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-music-set-favorites",
+          "markdownDescription": "Denies the music_set_favorites command without any pre-configured scope."
+        },
+        {
           "description": "Denies the music_toggle command without any pre-configured scope.",
           "type": "string",
           "const": "deny-music-toggle",
           "markdownDescription": "Denies the music_toggle command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the music_transfer command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-music-transfer",
+          "markdownDescription": "Denies the music_transfer command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the music_volume command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-music-volume",
+          "markdownDescription": "Denies the music_volume command without any pre-configured scope."
         },
         {
           "description": "Denies the notes_create command without any pre-configured scope.",

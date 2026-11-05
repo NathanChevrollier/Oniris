@@ -1,4 +1,5 @@
 //! Musique : titre en cours (lu par Windows, SMTC, côté src-tauri), pochette et couleurs dominantes.
+pub mod spotify;
 pub mod tools;
 
 use image::RgbaImage;

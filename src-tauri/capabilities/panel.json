@@ -74,6 +74,14 @@
     "allow-music-next",
     "allow-music-previous",
     "allow-music-seek",
+    "allow-music-playlists",
+    "allow-music-set-favorites",
+    "allow-music-devices",
+    "allow-music-play-playlist",
+    "allow-music-play-search",
+    "allow-music-volume",
+    "allow-music-queue",
+    "allow-music-transfer",
     "allow-perf-frame",
     "allow-perf-open-cycles"
   ]

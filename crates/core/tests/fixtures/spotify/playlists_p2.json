@@ -1,0 +1,2 @@
+{"href":"https://api.spotify.com/v1/me/playlists?offset=2&limit=2","limit":2,"offset":2,"total":3,"previous":null,"next":null,
+"items":[{"id":"pl3","name":"Road Focus","images":null,"owner":{"id":"moi123"},"uri":"spotify:playlist:pl3"}]}

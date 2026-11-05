@@ -101,6 +101,14 @@ pub fn run() {
             modules::smtc::music_next,
             modules::smtc::music_previous,
             modules::smtc::music_seek,
+            modules::music::music_playlists,
+            modules::music::music_set_favorites,
+            modules::music::music_devices,
+            modules::music::music_play_playlist,
+            modules::music::music_play_search,
+            modules::music::music_volume,
+            modules::music::music_queue,
+            modules::music::music_transfer,
             modules::indexer::index_status,
             modules::search::search_query,
             modules::search::search_open,
@@ -160,6 +168,7 @@ mod tests {
             ("clipboard.rs", include_str!("modules/clipboard.rs")),
             ("favorites.rs", include_str!("modules/favorites.rs")),
             ("mail.rs", include_str!("modules/mail.rs")),
+            ("music.rs", include_str!("modules/music.rs")),
             ("notes.rs", include_str!("modules/notes.rs")),
             ("projects.rs", include_str!("modules/projects.rs")),
             ("reminders.rs", include_str!("modules/reminders.rs")),
@@ -177,7 +186,7 @@ mod tests {
                 assert!(!(head.starts_with("pub fn") && touches_db(body)), "{file} : commande synchrone qui touche la base : {head}");
             }
         }
-        for module in [include_str!("modules/weather.rs"), include_str!("modules/mail.rs")] {
+        for module in [include_str!("modules/weather.rs"), include_str!("modules/mail.rs"), include_str!("modules/music.rs")] {
             let open = module.split("pub fn on_panel_open").nth(1).expect("on_panel_open");
             assert!(!touches_db(&open[..open.find("\n}").unwrap()]), "on_panel_open ne doit pas verrouiller la base");
         }

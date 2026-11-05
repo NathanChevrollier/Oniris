@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-music-transfer"
+description = "Enables the music_transfer command without any pre-configured scope."
+commands.allow = ["music_transfer"]
+
+[[permission]]
+identifier = "deny-music-transfer"
+description = "Denies the music_transfer command without any pre-configured scope."
+commands.deny = ["music_transfer"]

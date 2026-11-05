@@ -1,0 +1,4 @@
+{"href":"https://api.spotify.com/v1/me/playlists?offset=0&limit=2","limit":2,"offset":0,"total":3,"previous":null,"next":"https://api.spotify.com/v1/me/playlists?offset=2&limit=2",
+"items":[
+{"id":"pl1","name":"Focus Deep Work","images":[{"url":"https://i.scdn.co/image/a","height":640,"width":640}],"owner":{"id":"moi123"},"uri":"spotify:playlist:pl1"},
+{"id":"pl2","name":"Été 2025","images":[],"owner":{"id":"autre"},"uri":"spotify:playlist:pl2"}]}

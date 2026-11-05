@@ -32,6 +32,8 @@ pub struct AppState {
     pub accounts: Arc<TokenCache>,
     /// Connexion OAuth en cours (une seule, annulable).
     pub flight: crate::modules::accounts::Flight,
+    /// Outils et playlists Spotify (Web API).
+    pub spotify: Arc<oniris_core::music::tools::Web>,
     pub settings: RwLock<Settings>,
     /// Seul point de passage des actions d'IRIS ; ses outils sont fixés dans `AppState::open`.
     pub broker: Arc<ToolBroker>,
@@ -106,7 +108,8 @@ impl AppState {
         tools.extend(oniris_core::mail::tools::all(&db, &events, &accounts, gmail, &opener));
         tools.extend(oniris_core::calendar::all(&db));
         let media: Arc<dyn oniris_core::music::MediaControl> = Arc::new(crate::modules::smtc::Smtc);
-        tools.extend(oniris_core::music::tools::all(&media));
+        let spotify = oniris_core::music::tools::Web::new(db.clone(), events.clone(), accounts.clone(), oniris_core::music::spotify::Client::new(account_http.clone()));
+        tools.extend(oniris_core::music::tools::all(&media, &spotify));
         let broker = Arc::new(ToolBroker::new(db.clone(), clock, tools)?);
         broker.mark_interrupted();
         broker.expire_stale();
@@ -131,6 +134,7 @@ impl AppState {
             secrets,
             accounts,
             flight: Default::default(),
+            spotify,
             _log_guard: None,
             db,
             broker,

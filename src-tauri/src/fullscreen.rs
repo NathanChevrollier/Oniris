@@ -26,6 +26,9 @@ use tauri::{AppHandle, Emitter, Manager};
 
 static APP: OnceLock<AppHandle> = OnceLock::new();
 static ACTIVE: AtomicBool = AtomicBool::new(false);
+
+/// Une application plein écran est au premier plan.
+pub fn active() -> bool { ACTIVE.load(Ordering::SeqCst) }
 const FLAGS: u32 = WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS;
 
 thread_local! {

@@ -1,0 +1,3 @@
+{"devices":[
+{"id":"d-phone","is_active":false,"is_restricted":false,"name":"Pixel","type":"Smartphone","volume_percent":50},
+{"id":"d-pc","is_active":true,"is_restricted":false,"name":"PC-Nathan","type":"Computer","volume_percent":35}]}

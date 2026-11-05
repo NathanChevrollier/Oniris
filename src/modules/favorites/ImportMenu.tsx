@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyEvent } from "react";
 import { formatReport, importIpc } from "./api";
 
 /** Bouton « Importer » : menu (navigateurs / export Nexus) et compte rendu en ligne. */
@@ -8,11 +8,12 @@ export function ImportMenu() {
   const [lines, setLines] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const root = useRef<HTMLDivElement>(null);
+  const button = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (!open) return;
     const out = (e: Event) => { if (!root.current?.contains(e.target as Node)) setOpen(false); };
-    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") { setOpen(false); button.current?.focus(); } };
     document.addEventListener("pointerdown", out);
     document.addEventListener("keydown", esc);
     return () => { document.removeEventListener("pointerdown", out); document.removeEventListener("keydown", esc); };
@@ -26,17 +27,25 @@ export function ImportMenu() {
   };
   const fromBrowsers = () => go(async () => {
     const r = await importIpc.browsers();
-    return r.length ? r.map(([name, rep]) => `${name} : ${formatReport(rep)}`) : ["Aucun navigateur trouvé."];
+    return r.length ? r.map(([name, rep]) => `${name} : ${rep ? formatReport(rep) : "lecture impossible"}`) : ["Aucun navigateur trouvé."];
   });
   const fromNexus = () => go(async () => { const r = await importIpc.nexusFile(); return r ? [formatReport(r)] : []; });
 
+  const arrows = (e: ReactKeyEvent<HTMLDivElement>) => {
+    const dir = e.key === "ArrowDown" ? 1 : e.key === "ArrowUp" ? -1 : 0;
+    if (!dir) return;
+    e.preventDefault();
+    const items = [...e.currentTarget.querySelectorAll<HTMLElement>('[role="menuitem"]')];
+    items[(items.indexOf(document.activeElement as HTMLElement) + dir + items.length) % items.length]?.focus();
+  };
+
   return (
     <div className="fav-import" ref={root}>
-      <button type="button" className="fav-import-btn" aria-haspopup="menu" aria-expanded={open} disabled={busy} onClick={() => setOpen(!open)}>
+      <button type="button" ref={button} className="fav-import-btn" aria-haspopup="menu" aria-expanded={open} disabled={busy} onClick={() => setOpen(!open)}>
         {busy ? "Import…" : "Importer"}
       </button>
       {open && (
-        <div className="fav-menu" role="menu">
+        <div className="fav-menu" role="menu" onKeyDown={arrows}>
           <button type="button" role="menuitem" autoFocus onClick={() => void fromBrowsers()}>Depuis les navigateurs</button>
           <button type="button" role="menuitem" onClick={() => void fromNexus()}>Depuis un export Nexus…</button>
         </div>

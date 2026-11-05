@@ -29,7 +29,7 @@ export type ImportReport = { added: number; skipped_dup: number; skipped_unsafe:
 
 export const importIpc = {
   /** Un rapport par navigateur trouvé. */
-  browsers: (): Promise<[string, ImportReport][]> => isTauri ? invoke("favorites_import_browsers") : Promise.resolve([]),
+  browsers: (): Promise<[string, ImportReport | null][]> => isTauri ? invoke("favorites_import_browsers") : Promise.resolve([]),
   /** Boîte de dialogue puis import ; `null` si l'utilisateur annule. */
   nexusFile: async (): Promise<ImportReport | null> => {
     if (!isTauri) return null;

@@ -286,3 +286,30 @@ it("formatReport : pluriels et zéros omis", () => {
   expect(formatReport({ added: 0, skipped_dup: 0, skipped_unsafe: 0 })).toBe("0 ajouté");
   expect(formatReport({ added: 2, skipped_dup: 1, skipped_unsafe: 3 })).toBe("2 ajoutés · 1 déjà présent · 3 ignorés (lien non sûr)");
 });
+
+it("menu Importer : flèches entre les entrées, Échap rend le focus au bouton", async () => {
+  vi.spyOn(favoritesIpc, "list").mockResolvedValue(three);
+  render(<FavoritesCard />);
+  const btn = await screen.findByRole("button", { name: "Importer" });
+  await userEvent.click(btn);
+  const [a, b] = screen.getAllByRole("menuitem");
+  expect(document.activeElement).toBe(a);
+  await userEvent.keyboard("{ArrowDown}");
+  expect(document.activeElement).toBe(b);
+  await userEvent.keyboard("{ArrowDown}");
+  expect(document.activeElement).toBe(a);
+  await userEvent.keyboard("{ArrowUp}");
+  expect(document.activeElement).toBe(b);
+  await userEvent.keyboard("{Escape}");
+  expect(screen.queryByRole("menu")).toBeNull();
+  expect(document.activeElement).toBe(btn);
+});
+
+it("un navigateur illisible est signalé dans le rapport", async () => {
+  vi.spyOn(favoritesIpc, "list").mockResolvedValue(three);
+  vi.spyOn(importIpc, "browsers").mockResolvedValue([["Firefox", null]]);
+  render(<FavoritesCard />);
+  await userEvent.click(await screen.findByRole("button", { name: "Importer" }));
+  await userEvent.click(screen.getByRole("menuitem", { name: "Depuis les navigateurs" }));
+  expect(await screen.findByText("Firefox : lecture impossible")).toBeTruthy();
+});

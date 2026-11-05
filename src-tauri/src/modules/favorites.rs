@@ -78,43 +78,56 @@ fn small_text(p: &std::path::Path) -> Result<String, String> {
     std::fs::read_to_string(p).map_err(|_| "fichier illisible".to_string())
 }
 
+/// Signets d'un navigateur : `Err` si des fichiers existent mais qu'aucun n'a pu être lu.
+type Source = (&'static str, Result<Vec<NewFavorite>, ()>);
+
+/// Réunit les lectures d'un navigateur : au moins un fichier lu = succès.
+fn gather(name: &'static str, reads: Vec<Result<Vec<NewFavorite>, ()>>) -> Option<Source> {
+    if reads.is_empty() {
+        return None;
+    }
+    let ok: Vec<_> = reads.iter().filter_map(|r| r.as_ref().ok()).flatten().cloned().collect();
+    Some((name, if reads.iter().any(Result::is_ok) { Ok(ok) } else { Err(()) }))
+}
+
 /// Lit les signets des navigateurs installés (seulement quand l'utilisateur clique « Importer »).
-fn read_browsers() -> Vec<(&'static str, Vec<NewFavorite>)> {
+fn read_browsers() -> Vec<Source> {
     let env = |k: &str| std::env::var_os(k).map(std::path::PathBuf::from);
     let mut out = Vec::new();
     if let Some(local) = env("LOCALAPPDATA") {
         for (name, rel) in [("Chrome", "Google/Chrome"), ("Edge", "Microsoft/Edge"), ("Brave", "BraveSoftware/Brave-Browser")] {
-            let items: Vec<_> = chromium_files(local.join(rel).join("User Data"))
+            let reads = chromium_files(local.join(rel).join("User Data"))
                 .iter()
-                .filter_map(|p| small_text(p).ok().and_then(|t| import::from_chromium(&t).ok()))
-                .flatten()
+                .map(|p| small_text(p).and_then(|t| import::from_chromium(&t).map_err(|e| e.to_string())).map_err(|_| ()))
                 .collect();
-            if !items.is_empty() {
-                out.push((name, items));
-            }
+            out.extend(gather(name, reads));
         }
     }
     if let Some(roaming) = env("APPDATA") {
-        let profiles = std::fs::read_dir(roaming.join("Mozilla/Firefox/Profiles")).into_iter().flatten().flatten();
-        let items: Vec<_> = profiles
+        let reads = std::fs::read_dir(roaming.join("Mozilla/Firefox/Profiles"))
+            .into_iter()
+            .flatten()
+            .flatten()
             .map(|e| e.path().join("places.sqlite"))
             .filter(|p| p.is_file())
-            .filter_map(|p| import::from_firefox_profile(&p).ok())
-            .flatten()
+            .map(|p| import::from_firefox_profile(&p).map_err(|_| ()))
             .collect();
-        if !items.is_empty() {
-            out.push(("Firefox", items));
-        }
+        out.extend(gather("Firefox", reads));
     }
     out
 }
 
+/// Un rapport par navigateur ; `None` = signets trouvés mais illisibles.
 #[tauri::command]
-pub async fn favorites_import_browsers(state: State<'_, AppState>) -> Result<Vec<(String, ImportReport)>, String> {
+pub async fn favorites_import_browsers(state: State<'_, AppState>) -> Result<Vec<(String, Option<ImportReport>)>, String> {
     let found = tauri::async_runtime::spawn_blocking(read_browsers).await.map_err(|e| e.to_string())?;
     let mut out = Vec::new();
     for (name, items) in found {
-        out.push((name.to_string(), import::import(&state.db.lock(), &items, now_ms()).map_err(|e| e.to_string())?));
+        let report = match items {
+            Ok(items) => Some(import::import(&state.db.lock(), &items, now_ms()).map_err(|e| e.to_string())?),
+            Err(()) => None,
+        };
+        out.push((name.to_string(), report));
     }
     tracing::info!(browsers = out.len(), "favoris : import des navigateurs");
     state.events.changed(Topic::Favorites);

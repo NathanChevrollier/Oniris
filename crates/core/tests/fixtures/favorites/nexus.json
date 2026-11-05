@@ -14,7 +14,10 @@
     { "type": "bookmarks", "categoryIndex": 1, "position": { "x": 0, "y": 1, "w": 4, "h": 2 },
       "options": { "title": "Séries", "layout": "grid", "openInNewTab": true, "bookmarks": [
         { "id": "a", "title": "Jellyfin", "url": "https://jellyfin.example.com/" },
-        { "id": "b", "title": "Piégé", "url": "javascript:alert(1)" }
+        { "id": "b", "title": "Piégé", "url": "javascript:alert(1)" },
+        { "id": "c", "title": "Vb", "url": "vbscript:msgbox(1)" },
+        { "id": "d", "title": "Data", "url": "data:text/html,<script>1</script>" },
+        { "id": "e", "title": "Fichier", "url": "file:///c:/windows/system32/calc.exe" }
       ] } },
     { "type": "weather", "categoryIndex": 0, "position": { "x": 0, "y": 3, "w": 2, "h": 2 }, "options": { "city": "Paris" } }
   ]

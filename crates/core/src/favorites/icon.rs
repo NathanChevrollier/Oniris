@@ -14,12 +14,25 @@ pub fn is_public_ip(ip: IpAddr) -> bool {
         IpAddr::V4(v) => {
             let o = v.octets();
             !(v.is_private() || v.is_loopback() || v.is_link_local() || v.is_unspecified() || v.is_broadcast() || v.is_multicast()
-                || (o[0] == 100 && (o[1] & 0xc0) == 64)) // 100.64.0.0/10 (CGNAT)
+                || o[0] == 0 // 0.0.0.0/8
+                || (o[0] == 100 && (o[1] & 0xc0) == 64) // 100.64.0.0/10 (CGNAT)
+                || (o[0] == 192 && o[1] == 0 && o[2] == 0) // 192.0.0.0/24
+                || (o[0] == 198 && (o[1] & 0xfe) == 18) // 198.18.0.0/15
+                || o[0] >= 240) // 240.0.0.0/4
         }
-        IpAddr::V6(v) => match v.to_ipv4_mapped() {
-            Some(m) => is_public_ip(IpAddr::V4(m)),
-            None => !(v.is_loopback() || v.is_unspecified() || v.is_multicast() || (v.segments()[0] & 0xfe00) == 0xfc00 || (v.segments()[0] & 0xffc0) == 0xfe80),
-        },
+        IpAddr::V6(v) => {
+            let s = v.segments();
+            let v4 = |hi: u16, lo: u16| IpAddr::V4(std::net::Ipv4Addr::new((hi >> 8) as u8, hi as u8, (lo >> 8) as u8, lo as u8));
+            if let Some(m) = v.to_ipv4_mapped() {
+                is_public_ip(IpAddr::V4(m))
+            } else if s[..6] == [0, 0, 0, 0, 0, 0] || s[..6] == [0x64, 0xff9b, 0, 0, 0, 0] {
+                is_public_ip(v4(s[6], s[7])) // ::/96 (dont :: et ::1) et NAT64 64:ff9b::/96
+            } else if s[0] == 0x2002 {
+                is_public_ip(v4(s[1], s[2])) // 6to4
+            } else {
+                !(v.is_loopback() || v.is_unspecified() || v.is_multicast() || (s[0] & 0xfe00) == 0xfc00 || (s[0] & 0xffc0) == 0xfe80 || (s[0] & 0xffc0) == 0xfec0)
+            }
+        }
     }
 }
 
@@ -86,8 +99,9 @@ pub fn to_data_url(bytes: &[u8]) -> Option<String> {
     use base64::Engine;
     let mut reader = image::ImageReader::new(std::io::Cursor::new(bytes)).with_guessed_format().ok()?;
     let mut limits = image::Limits::default();
-    limits.max_image_width = Some(4096);
-    limits.max_image_height = Some(4096);
+    limits.max_image_width = Some(1024);
+    limits.max_image_height = Some(1024);
+    limits.max_alloc = Some(16 * 1024 * 1024);
     reader.limits(limits);
     let img = reader.decode().ok()?;
     let img = if img.width() > 64 || img.height() > 64 { img.resize(64, 64, image::imageops::FilterType::Lanczos3) } else { img };
@@ -123,10 +137,10 @@ mod tests {
     fn adresses_publiques_et_privees() {
         for p in ["8.8.8.8", "1.1.1.1", "93.184.216.34", "2606:4700:4700::1111"] { assert!(is_public_ip(ip(p)), "{p}"); }
         for p in ["127.0.0.1", "10.0.0.5", "172.16.3.4", "172.31.255.255", "192.168.1.1", "169.254.169.254", "0.0.0.0", "100.64.0.1",
-                  "255.255.255.255", "224.0.0.1", "::1", "::", "fe80::1", "fc00::1", "fd12::1", "::ffff:127.0.0.1", "::ffff:10.1.1.1", "ff02::1"] {
+                  "255.255.255.255", "224.0.0.1", "0.1.2.3", "192.0.0.8", "198.18.0.1", "198.19.255.1", "240.0.0.1", "fec0::1", "64:ff9b::7f00:1", "64:ff9b::a00:1", "2002:7f00:1::", "2002:c0a8:101::", "::7f00:1", "::a00:1", "::1", "::", "fe80::1", "fc00::1", "fd12::1", "::ffff:127.0.0.1", "::ffff:10.1.1.1", "ff02::1"] {
             assert!(!is_public_ip(ip(p)), "{p}");
         }
-        assert!(is_public_ip(ip("172.32.0.1")) && is_public_ip(ip("::ffff:8.8.8.8")));
+        assert!(is_public_ip(ip("64:ff9b::808:808")) && is_public_ip(ip("2002:808:808::")) && is_public_ip(ip("198.20.0.1")) && is_public_ip(ip("172.32.0.1")) && is_public_ip(ip("::ffff:8.8.8.8")));
     }
 
     #[test]

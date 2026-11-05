@@ -51,6 +51,14 @@
     "allow-index-status",
     "allow-search-query",
     "allow-search-open",
+    "allow-accounts-list",
+    "allow-accounts-set-google-app",
+    "allow-accounts-set-spotify-app",
+    "allow-accounts-connect",
+    "allow-accounts-remove",
+    "allow-accounts-set-color",
+    "allow-accounts-intro-take",
+    "allow-accounts-open-guide",
     "allow-perf-frame",
     "allow-perf-open-cycles"
   ]

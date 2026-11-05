@@ -5,12 +5,10 @@ mod hotkey;
 mod launch;
 mod logging;
 mod modules;
-#[allow(dead_code)] // branché par la tâche 2 (feuille « Comptes »)
 mod oauth_loopback;
 #[cfg(any(debug_assertions, feature = "perf"))]
 mod perf;
 mod scheduler;
-#[allow(dead_code)] // branché par la tâche 2 (feuille « Comptes »)
 mod secrets_win;
 mod state;
 mod tray;
@@ -80,6 +78,14 @@ pub fn run() {
             modules::projects::projects_set_roots,
             modules::projects::projects_resume,
             modules::weather::weather_get,
+            modules::accounts::accounts_list,
+            modules::accounts::accounts_set_google_app,
+            modules::accounts::accounts_set_spotify_app,
+            modules::accounts::accounts_connect,
+            modules::accounts::accounts_remove,
+            modules::accounts::accounts_set_color,
+            modules::accounts::accounts_intro_take,
+            modules::accounts::accounts_open_guide,
             modules::indexer::index_status,
             modules::search::search_query,
             modules::search::search_open,
@@ -133,6 +139,7 @@ mod tests {
     fn la_base_n_est_jamais_verrouillee_sur_le_fil_principal() {
         let sources = [
             ("commands.rs", include_str!("commands.rs")),
+            ("accounts.rs", include_str!("modules/accounts.rs")),
             ("agenda.rs", include_str!("modules/agenda.rs")),
             ("clipboard.rs", include_str!("modules/clipboard.rs")),
             ("favorites.rs", include_str!("modules/favorites.rs")),

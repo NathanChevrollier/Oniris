@@ -177,6 +177,54 @@
       "description": "Permission identifier",
       "oneOf": [
         {
+          "description": "Enables the accounts_connect command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-accounts-connect",
+          "markdownDescription": "Enables the accounts_connect command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the accounts_intro_take command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-accounts-intro-take",
+          "markdownDescription": "Enables the accounts_intro_take command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the accounts_list command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-accounts-list",
+          "markdownDescription": "Enables the accounts_list command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the accounts_open_guide command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-accounts-open-guide",
+          "markdownDescription": "Enables the accounts_open_guide command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the accounts_remove command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-accounts-remove",
+          "markdownDescription": "Enables the accounts_remove command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the accounts_set_color command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-accounts-set-color",
+          "markdownDescription": "Enables the accounts_set_color command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the accounts_set_google_app command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-accounts-set-google-app",
+          "markdownDescription": "Enables the accounts_set_google_app command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the accounts_set_spotify_app command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-accounts-set-spotify-app",
+          "markdownDescription": "Enables the accounts_set_spotify_app command without any pre-configured scope."
+        },
+        {
           "description": "Enables the agenda_between command without any pre-configured scope.",
           "type": "string",
           "const": "allow-agenda-between",
@@ -469,6 +517,54 @@
           "type": "string",
           "const": "allow-weather-get",
           "markdownDescription": "Enables the weather_get command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the accounts_connect command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-accounts-connect",
+          "markdownDescription": "Denies the accounts_connect command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the accounts_intro_take command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-accounts-intro-take",
+          "markdownDescription": "Denies the accounts_intro_take command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the accounts_list command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-accounts-list",
+          "markdownDescription": "Denies the accounts_list command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the accounts_open_guide command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-accounts-open-guide",
+          "markdownDescription": "Denies the accounts_open_guide command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the accounts_remove command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-accounts-remove",
+          "markdownDescription": "Denies the accounts_remove command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the accounts_set_color command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-accounts-set-color",
+          "markdownDescription": "Denies the accounts_set_color command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the accounts_set_google_app command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-accounts-set-google-app",
+          "markdownDescription": "Denies the accounts_set_google_app command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the accounts_set_spotify_app command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-accounts-set-spotify-app",
+          "markdownDescription": "Denies the accounts_set_spotify_app command without any pre-configured scope."
         },
         {
           "description": "Denies the agenda_between command without any pre-configured scope.",

@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Sparkles } from "lucide-react";
 import { ipc, onConfirm, onPanelState, toolIpc } from "../lib/ipc";
 import { useSettings } from "../lib/settings";
@@ -16,6 +16,7 @@ import { FavoritesCard } from "../modules/favorites/FavoritesCard";
 import { useNow } from "../lib/time";
 import { agendaIpc, dayBounds, dayKey, type AgendaEvent } from "../modules/agenda/api";
 import { remindersIpc, type Reminder } from "../modules/reminders/api";
+import { AccountsSheet } from "../modules/accounts/AccountsSheet";
 import { CardGrid } from "./CardGrid";
 import { CommandPalette } from "./CommandPalette";
 import { ConfirmQueue } from "./ConfirmQueue";
@@ -31,6 +32,9 @@ const NO_REMINDERS: Reminder[] = [];
 
 export function Panel({ onCommand = logCommand }: { onCommand?: (text: string) => void }) {
   const open = usePanelStore((s) => s.open);
+  const [accountsOpen, setAccountsOpen] = useState(false);
+  const openAccounts = useCallback(() => setAccountsOpen(true), []);
+  const closeAccounts = useCallback(() => setAccountsOpen(false), []);
   const settings = useSettings();
   const now = useNow(60_000, open);
   // La clé du jour recharge la frise après minuit (ou à la réouverture le lendemain).
@@ -62,7 +66,7 @@ export function Panel({ onCommand = logCommand }: { onCommand?: (text: string) =
       <section className="panel" aria-label="Oniris">
         <div className="ambient"><i /><i /><i /></div>
         <div className="inner">
-          <Header name={settings.user_name} />
+          <Header name={settings.user_name} onAccounts={openAccounts} />
           <div className="brief">
             <div className="spark"><Sparkles size={15} /></div>
             <p>IRIS arrive bientôt.</p>
@@ -73,6 +77,7 @@ export function Panel({ onCommand = logCommand }: { onCommand?: (text: string) =
           <CommandPalette onCommand={onCommand} />
           <div className="handle" />
         </div>
+        <AccountsSheet open={accountsOpen} onClose={closeAccounts} onAutoOpen={openAccounts} />
       </section>
     </>
   );

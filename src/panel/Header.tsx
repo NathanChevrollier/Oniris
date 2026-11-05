@@ -1,3 +1,4 @@
+import { UserRound } from "lucide-react";
 import { Orb } from "../ui/Orb";
 import { formatLongDate, greeting, hhmm, ss, useNow } from "../lib/time";
 import { usePanelStore } from "./store";
@@ -12,7 +13,7 @@ function Clock() {
   );
 }
 
-export function Header({ name }: { name: string }) {
+export function Header({ name, onAccounts }: { name: string; onAccounts?: () => void }) {
   const open = usePanelStore((s) => s.open);
   const now = useNow(60_000, open);
   return (
@@ -20,6 +21,7 @@ export function Header({ name }: { name: string }) {
       <div className="hello">
         <span>{formatLongDate(now)}</span>
         <h1>{greeting(now, name)}</h1>
+        {onAccounts && <button type="button" className="hdr-btn" onClick={onAccounts}><UserRound size={13} />Comptes</button>}
       </div>
       <div className="orb-wrap">
         <Orb state="idle" size={58} />

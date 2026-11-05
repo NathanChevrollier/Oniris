@@ -1,5 +1,6 @@
 //! Comptes en ligne (table `accounts`, migration 13) et cache mémoire des jetons d'accès.
 //! Le jeton d'actualisation vit dans le coffre (`secrets::account_key`), jamais en base.
+pub mod tools;
 use crate::events::{Events, Topic};
 use crate::oauth::{self, OAuthError, Provider, ProviderConfig, Tokens};
 use crate::secrets::{account_key, SecretStore};
@@ -96,6 +97,79 @@ pub fn remove(c: &Connection, secrets: &dyn SecretStore, id: i64) -> Result<(), 
         return Err(CoreError::NotFound("compte introuvable".into()));
     }
     Ok(())
+}
+
+/// Ce que voit l'interface : pas de date de création, jamais de jeton.
+#[derive(Clone, Serialize)]
+pub struct AccountView {
+    pub id: i64,
+    pub provider: Provider,
+    /// Adresse ou nom affiché : seul contenu utilisateur renvoyé à l'interface.
+    pub label: String,
+    pub color: String,
+    pub status: Status,
+}
+
+impl From<&Account> for AccountView {
+    fn from(a: &Account) -> Self {
+        Self { id: a.id, provider: a.provider, label: a.label.clone(), color: a.color.clone(), status: a.status }
+    }
+}
+
+/// Change la couleur d'un compte (une de la palette).
+pub fn set_color(c: &Connection, id: i64, color: &str) -> Result<(), CoreError> {
+    if !PALETTE.contains(&color) {
+        return Err(CoreError::Invalid("couleur inconnue".into()));
+    }
+    if c.execute("UPDATE accounts SET color = ?2 WHERE id = ?1", params![id, color])? == 0 {
+        return Err(CoreError::NotFound("compte introuvable".into()));
+    }
+    Ok(())
+}
+
+/// Client des API de comptes : délai de 15 s, agent générique.
+pub fn client() -> Result<reqwest::Client, CoreError> {
+    reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .user_agent("Oniris/0.1")
+        .build()
+        .map_err(|e| CoreError::Invalid(format!("réseau : {}", e.without_url())))
+}
+
+/// Points d'accès de l'identité (injectables : les tests les pointent sur un faux serveur).
+pub fn identity_url(p: Provider) -> &'static str {
+    match p {
+        Provider::Google => "https://openidconnect.googleapis.com/v1/userinfo",
+        Provider::Spotify => "https://api.spotify.com/v1/me",
+    }
+}
+
+/// Fin de la connexion, une fois le code reçu : échange, identité, compte (créé ou repassé à `ok`), jetons rangés,
+/// `Topic::Accounts` émis. Aucun navigateur ici ; erreurs en français, sans jeton ni adresse.
+#[allow(clippy::too_many_arguments)]
+pub async fn complete_connect(
+    db: &Db, tokens: &TokenCache, events: &dyn Events, http: &reqwest::Client,
+    cfg: &ProviderConfig, code: &str, verifier: &str, redirect: &str, identity_url: &str,
+) -> Result<AccountView, String> {
+    let t = oauth::exchange(http, cfg, code, verifier, redirect).await.map_err(|e| e.to_string())?;
+    if t.refresh.is_none() {
+        return Err("Le fournisseur n'a pas accordé l'accès permanent, réessaie.".into());
+    }
+    let resp = http.get(identity_url).bearer_auth(&t.access).send().await.map_err(|_| "Réseau indisponible, réessaie.".to_string())?;
+    if !resp.status().is_success() {
+        return Err(format!("Identité du compte illisible (HTTP {}).", resp.status().as_u16()));
+    }
+    let body: serde_json::Value = resp.json().await.map_err(|_| "Identité du compte illisible.".to_string())?;
+    let field = if cfg.provider == Provider::Google { "email" } else { "display_name" };
+    let label = body.get(field).and_then(|v| v.as_str()).map(str::trim).filter(|l| !l.is_empty()).ok_or("Identité du compte introuvable.")?;
+    let account = {
+        let c = db.lock();
+        let id = add(&c, cfg.provider, label, crate::time_util::now_ms()).map_err(|e| e.to_string())?;
+        get(&c, id).map_err(|e| e.to_string())?.ok_or("compte introuvable")?
+    };
+    tokens.insert(account.id, t).map_err(|_| "Le coffre Windows a refusé le jeton.".to_string())?;
+    events.changed(Topic::Accounts);
+    Ok(AccountView::from(&account))
 }
 
 /// Configuration courante d'un fournisseur (identifiant client des réglages, secret du coffre) ; `None` si non configuré.
@@ -249,6 +323,44 @@ mod tests {
         });
         let tc = TokenCache::new(db.clone(), secrets.clone(), events.clone(), reqwest::Client::new(), configs);
         (tc, db, secrets, events, id)
+    }
+
+    #[tokio::test] async fn connexion_et_reconnexion_sans_doublon() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST")).and(path("/token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"access_token": "a", "expires_in": 3600, "refresh_token": "r9"})))
+            .mount(&server).await;
+        Mock::given(method("GET")).and(path("/me")).and(wiremock::matchers::header("authorization", "Bearer a"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"display_name": "moi", "email": "x@y.z"})))
+            .mount(&server).await;
+        let (tc, db, secrets, events, id) = cache(&server);
+        let cfg = ProviderConfig { token_url: format!("{}/token", server.uri()), ..oauth::providers::spotify("cid") };
+        let url = format!("{}/me", server.uri());
+        set_status(&db.lock(), id, Status::Reauth).unwrap();
+        let v = complete_connect(&db, &tc, &*events, &reqwest::Client::new(), &cfg, "code", "ver", oauth::REDIRECT_URI, &url).await.unwrap();
+        assert_eq!((v.id, v.label.as_str(), v.status), (id, "moi", Status::Ok), "même compte, repassé à ok");
+        assert_eq!(list(&db.lock()).unwrap().len(), 1);
+        assert_eq!(secrets.get(&account_key(id)).as_deref(), Some("r9"));
+        assert_eq!(tc.access_token(id).await.unwrap(), "a", "jeton d'accès déjà en mémoire");
+        assert_eq!(events.0.load(Ordering::SeqCst), 1);
+        // Google : champ `email`, et un compte neuf est ajouté.
+        let gcfg = ProviderConfig { token_url: cfg.token_url.clone(), ..oauth::providers::google("g", None) };
+        let v2 = complete_connect(&db, &tc, &*events, &reqwest::Client::new(), &gcfg, "c", "v", oauth::REDIRECT_URI, &url).await.unwrap();
+        assert_eq!(v2.label, "x@y.z");
+        assert_eq!(list(&db.lock()).unwrap().len(), 2);
+        // Identité refusée : rien n'est ajouté.
+        let bad_url = format!("{}/absent", server.uri());
+        assert!(complete_connect(&db, &tc, &*events, &reqwest::Client::new(), &cfg, "c", "v", oauth::REDIRECT_URI, &bad_url).await.is_err());
+        assert_eq!(list(&db.lock()).unwrap().len(), 2);
+    }
+
+    #[test] fn couleur_de_la_palette_seulement() {
+        let c = crate::test_util::db();
+        let id = add(&c, Provider::Google, "a", 1).unwrap();
+        set_color(&c, id, PALETTE[3]).unwrap();
+        assert_eq!(get(&c, id).unwrap().unwrap().color, PALETTE[3]);
+        assert!(set_color(&c, id, "#123456").is_err());
+        assert!(matches!(set_color(&c, 99, PALETTE[0]), Err(CoreError::NotFound(_))));
     }
 
     #[tokio::test] async fn une_seule_actualisation_concurrente_et_rotation() {

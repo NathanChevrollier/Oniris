@@ -1,0 +1,45 @@
+.acc-sheet{position:absolute;inset:0;z-index:40;display:flex;flex-direction:column;outline:0;
+  background:rgba(18,18,24,.92);backdrop-filter:blur(30px) saturate(160%);-webkit-backdrop-filter:blur(30px) saturate(160%);
+  animation:rise .35s var(--ease) both}
+.acc-head{display:flex;align-items:center;justify-content:space-between;padding:18px 26px 8px}
+.acc-head h2{font-size:22px;font-weight:600;letter-spacing:-.02em}
+.acc-body{padding:4px 26px 22px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.18) transparent;max-width:760px;width:100%;margin:0 auto}
+.acc-body h3{margin:16px 0 8px;font-size:11px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--txt3)}
+.acc-empty{padding:10px 14px;border-radius:14px;border:1px dashed var(--line2);font-size:12.5px;color:var(--txt2)}
+.acc-list{list-style:none;display:flex;flex-direction:column;gap:8px}
+.acc-row{border-radius:18px;padding:10px 14px;background:var(--card);border:1px solid var(--line)}
+.acc-main{display:flex;align-items:center;gap:10px}
+.acc-dot{flex:none;width:18px;height:18px;border-radius:50%;border:2px solid rgba(255,255,255,.35);cursor:pointer}
+.acc-label{flex:1;min-width:0;display:flex;flex-direction:column;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.acc-label small{font-size:11px;color:var(--txt3)}
+.acc-state{font-size:12px;color:var(--green)}
+.acc-state.warn{color:var(--acc);font-weight:600}
+.acc-palette{display:flex;gap:8px;margin-top:10px}
+.acc-sw{width:22px;height:22px;border-radius:50%;border:2px solid transparent;cursor:pointer}
+.acc-sw.on{border-color:#fff}
+.acc-adds{display:flex;flex-wrap:wrap;gap:16px;margin-top:12px}
+.acc-add{display:flex;align-items:center;gap:10px}
+.acc-btn{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 12px;border-radius:12px;border:1px solid var(--line);background:rgba(255,255,255,.06);color:var(--txt);font:12px var(--font);cursor:pointer}
+.acc-btn:hover:enabled{background:rgba(255,255,255,.11)}
+.acc-btn.primary{border-color:rgba(255,140,100,.4);background:rgba(255,116,72,.18)}
+.acc-btn:disabled{opacity:.45;cursor:default}
+.acc-btn:focus-visible,.acc-icon:focus-visible,.acc-link:focus-visible,.acc-dot:focus-visible,.acc-sw:focus-visible,.acc-guide summary:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.acc-icon{display:grid;place-items:center;width:28px;height:28px;border-radius:10px;border:0;background:none;color:var(--txt2);cursor:pointer}
+.acc-icon:hover{background:rgba(255,255,255,.1);color:var(--txt)}
+.acc-link{border:0;background:none;color:var(--acc);font:12px var(--font);text-decoration:underline;cursor:pointer}
+.acc-guide{margin-bottom:8px;border-radius:18px;padding:10px 14px;background:var(--card);border:1px solid var(--line)}
+.acc-guide summary{cursor:pointer;font-size:13.5px;font-weight:500}
+.acc-guide ol{margin:10px 0 0 18px;display:flex;flex-direction:column;gap:10px;font-size:12.5px;line-height:1.45;color:var(--txt2)}
+.acc-guide li p{margin-bottom:6px}
+.acc-copy{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.acc-copy code{flex:1;min-width:0;white-space:pre-wrap;word-break:break-all;padding:6px 10px;border-radius:10px;background:rgba(0,0,0,.3);font:11.5px ui-monospace,Consolas,monospace;color:var(--txt)}
+.acc-form{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.acc-form input{flex:1;min-width:180px;padding:6px 10px;border-radius:12px;border:1px solid var(--line);background:rgba(255,255,255,.06);color:var(--txt);font:12.5px var(--font);outline:0}
+.acc-form input:focus{border-color:rgba(255,140,100,.35)}
+.acc-form p{flex-basis:100%}
+.acc-note{margin-top:10px;padding:8px 12px;border-radius:12px;font-size:12px;line-height:1.4;color:var(--txt);background:rgba(255,214,10,.08);border:1px solid rgba(255,214,10,.2)}
+.acc-ok{font-size:12px;color:var(--green)}
+.acc-sheet .err{font-size:12px;color:var(--acc)}
+.hdr-btn{margin-top:8px;display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 12px;border-radius:12px;border:1px solid var(--line);background:rgba(255,255,255,.06);color:var(--txt2);font:12px var(--font);cursor:pointer}
+.hdr-btn:hover{background:rgba(255,255,255,.11);color:var(--txt)}
+.hdr-btn:focus-visible{outline:2px solid var(--acc);outline-offset:2px}

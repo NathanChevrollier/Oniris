@@ -1,6 +1,9 @@
 use crate::hotkey::HotkeyConfig;
 use crate::scheduler::Scheduler;
+use oniris_core::accounts::TokenCache;
 use oniris_core::events::Events;
+use oniris_core::oauth::{providers, Provider, ProviderConfig};
+use oniris_core::secrets::{SecretStore, GOOGLE_CLIENT_SECRET};
 use oniris_core::tools::{Tool, ToolBroker};
 use oniris_core::{migrate, open_db, load_settings, Db, Settings, CORE_MIGRATIONS};
 use parking_lot::{Mutex, RwLock};
@@ -21,6 +24,12 @@ pub struct AppState {
     /// Client HTTP partagé (météo) : délai 8 s, agent générique. `None` s'il n'a pas pu être construit :
     /// la météo est alors indisponible, mais l'app démarre.
     pub http: Option<reqwest::Client>,
+    /// Client des API de comptes en ligne : délai 15 s.
+    pub account_http: reqwest::Client,
+    /// Coffre Windows : secret client Google et jetons d'actualisation.
+    pub secrets: Arc<dyn SecretStore>,
+    /// Jetons d'accès en mémoire, actualisés à la demande.
+    pub accounts: Arc<TokenCache>,
     pub settings: RwLock<Settings>,
     /// Seul point de passage des actions d'IRIS ; ses outils sont fixés dans `AppState::open`.
     pub broker: Arc<ToolBroker>,
@@ -86,6 +95,11 @@ impl AppState {
         let handle = app.clone();
         let env: oniris_core::projects::tools::ResumeEnv = Arc::new(move || crate::modules::projects::resume_env(&handle));
         tools.push(Arc::new(oniris_core::projects::tools::Resume { source: projects, env, opener: opener.clone() }));
+        tools.extend(oniris_core::accounts::tools::all(&db));
+        let secrets: Arc<dyn SecretStore> = Arc::new(crate::secrets_win::WinCredentials);
+        let account_http = oniris_core::accounts::client()?;
+        let handle = app.clone();
+        let accounts = Arc::new(TokenCache::new(db.clone(), secrets.clone(), events.clone(), account_http.clone(), Arc::new(move |p| provider_config(&handle, p))));
         let broker = Arc::new(ToolBroker::new(db.clone(), clock, tools)?);
         broker.mark_interrupted();
         broker.expire_stale();
@@ -106,10 +120,27 @@ impl AppState {
             http: oniris_core::weather::client()
                 .inspect_err(|e| tracing::error!("météo : client HTTP impossible, météo indisponible : {e}"))
                 .ok(),
+            account_http,
+            secrets,
+            accounts,
             _log_guard: None,
             db,
             broker,
             settings: RwLock::new(s),
         })
+    }
+}
+
+/// Configuration OAuth courante : identifiant client des réglages, secret Google du coffre ; `None` si non configuré.
+pub fn provider_config(app: &AppHandle, p: Provider) -> Option<ProviderConfig> {
+    let st = app.state::<AppState>();
+    let (google, spotify) = {
+        let s = st.settings.read();
+        (s.google_client_id.clone(), s.spotify_client_id.clone())
+    };
+    match p {
+        Provider::Google if !google.is_empty() => st.secrets.get(GOOGLE_CLIENT_SECRET).map(|sec| providers::google(&google, Some(sec))),
+        Provider::Spotify if !spotify.is_empty() => Some(providers::spotify(&spotify)),
+        _ => None,
     }
 }

@@ -8,9 +8,12 @@ use tokio::net::{TcpListener, TcpStream};
 const PAGE_OK: &str = "<!doctype html><meta charset=\"utf-8\"><title>Oniris</title><body style=\"font-family:system-ui;text-align:center;padding:3em\"><h1>Compte connecté</h1><p>Compte connecté, tu peux fermer cet onglet.</p></body>";
 const PAGE_KO: &str = "<!doctype html><meta charset=\"utf-8\"><title>Oniris</title><body style=\"font-family:system-ui;text-align:center;padding:3em\"><h1>Connexion refusée</h1><p>La connexion n'a pas abouti. Reviens dans Oniris pour réessayer.</p></body>";
 
-/// Attend le code d'autorisation, `timeout` au plus (5 minutes en production).
-pub async fn wait_code(state: &str, timeout: Duration) -> Result<String, String> {
-    serve(bind(LOOPBACK_PORT).await?, state, timeout).await
+/// Attente maximale du retour du navigateur.
+pub const TIMEOUT: Duration = Duration::from_secs(300);
+
+/// Écoute du port de production : à lier AVANT d'ouvrir le navigateur (port pris = message clair, rien d'ouvert).
+pub async fn listen() -> Result<TcpListener, String> {
+    bind(LOOPBACK_PORT).await
 }
 
 /// Lie `127.0.0.1:port` ; erreurs en clair, sans essayer d'autre port.
@@ -22,8 +25,8 @@ async fn bind(port: u16) -> Result<TcpListener, String> {
     })
 }
 
-/// Cœur de `wait_code`, sur un écouteur déjà lié (les tests lient le port 0).
-async fn serve(listener: TcpListener, state: &str, timeout: Duration) -> Result<String, String> {
+/// Attend le code d'autorisation sur un écouteur déjà lié (les tests lient le port 0).
+pub async fn serve(listener: TcpListener, state: &str, timeout: Duration) -> Result<String, String> {
     let wait = async {
         loop {
             let mut stream = match listener.accept().await {

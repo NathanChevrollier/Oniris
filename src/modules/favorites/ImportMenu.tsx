@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyEvent } from "react";
+import { Download } from "lucide-react";
 import { formatReport, importIpc } from "./api";
 
 /** Bouton « Importer » : menu (navigateurs / export Nexus) et compte rendu en ligne. */
-export function ImportMenu() {
+export function ImportMenu({ tile = false }: { tile?: boolean }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [lines, setLines] = useState<string[]>([]);
@@ -40,9 +41,10 @@ export function ImportMenu() {
   };
 
   return (
-    <div className="fav-import" ref={root}>
-      <button type="button" ref={button} className="fav-import-btn" aria-haspopup="menu" aria-expanded={open} disabled={busy} onClick={() => setOpen(!open)}>
-        {busy ? "Import…" : "Importer"}
+    <div className={`fav-import${tile ? " tile" : ""}`} ref={root}>
+      <button type="button" ref={button} className={tile ? "fav-btn fav-add" : "fav-import-btn"} title={tile ? "Importer" : undefined} aria-haspopup="menu" aria-expanded={open} disabled={busy} onClick={() => setOpen(!open)}>
+        {tile && <span className="fav-ico"><Download size={15} aria-hidden /></span>}
+        {tile ? <span className="fav-t">{busy ? "Import…" : "Importer"}</span> : busy ? "Import…" : "Importer"}
       </button>
       {open && (
         <div className="fav-menu" role="menu" onKeyDown={arrows}>

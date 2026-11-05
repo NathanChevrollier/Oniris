@@ -3,23 +3,24 @@
 //! jamais d'URL ni de nom de site.
 use crate::state::AppState;
 use oniris_core::events::Topic;
-use oniris_core::sites::{self, Probe, SiteState, SiteView};
+use oniris_core::sites::{self, Probe, SiteView};
 use oniris_core::time_util::now_ms;
 use oniris_core::Site;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, LazyLock};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Manager};
 use tokio::sync::{Notify, Semaphore};
+use tokio::time::MissedTickBehavior;
 
 const ROUND: Duration = Duration::from_secs(60);
 const PARALLEL: usize = 4;
-/// Dernières mesures qui suffisent à `sites::state`.
-const WINDOW: usize = 3;
+/// Écart minimal entre deux tours, même si les réglages changent souvent.
+const MIN_GAP: Duration = Duration::from_secs(30);
 
 /// Réveille la boucle : liste de sites modifiée.
 static WAKE: LazyLock<Notify> = LazyLock::new(Notify::new);
-/// Le dernier tour a échoué partout (au moins 2 sites) : le PC est hors ligne, la carte le dit.
+/// Dernier tour hors ligne (échecs réseau partout et Windows sans Internet) : la carte le dit.
 static OFFLINE: AtomicBool = AtomicBool::new(false);
 
 pub fn wake() { WAKE.notify_one(); }
@@ -41,6 +42,11 @@ async fn run(app: AppHandle) {
         Ok(h) => h,
         Err(e) => return tracing::error!("sites : {e}"),
     };
+    // Période d'environ 60 s ; un retard ne déclenche pas de rafale de rattrapage.
+    let mut tick = tokio::time::interval(ROUND);
+    tick.set_missed_tick_behavior(MissedTickBehavior::Skip);
+    tick.tick().await; // le premier tick est immédiat
+    let mut last: Option<Instant> = None;
     loop {
         let list = app.state::<AppState>().settings.read().sites.clone();
         if list.is_empty() {
@@ -48,11 +54,37 @@ async fn run(app: AppHandle) {
             WAKE.notified().await;
             continue;
         }
-        round(&app, &http, &list).await;
+        // Réglages modifiés en rafale : 30 s au moins entre deux tours.
+        if let Some(t) = last.filter(|t| t.elapsed() < MIN_GAP) {
+            tokio::time::sleep(MIN_GAP - t.elapsed()).await;
+        }
+        let list = app.state::<AppState>().settings.read().sites.clone(); // peut avoir changé pendant l'attente
+        if !list.is_empty() {
+            round(&app, &http, &list).await;
+            last = Some(Instant::now());
+        }
         tokio::select! {
-            _ = tokio::time::sleep(ROUND) => {}
+            _ = tick.tick() => {}
             _ = WAKE.notified() => {}
         }
+    }
+}
+
+/// Windows voit-il Internet ? (Network List Manager, sans trafic réseau.) En cas de doute : oui, pour que
+/// de vraies pannes ne soient jamais masquées.
+fn os_online() -> bool {
+    use windows::Win32::Networking::NetworkListManager::{INetworkListManager, NetworkListManager, NLM_CONNECTIVITY_IPV4_INTERNET, NLM_CONNECTIVITY_IPV6_INTERNET};
+    use windows::Win32::System::Com::{CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_ALL, COINIT_MULTITHREADED};
+    unsafe {
+        let init = CoInitializeEx(None, COINIT_MULTITHREADED).is_ok();
+        let online = CoCreateInstance::<_, INetworkListManager>(&NetworkListManager, None, CLSCTX_ALL)
+            .and_then(|m| m.GetConnectivity())
+            .map(|c| c.0 & (NLM_CONNECTIVITY_IPV4_INTERNET.0 | NLM_CONNECTIVITY_IPV6_INTERNET.0) != 0)
+            .unwrap_or(true);
+        if init {
+            CoUninitialize();
+        }
+        online
     }
 }
 
@@ -74,28 +106,13 @@ async fn round(app: &AppHandle, http: &reqwest::Client, list: &[Site]) {
             Err(_) => tracing::error!("sites : une sonde a planté"), // reste un échec
         }
     }
-    let st = app.state::<AppState>();
-    let offline = sites::all_failed(&probes);
+    // Windows n'est interrogé que si tout a échoué sans réponse HTTP : le cas courant n'y touche pas.
+    let all_silent = probes.iter().all(|p| p.status.is_none());
+    let online = if all_silent { tokio::task::spawn_blocking(os_online).await.unwrap_or(true) } else { true };
+    let offline = sites::offline(&probes, online);
     OFFLINE.store(offline, Ordering::SeqCst);
-    let mut notices = Vec::new();
-    // Hors ligne : rien n'est noté, ces échecs ne disent rien des sites (pas de « panne » à retardement au retour du réseau).
-    if !offline {
-        let now = now_ms();
-        let db = st.db.lock();
-        let (mut prev, mut next) = (Vec::new(), Vec::new());
-        for (s, p) in list.iter().zip(&probes) {
-            let before = sites::history(&db, &s.url, WINDOW).map(|h| sites::state(&h, s.slow_ms));
-            let after = sites::record(&db, &s.url, now, p).and_then(|_| sites::history(&db, &s.url, WINDOW)).map(|h| sites::state(&h, s.slow_ms));
-            match (before, after) {
-                (Ok(b), Ok(a)) => (prev.push(b), next.push(a)),
-                _ => { tracing::warn!("sites : mesure non enregistrée"); (prev.push(SiteState::Unknown), next.push(SiteState::Unknown)) }
-            };
-        }
-        if let Err(e) = sites::prune(&db, now) {
-            tracing::warn!("sites : purge impossible : {e}");
-        }
-        notices = sites::transitions(&prev, &next, false);
-    }
+    let st = app.state::<AppState>();
+    let notices = sites::apply_round(&st.db, list, &probes, offline, now_ms());
     for n in notices {
         let (title, body) = sites::notice_text(n.kind, &list[n.site].name);
         crate::tray::notify(app, title, &body);

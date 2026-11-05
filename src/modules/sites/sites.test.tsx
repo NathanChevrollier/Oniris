@@ -56,3 +56,12 @@ it("retire un site et montre l'erreur d'ajout", async () => {
   expect(remove).toHaveBeenCalledWith("https://alpha.example.com");
   expect(addError("sites : adresse déjà surveillée")).toBe("Ce site est déjà surveillé.");
 });
+
+it("affiche les problèmes d'abord, sans changer l'ordre enregistré", async () => {
+  const stored = [v("Alpha", "up"), v("Beta", "slow", 2400), v("Gamma", "down", null), v("Delta", "unknown", null)];
+  vi.spyOn(sitesIpc, "list").mockResolvedValue(stored);
+  render(<SitesSection />);
+  await screen.findByText("Gamma");
+  expect(screen.getAllByRole("listitem").map((li) => li.querySelector(".site-name")?.textContent)).toEqual(["Gamma", "Beta", "Delta", "Alpha"]);
+  expect(stored.map((s) => s.name)).toEqual(["Alpha", "Beta", "Gamma", "Delta"]);
+});

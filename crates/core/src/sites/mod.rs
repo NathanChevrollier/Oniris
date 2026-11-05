@@ -13,6 +13,8 @@ const BODY_MAX: usize = 64 * 1024;
 /// Sondes gardées 24 h.
 const KEEP_MS: i64 = 24 * 3_600_000;
 pub const SPARK_POINTS: usize = 30;
+/// Dernières mesures qui suffisent à `state`.
+const STATE_WINDOW: usize = 3;
 
 /// Client dédié : sans cookie, 3 redirections au plus (un schéma autre que http(s) échoue à la requête).
 /// Pas de garde SSRF : les adresses sont celles de l'utilisateur, validées http(s) dans les réglages.
@@ -78,10 +80,11 @@ pub fn state(history: &[Probe], slow_ms: u32) -> SiteState {
     SiteState::Up
 }
 
-/// Tous les sites ont échoué dans ce tour, avec au moins 2 sites : le PC est hors ligne, pas les sites.
-/// Un site seul ne permet pas de distinguer les deux : il est traité normalement.
-pub fn all_failed(round: &[Probe]) -> bool {
-    round.len() >= 2 && round.iter().all(|p| !p.ok)
+/// Tour « hors ligne » : toutes les sondes ont échoué au niveau réseau (aucun code HTTP) ET Windows signale
+/// qu'il n'y a pas d'Internet. Les sites étant des sous-domaines d'un même VPS, une panne du VPS fait aussi
+/// tout échouer : sans la réponse de Windows, c'est une vraie panne (un 502 partout en est une, toujours).
+pub fn offline(round: &[Probe], os_online: bool) -> bool {
+    !os_online && !round.is_empty() && round.iter().all(|p| p.status.is_none())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -91,9 +94,9 @@ pub enum NoticeKind { Down, Slow, Recovered }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Notice { pub site: usize, pub kind: NoticeKind }
 
-/// Notifications d'un tour : passage à Down ou à Slow, retour à Up après Down. Aucune si `all_failed`.
-pub fn transitions(prev: &[SiteState], next: &[SiteState], all_failed: bool) -> Vec<Notice> {
-    if all_failed {
+/// Notifications d'un tour : passage à Down ou à Slow, retour à Up après Down. Aucune si `offline`.
+pub fn transitions(prev: &[SiteState], next: &[SiteState], offline: bool) -> Vec<Notice> {
+    if offline {
         return Vec::new();
     }
     prev.iter().zip(next).enumerate().filter_map(|(site, (&p, &n))| {
@@ -132,6 +135,29 @@ pub fn history(c: &Connection, site: &str, limit: usize) -> Result<Vec<Probe>, C
         .collect::<Result<Vec<_>, _>>()?;
     v.reverse();
     Ok(v)
+}
+
+/// Un tour complet : état avant, enregistrement, état après, purge, transitions. `probes` suit `list`.
+/// Hors ligne : rien n'est enregistré ni notifié (ces échecs ne disent rien des sites). L'état vient de la base :
+/// un redémarrage alors qu'un site est déjà en panne ne renotifie pas.
+pub fn apply_round(db: &crate::Db, list: &[Site], probes: &[Probe], offline: bool, now_ms: i64) -> Vec<Notice> {
+    if offline {
+        return Vec::new();
+    }
+    let c = db.lock();
+    let (mut prev, mut next) = (Vec::new(), Vec::new());
+    for (s, p) in list.iter().zip(probes) {
+        let before = history(&c, &s.url, STATE_WINDOW).map(|h| state(&h, s.slow_ms));
+        let after = record(&c, &s.url, now_ms, p).and_then(|_| history(&c, &s.url, STATE_WINDOW)).map(|h| state(&h, s.slow_ms));
+        match (before, after) {
+            (Ok(b), Ok(a)) => { prev.push(b); next.push(a); }
+            _ => { tracing::warn!("sites : mesure non enregistrée"); prev.push(SiteState::Unknown); next.push(SiteState::Unknown); }
+        }
+    }
+    if let Err(e) = prune(&c, now_ms) {
+        tracing::warn!("sites : purge impossible : {e}");
+    }
+    transitions(&prev, &next, false)
 }
 
 /// Supprime les sondes de plus de 24 h (une seule requête par tour).
@@ -188,11 +214,76 @@ mod tests {
         assert_eq!(state(&[SLOW, SLOW, SLOW], 2500), SiteState::Up, "seuil du site");
         assert_eq!(state(&[SLOW, SLOW, KO], 1500), SiteState::Up);
     }
-    #[test] fn hors_ligne_seulement_avec_au_moins_deux_sites() {
-        assert!(all_failed(&[KO, KO]));
-        assert!(!all_failed(&[KO, OK]));
-        assert!(!all_failed(&[KO]), "un seul site : traité normalement");
-        assert!(!all_failed(&[]));
+    const BAD_GATEWAY: Probe = Probe { ms: Some(30), status: Some(502), ok: false };
+    #[test] fn hors_ligne_demande_echec_reseau_et_windows_sans_internet() {
+        assert!(offline(&[KO, KO], false));
+        assert!(offline(&[KO], false), "un seul site aussi");
+        assert!(!offline(&[KO, KO], true), "Windows voit Internet : vraie panne");
+        assert!(!offline(&[BAD_GATEWAY, BAD_GATEWAY], false), "un 502 partout est une panne, même si Windows hésite");
+        assert!(!offline(&[KO, OK], false));
+        assert!(!offline(&[], false));
+    }
+
+    fn two() -> Vec<Site> { ["u1", "u2"].map(|u| Site { name: u.into(), url: u.into(), slow_ms: 1500 }).to_vec() }
+    fn db() -> crate::Db { std::sync::Arc::new(parking_lot::Mutex::new(crate::test_util::db())) }
+    fn count(db: &crate::Db) -> i64 { db.lock().query_row("SELECT count(*) FROM probes", [], |r| r.get(0)).unwrap() }
+
+    #[test] fn tour_hors_ligne_rien_enregistre_ni_notifie() {
+        let db = db();
+        let round = [KO, KO];
+        assert!(apply_round(&db, &two(), &[OK, OK], false, 1).is_empty());
+        for t in 2..6 { assert!(apply_round(&db, &two(), &round, offline(&round, false), t).is_empty()); }
+        assert_eq!(count(&db), 2, "les tours hors ligne ne laissent ni trou ni échecs");
+        assert_eq!(views(&db.lock(), &two(), false).unwrap()[0].state, SiteState::Up);
+    }
+    #[test] fn panne_totale_avec_internet_down_apres_deux_tours_et_notifie() {
+        let db = db();
+        let round = [KO, KO];
+        assert!(apply_round(&db, &two(), &[OK, OK], false, 1).is_empty());
+        assert!(apply_round(&db, &two(), &round, offline(&round, true), 2).is_empty(), "un échec : encore Up");
+        let n = apply_round(&db, &two(), &round, offline(&round, true), 3);
+        assert_eq!(n.iter().map(|n| (n.site, n.kind)).collect::<Vec<_>>(), vec![(0, NoticeKind::Down), (1, NoticeKind::Down)]);
+        assert!(apply_round(&db, &two(), &round, false, 4).is_empty(), "pas de répétition");
+    }
+    #[test] fn un_502_partout_est_une_panne_meme_sans_certitude_de_windows() {
+        let db = db();
+        let round = [BAD_GATEWAY, BAD_GATEWAY];
+        apply_round(&db, &two(), &[OK, OK], false, 1);
+        apply_round(&db, &two(), &round, offline(&round, false), 2);
+        assert_eq!(apply_round(&db, &two(), &round, offline(&round, false), 3).len(), 2);
+    }
+    #[test] fn redemarrage_pendant_une_panne_ne_renotifie_pas_puis_retablissement() {
+        let db = db();
+        let all = two();
+        let sites = &all[..1];
+        apply_round(&db, sites, &[OK], false, 1);
+        apply_round(&db, sites, &[KO], false, 2);
+        assert_eq!(apply_round(&db, sites, &[KO], false, 3).len(), 1, "Down notifié");
+        // « Redémarrage » : aucun état en mémoire, seule la base reste. Le site échoue toujours.
+        assert!(apply_round(&db, sites, &[KO], false, 4).is_empty());
+        let n = apply_round(&db, sites, &[OK], false, 5);
+        assert_eq!(n.iter().map(|n| n.kind).collect::<Vec<_>>(), vec![NoticeKind::Recovered]);
+    }
+
+    #[tokio::test] async fn corps_lu_sur_64_ko_au_plus() {
+        use std::io::Write;
+        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}", l.local_addr().unwrap());
+        let sent = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let s2 = sent.clone();
+        std::thread::spawn(move || {
+            let (mut sock, _) = l.accept().unwrap();
+            let _ = sock.write_all(b"HTTP/1.1 200 OK\r\ncontent-length: 50000000\r\n\r\n");
+            let chunk = [b'x'; 16 * 1024];
+            for _ in 0..3000 { // 48 Mo promis, jamais lus en entier
+                if sock.write_all(&chunk).is_err() { break; }
+                s2.fetch_add(chunk.len(), std::sync::atomic::Ordering::SeqCst);
+            }
+        });
+        let p = probe(&client().unwrap(), &url, Duration::from_secs(5)).await;
+        assert!(p.ok);
+        // Le client abandonne dès 64 Ko lus : le serveur bute sur les tampons TCP bien avant 48 Mo.
+        assert!(sent.load(std::sync::atomic::Ordering::SeqCst) < 16 * 1024 * 1024, "corps lu bien au-delà de 64 Ko");
     }
     #[test] fn transitions_notifient_et_se_taisent_hors_ligne() {
         use SiteState::*;

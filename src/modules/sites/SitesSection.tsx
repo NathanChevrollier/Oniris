@@ -5,6 +5,8 @@ import { counter, sitesIpc, type SiteState, type SiteView } from "./api";
 import "./sites.css";
 
 const NONE: SiteView[] = [];
+/** Ordre d'affichage : les problèmes d'abord ; l'ordre enregistré ne change pas. */
+const SEVERITY: Record<SiteState, number> = { down: 0, slow: 1, unknown: 2, offline: 3, up: 3 };
 const LABEL: Record<SiteState, string> = { unknown: "pas encore sondé", up: "en ligne", slow: "lent", down: "en panne", offline: "hors ligne" };
 
 /** Message lisible pour un refus du Rust (validation des réglages). */
@@ -58,7 +60,7 @@ export function SitesSection() {
       {data.length === 0 && !editing && <p className="sites-empty">Aucun site surveillé</p>}
       {data.length > 0 && (
         <ul className="site-list" role="list">
-          {data.map((s) => (
+          {[...data].sort((a, b) => SEVERITY[a.state] - SEVERITY[b.state]).map((s) => (
             <li key={s.url} className="site">
               <span className={`site-dot ${s.state}`} role="img" aria-label={LABEL[s.state]} />
               <span className="site-name">{s.name}</span>

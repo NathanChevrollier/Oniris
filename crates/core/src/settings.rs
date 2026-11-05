@@ -32,6 +32,10 @@ fn default_slow_ms() -> u32 { 1500 }
 
 const MAX_SITES: usize = 30;
 
+fn same_site(a: &str, b: &url::Url) -> bool {
+    url::Url::parse(a).is_ok_and(|a| a.as_str().trim_end_matches('/') == b.as_str().trim_end_matches('/'))
+}
+
 /// Rogne, puis : nom non vide (40), URL http(s) avec hôte (300), seuil 300..=10000, pas de doublon d'URL.
 fn check_sites(sites: &mut [Site]) -> Result<(), String> {
     for s in sites.iter_mut() {
@@ -42,17 +46,21 @@ fn check_sites(sites: &mut [Site]) -> Result<(), String> {
         return Err(format!("sites : {MAX_SITES} au plus"));
     }
     for (i, s) in sites.iter().enumerate() {
-        let http = url::Url::parse(&s.url).ok().filter(|u| matches!(u.scheme(), "http" | "https") && u.host_str().is_some());
-        if http.is_none() || s.url.chars().count() > 300 {
-            return Err("sites : adresse http(s) de 300 caractères au plus".into());
-        }
+        // Pas d'identifiants dans l'adresse (user:pw@) : ils finiraient en clair dans la base et les réglages.
+        let http = url::Url::parse(&s.url).ok().filter(|u| {
+            matches!(u.scheme(), "http" | "https") && u.host_str().is_some() && u.username().is_empty() && u.password().is_none()
+        });
+        let Some(http) = http.filter(|_| s.url.chars().count() <= 300) else {
+            return Err("sites : adresse http(s) de 300 caractères au plus, sans identifiants".into());
+        };
         if s.name.is_empty() || s.name.chars().count() > 40 {
             return Err("sites : nom de 1 à 40 caractères".into());
         }
         if !(300..=10_000).contains(&s.slow_ms) {
             return Err("sites : seuil de lenteur hors de 300..=10000 ms".into());
         }
-        if sites[..i].iter().any(|o| o.url == s.url) {
+        // Doublon : même adresse à la casse de l'hôte et à la barre finale près.
+        if sites[..i].iter().any(|o| same_site(&o.url, &http)) {
             return Err("sites : adresse déjà surveillée".into());
         }
     }
@@ -457,6 +465,10 @@ mod tests {
         let many = |n: usize| (0..n).map(|i| site("S", &format!("https://s{i}.example.com"))).collect::<Vec<_>>();
         assert!(with(many(30)).is_ok());
         assert!(with(many(31)).is_err());
+        assert!(with(vec![site("A", "https://Blog.example.com"), site("B", "https://blog.example.com/")]).is_err(), "hôte et barre finale");
+        assert!(with(vec![site("A", "https://blog.example.com/a"), site("B", "https://blog.example.com/b")]).is_ok());
+        assert!(with(vec![site("A", "https://user:pw@blog.example.com")]).is_err(), "identifiants");
+        assert!(with(vec![site("A", "https://user@blog.example.com")]).is_err());
         let mut s = Settings { sites: vec![site(" A ", " https://a.example.com ")], ..Settings::default() };
         assert!(s.fix().is_empty());
         assert_eq!((s.sites[0].name.as_str(), s.sites[0].url.as_str()), ("A", "https://a.example.com"));

@@ -168,7 +168,7 @@ export function FavoritesCard() {
     const drop = over === i && draggedAt >= 0 ? (i > draggedAt ? "drop-after" : "drop-before") : "";
     return (
       <li key={f.id} data-index={i} data-id={f.id} className={`fav ${dragging === f.id ? "dragging" : ""} ${drop}`} onContextMenu={(e) => { e.preventDefault(); setMenu(f.id); }}>
-        <button type="button" className="fav-btn" aria-label={f.title} onClick={() => open(f)}
+        <button type="button" className="fav-btn" aria-label={f.title} title={f.title} onClick={() => open(f)}
           onPointerDown={(e) => down(e, f.id)} onPointerMove={moved} onLostPointerCapture={up}
           aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight" onKeyDown={(e) => key(e, i)}>
           <span className="fav-ico" style={iconStyle(hueOf(hostOf(f.url)))}>
@@ -210,14 +210,14 @@ export function FavoritesCard() {
             <ul className="favs" role="list" aria-label={grouped ? `Favoris — ${cat ?? "Sans catégorie"}` : "Favoris"}>
               {list.filter((f) => !grouped || f.category === cat).map(tile)}
               {g === groups.length - 1 && (
-                <li><button type="button" className="fav-btn fav-add" aria-label="Ajouter un favori" onClick={() => { fresh(); setAdding(!adding); }}>
+                <li><button type="button" className="fav-btn fav-add" aria-label="Ajouter un favori" title="Ajouter" onClick={() => { fresh(); setAdding(!adding); }}>
                   <span className="fav-ico"><Plus size={16} aria-hidden /></span><span className="fav-t" aria-hidden>Ajouter</span></button></li>
               )}
+              {g === groups.length - 1 && <li><ImportMenu tile /></li>}
             </ul>
           </div>
         ))}
       </div>
-      <ImportMenu />
       {adding && (
         <form className="fav-form" onSubmit={(e) => { e.preventDefault(); void submit(); }}>
           <input aria-label="Adresse du site" placeholder="https://…" value={url} onChange={(e) => setUrl(e.target.value)} autoFocus spellCheck={false} />

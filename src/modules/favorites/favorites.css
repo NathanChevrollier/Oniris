@@ -28,3 +28,12 @@
 .fav-import-btn{height:26px;padding:0 12px;border-radius:12px;border:1px solid var(--line);background:rgba(255,255,255,.06);color:var(--txt);font:12px var(--font);cursor:pointer}
 .fav-import-btn:disabled{opacity:.6;cursor:default}
 .fav-report{margin:6px 0 0;font:11.5px var(--font);color:var(--txt2)}
+/* Avec des sites surveillés, le dock se resserre pour que la rangée tienne en 1440p. */
+.card:has(.site) .favs{grid-template-columns:repeat(auto-fill,minmax(54px,1fr));gap:6px;margin-top:6px}
+.card:has(.site) .fav-ico{width:34px;height:34px;border-radius:10px;font-size:12px}
+.card:has(.site) .favs .fav-btn{padding:1px 2px;gap:2px}
+.fav-import.tile{position:relative;margin:0}
+.fav-import.tile .fav-menu{left:0;min-width:170px}
+.fav-import.tile .fav-report,.fav-import.tile .err{position:absolute;z-index:4;right:0;bottom:100%;width:200px;margin:0 0 4px;padding:6px 8px;border-radius:10px;background:rgba(34,34,40,.96);border:1px solid var(--line2)}
+/* Dock compact : icônes seules (nom en infobulle et pour les lecteurs d'écran) pour tenir en 1440p. */
+.card:has(.site) .favs .fav-t{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}

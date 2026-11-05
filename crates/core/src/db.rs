@@ -225,7 +225,8 @@ Migration {
         status INTEGER,
         ok INTEGER NOT NULL
     ) STRICT;
-    CREATE INDEX probes_site_at ON probes(site, at_ms);",
+    CREATE INDEX probes_site_at ON probes(site, at_ms);
+    CREATE INDEX probes_at ON probes(at_ms);",
 }];
 
 pub fn open_db(path: &Path) -> Result<Connection, CoreError> {

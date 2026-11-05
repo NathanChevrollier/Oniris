@@ -67,6 +67,11 @@ fn main() {
         "mail_open_web",
         "mail_open_link",
         "mail_status",
+        "music_now",
+        "music_toggle",
+        "music_next",
+        "music_previous",
+        "music_seek",
         "perf_frame",
         "perf_open_cycles",
     ]);

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-music-toggle"
+description = "Enables the music_toggle command without any pre-configured scope."
+commands.allow = ["music_toggle"]
+
+[[permission]]
+identifier = "deny-music-toggle"
+description = "Denies the music_toggle command without any pre-configured scope."
+commands.deny = ["music_toggle"]

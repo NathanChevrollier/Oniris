@@ -399,6 +399,36 @@
           "markdownDescription": "Enables the mail_status command without any pre-configured scope."
         },
         {
+          "description": "Enables the music_next command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-music-next",
+          "markdownDescription": "Enables the music_next command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the music_now command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-music-now",
+          "markdownDescription": "Enables the music_now command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the music_previous command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-music-previous",
+          "markdownDescription": "Enables the music_previous command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the music_seek command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-music-seek",
+          "markdownDescription": "Enables the music_seek command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the music_toggle command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-music-toggle",
+          "markdownDescription": "Enables the music_toggle command without any pre-configured scope."
+        },
+        {
           "description": "Enables the notes_create command without any pre-configured scope.",
           "type": "string",
           "const": "allow-notes-create",
@@ -799,6 +829,36 @@
           "type": "string",
           "const": "deny-mail-status",
           "markdownDescription": "Denies the mail_status command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the music_next command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-music-next",
+          "markdownDescription": "Denies the music_next command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the music_now command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-music-now",
+          "markdownDescription": "Denies the music_now command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the music_previous command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-music-previous",
+          "markdownDescription": "Denies the music_previous command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the music_seek command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-music-seek",
+          "markdownDescription": "Denies the music_seek command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the music_toggle command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-music-toggle",
+          "markdownDescription": "Denies the music_toggle command without any pre-configured scope."
         },
         {
           "description": "Denies the notes_create command without any pre-configured scope.",

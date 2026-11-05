@@ -69,6 +69,11 @@
     "allow-mail-open-web",
     "allow-mail-open-link",
     "allow-mail-status",
+    "allow-music-now",
+    "allow-music-toggle",
+    "allow-music-next",
+    "allow-music-previous",
+    "allow-music-seek",
     "allow-perf-frame",
     "allow-perf-open-cycles"
   ]

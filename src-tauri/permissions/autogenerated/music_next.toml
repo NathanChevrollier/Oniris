@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-music-next"
+description = "Enables the music_next command without any pre-configured scope."
+commands.allow = ["music_next"]
+
+[[permission]]
+identifier = "deny-music-next"
+description = "Denies the music_next command without any pre-configured scope."
+commands.deny = ["music_next"]

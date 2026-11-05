@@ -4,6 +4,7 @@ pub mod apps;
 pub mod calendar;
 pub mod launch;
 pub mod mail;
+pub mod music;
 pub mod clipboard;
 mod db;
 mod error;

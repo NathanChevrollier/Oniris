@@ -10,6 +10,7 @@ pub mod mail;
 pub mod projects;
 pub mod reminders;
 pub mod search;
+pub mod smtc;
 pub mod notes;
 pub mod timers;
 pub mod system;

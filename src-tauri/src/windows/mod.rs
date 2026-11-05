@@ -83,11 +83,13 @@ pub fn open_panel(app: &AppHandle) -> tauri::Result<()> {
     crate::modules::mail::on_panel_open(app);
     crate::modules::apps::on_panel_open(app);
     crate::modules::projects::on_panel_open(app);
+    crate::modules::smtc::set_listening(app, true);
     Ok(())
 }
 
 pub fn close_panel(app: &AppHandle) -> tauri::Result<()> {
     crate::modules::system::set_sampling(app, false);
+    crate::modules::smtc::set_listening(app, false);
     window(app, "panel")?.hide()?;
     LAST_CLOSE_MS.store(now_ms() as u64, Ordering::SeqCst);
     set_panel_state(app, false)

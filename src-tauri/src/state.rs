@@ -105,6 +105,8 @@ impl AppState {
         let gmail = oniris_core::mail::gmail::Client::new(account_http.clone());
         tools.extend(oniris_core::mail::tools::all(&db, &events, &accounts, gmail, &opener));
         tools.extend(oniris_core::calendar::all(&db));
+        let media: Arc<dyn oniris_core::music::MediaControl> = Arc::new(crate::modules::smtc::Smtc);
+        tools.extend(oniris_core::music::tools::all(&media));
         let broker = Arc::new(ToolBroker::new(db.clone(), clock, tools)?);
         broker.mark_interrupted();
         broker.expire_stale();

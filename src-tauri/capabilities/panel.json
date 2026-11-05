@@ -68,6 +68,7 @@
     "allow-mail-send",
     "allow-mail-open-web",
     "allow-mail-open-link",
+    "allow-mail-status",
     "allow-perf-frame",
     "allow-perf-open-cycles"
   ]

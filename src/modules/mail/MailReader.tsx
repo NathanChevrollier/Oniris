@@ -36,12 +36,13 @@ export function MailReader({ mail, draft, onDraft, onClose }: { mail: MailRow; d
   return (
     <div className="mail-reader">
       <div className="mail-rbar">
-        <button type="button" className="mail-btn" onClick={onClose}><ArrowLeft size={13} /> Retour</button>
+        <button type="button" className="mail-btn mail-ico" aria-label="Retour" title="Retour" onClick={onClose}><ArrowLeft size={14} /></button>
         <button type="button" className="mail-btn" onClick={startReply}><Reply size={13} /> Répondre</button>
-        <button type="button" className="mail-btn" disabled title="Bientôt (IRIS)"><Sparkles size={13} /> Répondre avec IRIS</button>
-        <button type="button" className="mail-btn" onClick={() => void gone(mailIpc.archive(mail.account_id, mail.id))}><Archive size={13} /> Archiver</button>
-        <button type="button" className="mail-btn" onClick={() => void gone(mailIpc.delete(mail.account_id, mail.id))}><Trash2 size={13} /> Supprimer</button>
-        <button type="button" className="mail-btn" onClick={() => void run(mailIpc.openWeb(mail.account_id, mail.id))}><ExternalLink size={13} /> Ouvrir dans Gmail</button>
+        <span className="mail-rsp" />
+        <button type="button" className="mail-btn mail-ico" aria-label="Répondre avec IRIS" disabled title="Bientôt (IRIS)"><Sparkles size={14} /></button>
+        <button type="button" className="mail-btn mail-ico" aria-label="Archiver" title="Archiver" onClick={() => void gone(mailIpc.archive(mail.account_id, mail.id))}><Archive size={14} /></button>
+        <button type="button" className="mail-btn mail-ico" aria-label="Supprimer" title="Supprimer" onClick={() => void gone(mailIpc.delete(mail.account_id, mail.id))}><Trash2 size={14} /></button>
+        <button type="button" className="mail-btn mail-ico" aria-label="Ouvrir dans Gmail" title="Ouvrir dans Gmail" onClick={() => void run(mailIpc.openWeb(mail.account_id, mail.id))}><ExternalLink size={14} /></button>
       </div>
       <h4 className="mail-rsubj">{mail.subject}</h4>
       <p className="mail-rfrom">{mail.from_name} &lt;{mail.from_addr}&gt;</p>
@@ -50,7 +51,7 @@ export function MailReader({ mail, draft, onDraft, onClose }: { mail: MailRow; d
       {body && (
         <>
           {!images && <button type="button" className="mail-btn" onClick={() => setImages(true)}><ImageIcon size={13} /> Afficher les images</button>}
-          <iframe className="mail-frame" title="Message" sandbox="allow-popups-to-escape-sandbox" srcDoc={doc(body.html, images)} />
+          <div className="mail-frame-box"><iframe className="mail-frame" title="Message" sandbox="allow-popups-to-escape-sandbox" srcDoc={doc(body.html, images)} /></div>
           {body.attachments.length > 0 && (
             <ul className="mail-att">{body.attachments.map((a, i) => <li key={i}><Paperclip size={12} /> {a.filename} · {size(a.size)}</li>)}</ul>
           )}

@@ -12,6 +12,7 @@ const KNOWN: Record<string, string> = {
   "rappel introuvable": "Ce rappel n'existe plus.",
   "note introuvable": "Cette note n'existe plus.",
   "minuteur introuvable": "Ce minuteur est déjà terminé.",
+  "texte trop long": "Ce texte est trop long.",
   "demande expirée": "Demande expirée, recommence.",
   "favori déjà présent": "Ce site est déjà dans tes favoris.",
   "adresse invalide": "Adresse invalide, essaie https://exemple.com.",
@@ -23,9 +24,7 @@ const KNOWN: Record<string, string> = {
 
 /** Message affichable pour une erreur brute du courtier (« échec : … », « arguments invalides : … »). */
 export function friendlyError(raw: string, fallback: string): string {
-  const known = KNOWN[raw.replace(/^(arguments invalides|échec) : /, "")];
-  // Envoi masqué dans le journal puis approuvé après un redémarrage : les arguments ne se relisent plus.
-  return known ?? (raw.startsWith("arguments invalides") ? "Action expirée, recommence." : fallback);
+  return KNOWN[raw.replace(/^(arguments invalides|échec) : /, "")] ?? fallback;
 }
 
 /**

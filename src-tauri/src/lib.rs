@@ -95,6 +95,7 @@ pub fn run() {
             modules::mail::mail_send,
             modules::mail::mail_open_web,
             modules::mail::mail_open_link,
+            modules::mail::mail_status,
             modules::indexer::index_status,
             modules::search::search_query,
             modules::search::search_open,

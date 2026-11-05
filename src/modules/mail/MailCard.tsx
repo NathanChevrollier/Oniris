@@ -1,11 +1,12 @@
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { Archive, MailCheck, MailPlus, Trash2, WifiOff } from "lucide-react";
 import { Card } from "../../ui/Card";
 import { Empty } from "../../ui/Empty";
 import { useTopic } from "../../lib/data";
+import type { ToolOutcome } from "../../lib/ipc";
 import { useToolAction } from "../../lib/toolAction";
 import { accountsIpc, type AccountView } from "../accounts/api";
-import { mailIpc, type Bucket, type MailRow } from "./api";
+import { mailIpc, type Bucket, type MailRow, type MailStatus } from "./api";
 import { MailReader } from "./MailReader";
 import type { Draft } from "./Composer";
 import "./mail.css";
@@ -26,18 +27,17 @@ export function when(ms: number, now = new Date()): string {
   return d.toDateString() === y.toDateString() ? "hier" : d.toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
 }
 
-/** Faux tant que le navigateur est hors ligne ; `since` = dernier instant où l'on était en ligne. */
-function useOffline(): { offline: boolean; since: number } {
+/** Vrai tant que le navigateur est hors ligne. */
+function useOffline(): boolean {
   const [offline, setOffline] = useState(() => typeof navigator !== "undefined" && navigator.onLine === false);
-  const since = useRef(Date.now());
   useEffect(() => {
     const off = () => setOffline(true);
-    const on = () => { since.current = Date.now(); setOffline(false); };
+    const on = () => setOffline(false);
     window.addEventListener("offline", off);
     window.addEventListener("online", on);
     return () => { window.removeEventListener("offline", off); window.removeEventListener("online", on); };
   }, []);
-  return { offline, since: since.current };
+  return offline;
 }
 
 export function MailCard({ onAccounts }: { onAccounts?: () => void }) {
@@ -47,7 +47,9 @@ export function MailCard({ onAccounts }: { onAccounts?: () => void }) {
   const [opened, setOpened] = useState<MailRow | null>(null);
   const [drafts, setDrafts] = useState<Record<string, Draft>>({}); // en mémoire tant que le panneau est monté
   const { run, error } = useToolAction(UNAVAILABLE);
-  const net = useOffline();
+  const offline = useOffline();
+  const status = useTopic<MailStatus | null>("mail", mailIpc.status, null);
+  const lastOk = status.data?.last_ok_ms ?? null;
   const gmail = accounts.data.filter((a) => a.provider === "google");
   const reauth = gmail.filter((a) => a.status === "reauth");
   const color = (id: number) => gmail.find((a) => a.id === id)?.color ?? "#8e8e93";
@@ -55,7 +57,7 @@ export function MailCard({ onAccounts }: { onAccounts?: () => void }) {
   const rows = mails.data.filter((m) => m.bucket === tab);
   const key = opened ? `${opened.account_id}:${opened.id}` : "";
 
-  const act = (call: Promise<import("../../lib/ipc").ToolOutcome>) => void run(call);
+  const act = (call: Promise<ToolOutcome>) => void run(call);
 
   if (accounts.data !== NONE_ACCOUNTS && gmail.length === 0) {
     return (
@@ -68,11 +70,12 @@ export function MailCard({ onAccounts }: { onAccounts?: () => void }) {
 
   return (
     <Card title="Mails" span={5}
-      aside={net.offline ? <><WifiOff size={11} /> hors ligne · il y a {Math.max(1, Math.round((Date.now() - net.since) / 60_000))} min</>
+      aside={offline ? <><WifiOff size={11} /> hors ligne{lastOk != null && ` · il y a ${Math.max(1, Math.round((Date.now() - lastOk) / 60_000))} min`}</>
         : gmail.length > 0 ? `${gmail.length} boîte${gmail.length > 1 ? "s" : ""}` : undefined}>
       {reauth.length > 0 && (
         <button type="button" className="mail-reauth" onClick={onAccounts}>Reconnecte {reauth.map((a) => a.label).join(", ")} pour relever ses mails</button>
       )}
+      <div className="mail-view">
       {opened ? (
         <MailReader key={key} mail={opened} draft={drafts[key] ?? null} onClose={() => setOpened(null)}
           onDraft={(d) => setDrafts((all) => { const n = { ...all }; if (d) n[key] = d; else delete n[key]; return n; })} />
@@ -111,6 +114,7 @@ export function MailCard({ onAccounts }: { onAccounts?: () => void }) {
           </ul>
         </>
       )}
+      </div>
       {error && <p className="err" role="alert">{error}</p>}
     </Card>
   );

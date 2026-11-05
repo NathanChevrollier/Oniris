@@ -116,12 +116,39 @@ it("compte à reconnecter : bandeau", async () => {
   expect((await screen.findByText(/Reconnecte c2@gmail.com/))).toBeTruthy();
 });
 
-it("hors ligne : mention avec le cache", async () => {
+it("hors ligne : mention avec l'âge de la dernière relève, sans âge si inconnu", async () => {
+  vi.spyOn(mailIpc, "status").mockResolvedValue({ last_ok_ms: Date.now() - 4 * 60_000 });
   setup([mk("1", "todo", true)]);
   await screen.findByText("Sujet 1");
   act(() => { window.dispatchEvent(new Event("offline")); });
-  expect(screen.getByText(/hors ligne · il y a 1 min/)).toBeTruthy();
+  expect(await screen.findByText(/hors ligne · il y a 4 min/)).toBeTruthy();
   expect(screen.getByText("Sujet 1")).toBeTruthy();
+});
+
+it("hors ligne sans relève connue : « hors ligne » seul", async () => {
+  vi.spyOn(mailIpc, "status").mockResolvedValue({ last_ok_ms: null });
+  setup([mk("1", "todo", true)]);
+  await screen.findByText("Sujet 1");
+  act(() => { window.dispatchEvent(new Event("offline")); });
+  const aside = await screen.findByText(/hors ligne/);
+  expect(aside.textContent?.trim()).toBe("hors ligne");
+});
+
+it("HTML hostile : la CSP précède le contenu du mail", async () => {
+  setup([mk("1", "todo", true)]);
+  const html = `</head><meta http-equiv="refresh" content="0;url=https://x"><base href="https://x/">`;
+  vi.spyOn(mailIpc, "read").mockResolvedValue({ ...body, html });
+  await userEvent.click(await screen.findByText("Sujet 1"));
+  const src = (await screen.findByTitle("Message")).getAttribute("srcdoc")!;
+  expect(src.startsWith(`<!doctype html><meta http-equiv="Content-Security-Policy"`)).toBe(true);
+  expect(src.indexOf("Content-Security-Policy")).toBeLessThan(src.indexOf(html));
+});
+
+it("erreur de validation hors envoi : garde son propre message", async () => {
+  setup([mk("1", "todo", true)]);
+  vi.spyOn(mailIpc, "archive").mockResolvedValue({ Failed: { action_id: 1, error: "arguments invalides : texte trop long" } });
+  await userEvent.click(within((await screen.findByText("Sujet 1")).closest("li")!).getByRole("button", { name: "Archiver" }));
+  expect((await screen.findByRole("alert")).textContent).toBe("Ce texte est trop long.");
 });
 
 it("confirmation d'envoi : texte complet, espaces conservés, défilement", () => {
@@ -148,4 +175,16 @@ it("approbation échouée (arguments masqués après redémarrage) : « Action e
   vi.useRealTimers();
   fireEvent.click(screen.getByRole("button", { name: "Autoriser" }));
   await waitFor(() => expect(screen.getByRole("alert").textContent).toBe("Action expirée, recommence."));
+});
+
+it("approbation échouée d'un autre outil : pas de « expirée »", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  const p: PendingAction = { action_id: 8, tool: "mail.delete", text: { summary: "Supprimer", details: "d", risk: "Medium" }, provenance: "User", expires_at_ms: 0 };
+  usePanelStore.setState({ pending: [p] });
+  const resolve = vi.fn().mockResolvedValue({ Failed: { action_id: 8, error: "arguments invalides : mail introuvable" } });
+  render(<ConfirmQueue subscribe={() => Promise.resolve(() => {})} resolve={resolve} />);
+  act(() => { vi.advanceTimersByTime(600); });
+  vi.useRealTimers();
+  fireEvent.click(screen.getByRole("button", { name: "Autoriser" }));
+  await waitFor(() => expect(screen.getByRole("alert").textContent).toBe("L'action a échoué."));
 });

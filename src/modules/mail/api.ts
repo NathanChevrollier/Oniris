@@ -38,7 +38,11 @@ const fakeBody: MailBody = {
 
 const ok = (): Promise<ToolOutcome> => Promise.resolve({ Done: { action_id: 0, output: {} } });
 
+/** Plus ancienne relève réussie des comptes ok (`null` : inconnue). */
+export type MailStatus = { last_ok_ms: number | null };
+
 export const mailIpc = {
+  status: (): Promise<MailStatus> => isTauri ? invoke("mail_status") : Promise.resolve({ last_ok_ms: Date.now() - 4 * MIN }),
   list: (): Promise<MailRow[]> => isTauri ? invoke("mail_list", {}) : Promise.resolve(fake()),
   /** Lit un mail (le marque lu). Rejette si l'outil échoue. */
   read: async (account: number, id: string): Promise<MailBody> => {

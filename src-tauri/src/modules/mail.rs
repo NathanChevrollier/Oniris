@@ -195,6 +195,23 @@ pub async fn mail_list(state: tauri::State<'_, AppState>, account: Option<i64>, 
     mail_tools::list(&state.db.lock(), account, bucket.as_deref(), limit.unwrap_or(mail_tools::LIST_MAX)).map_err(|e| e.to_string())
 }
 
+#[derive(serde::Serialize)]
+pub struct MailStatus { last_ok_ms: Option<i64> }
+
+/// Plus ancienne relève réussie parmi les comptes `ok` (nulle si l'un n'a jamais abouti ou sans compte).
+#[tauri::command]
+pub async fn mail_status(state: tauri::State<'_, AppState>) -> Result<MailStatus, String> {
+    let c = state.db.lock();
+    let (n, with): (i64, i64) = c.query_row(
+        "SELECT count(*), count(s.last_ok_ms) FROM accounts a LEFT JOIN mail_sync s ON s.account_id = a.id WHERE a.provider = 'google' AND a.status = 'ok'",
+        [], |r| Ok((r.get(0)?, r.get(1)?))).map_err(|e| e.to_string())?;
+    if n == 0 || n != with { return Ok(MailStatus { last_ok_ms: None }); }
+    let min = c.query_row(
+        "SELECT min(s.last_ok_ms) FROM accounts a JOIN mail_sync s ON s.account_id = a.id WHERE a.provider = 'google' AND a.status = 'ok'",
+        [], |r| r.get(0)).map_err(|e| e.to_string())?;
+    Ok(MailStatus { last_ok_ms: min })
+}
+
 #[tauri::command]
 pub async fn mail_read(app: AppHandle, account: i64, id: String) -> ToolOutcome {
     dispatch_as_user(&app, "mail.read", json!({ "account": account, "id": id })).await

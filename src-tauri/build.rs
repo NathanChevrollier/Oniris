@@ -66,6 +66,7 @@ fn main() {
         "mail_send",
         "mail_open_web",
         "mail_open_link",
+        "mail_status",
         "perf_frame",
         "perf_open_cycles",
     ]);

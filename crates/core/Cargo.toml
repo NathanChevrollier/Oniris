@@ -27,4 +27,5 @@ tempfile = "3"
 
 [dev-dependencies]
 chrono-tz = "0.10"
+percent-encoding = "2"
 tokio = { version = "1", features = ["rt", "macros"] }

@@ -2,7 +2,7 @@
 //! `vscode://anthropic.claude-code/open`) ; à défaut Windows Terminal + `claude --continue`.
 //! Planification et encodage purs ; l'exécution passe par `Opener`. Journal : types d'étapes seulement.
 use super::{claude::is_uuid, Project};
-use crate::launch::Opener;
+use crate::launch::{Opener, MAX_URL};
 use serde::{Deserialize, Serialize};
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -62,15 +62,26 @@ const WAIT_MS: u64 = 1500;
 const OPEN_MARKER: &[u8] = br#"case"/open""#;
 const MAX_EXTENSION_JS: u64 = 50 * 1024 * 1024;
 
+pub const NO_PROMPT: &str = "La consigne de reprise n'est transmise qu'avec l'extension VS Code ; Claude reprend la dernière conversation.";
+/// UUID factice : mesure de la longueur d'un lien par les réglages.
+pub(crate) const DUMMY_UUID: &str = "00000000-0000-0000-0000-000000000000";
+
+/// Valeur encodée deux fois : VS Code décode la requête (`URI.parse`), puis l'extension la relit avec
+/// `URLSearchParams`. Encodée une seule fois, un `&` ou un `%41` de la consigne serait réinterprété.
+fn encode2(v: &str) -> String {
+    use url::form_urlencoded::byte_serialize;
+    let once: String = byte_serialize(v.as_bytes()).collect();
+    byte_serialize(once.as_bytes()).collect()
+}
+
 /// `vscode://anthropic.claude-code/open?prompt=…&session=…` ; la session n'y figure que si c'est un UUID
-/// (l'extension ignore tout le lien sinon). Espaces en `%20` : le `+` littéral est déjà encodé en `%2B`.
+/// (l'extension ignore tout le lien sinon). Valeurs encodées par `encode2`, jamais concaténées brutes.
 pub fn vscode_uri(prompt: &str, session: Option<&str>) -> String {
-    let mut q = url::form_urlencoded::Serializer::new(String::new());
-    q.append_pair("prompt", prompt);
+    let mut uri = format!("vscode://anthropic.claude-code/open?prompt={}", encode2(prompt));
     if let Some(s) = session.filter(|s| is_uuid(s)) {
-        q.append_pair("session", s);
+        uri.push_str(&format!("&session={}", encode2(s)));
     }
-    format!("vscode://anthropic.claude-code/open?{}", q.finish().replace('+', "%20"))
+    uri
 }
 
 /// wt lit `;` comme séparateur de commandes, même au milieu d'un argument : `\;` le rend littéral.
@@ -78,22 +89,23 @@ fn wt_escape(s: &str) -> String {
     s.replace(';', r"\;")
 }
 
-/// Étapes de reprise, et un message si Claude doit être lancé à la main. Chaque chemin reste un argument séparé
-/// (jamais de `cmd /C`) : aucun métacaractère n'est interprété.
+/// Étapes de reprise, et un message à afficher le cas échéant. Chaque chemin reste un argument séparé.
+/// Repli terminal : `claude` est souvent un `claude.cmd` (npm), donc lu par cmd ; seuls des arguments constants
+/// lui parviennent (la consigne, issue des réglages, n'y figure pas).
 pub fn plan(project: &Project, mode: Mode, prompts: &Prompts, env: &Env) -> (Vec<LaunchStep>, Option<&'static str>) {
-    let prompt = prompts.get(mode);
     let mut steps: Vec<LaunchStep> = env.code.iter().map(|exe| LaunchStep::Code { exe: exe.clone(), args: vec![project.path.clone()] }).collect();
-    // Sans Code.exe, le lien seul ouvrirait VS Code hors du projet : repli terminal.
-    if env.vscode_ok && !steps.is_empty() {
-        let session = project.last_session.as_ref().and_then(|s| s.id.as_deref());
+    let session = project.last_session.as_ref().and_then(|s| s.id.as_deref());
+    let uri = vscode_uri(prompts.get(mode), session);
+    // Sans Code.exe, le lien seul ouvrirait VS Code hors du projet ; trop long, il serait refusé : repli terminal.
+    if env.vscode_ok && !steps.is_empty() && uri.len() <= MAX_URL {
         steps.push(LaunchStep::Wait { ms: WAIT_MS });
-        steps.push(LaunchStep::Uri { uri: vscode_uri(prompt, session) });
+        steps.push(LaunchStep::Uri { uri });
         return (steps, None);
     }
     let Some(wt) = &env.wt else { return (steps, Some(MANUAL)) };
-    let args = vec!["-d".into(), wt_escape(&project.path), "claude".into(), "--continue".into(), wt_escape(prompt)];
+    let args = ["-d", &wt_escape(&project.path), "cmd", "/k", "claude", "--continue"].map(String::from).to_vec();
     steps.push(LaunchStep::Terminal { program: wt.clone(), args });
-    (steps, None)
+    (steps, Some(NO_PROMPT))
 }
 
 /// `2.1.318` dans `anthropic.claude-code-2.1.318-win32-x64` (suffixe de plateforme ignoré).
@@ -176,34 +188,52 @@ mod tests {
         }
     }
 
-    /// Décodage façon `URLSearchParams` (`+` et `%20` → espace).
+    /// Ce que reçoit l'extension : VS Code décode la requête (`URI.parse`), puis `URLSearchParams` la relit.
     fn decode(uri: &str) -> Vec<(String, String)> {
         let q = uri.split_once('?').unwrap().1;
-        url::form_urlencoded::parse(q.as_bytes()).into_owned().collect()
+        let once = percent_encoding::percent_decode_str(q).decode_utf8().unwrap();
+        url::form_urlencoded::parse(once.as_bytes()).into_owned().collect()
+    }
+
+    fn pairs(prompt: &str, session: Option<&str>) -> Vec<(String, String)> {
+        let mut v = vec![("prompt".to_string(), prompt.to_string())];
+        v.extend(session.map(|s| ("session".to_string(), s.to_string())));
+        v
     }
 
     #[test]
-    fn uri_encodee_et_aller_retour() {
-        let prompt = "Dis \"oui\" & 100% #1 + é à\nligne 2 🚀";
-        let uri = vscode_uri(prompt, Some(UUID));
+    fn uri_doublement_encodee_et_aller_retour() {
+        let uri = vscode_uri("Dis \"oui\" & 100% #1 + é", Some(UUID));
         assert!(uri.starts_with("vscode://anthropic.claude-code/open?prompt="), "{uri}");
-        assert_eq!(crate::launch::safe_vscode_claude_uri(&uri).as_deref(), Some(uri.as_str()));
-        assert!(!uri.contains('+') && uri.contains("%20") && uri.contains("%2B") && uri.contains("%23") && uri.contains("%0A"), "{uri}");
-        assert_eq!(decode(&uri), [("prompt".to_string(), prompt.to_string()), ("session".to_string(), UUID.to_string())]);
+        assert!(uri.contains("%2526") && uri.contains("%2B") && !uri.contains('#'), "{uri}");
+        for prompt in [
+            "Dis \"oui\" & 100% #1 + é à\nligne 2 🚀",
+            "a&b",
+            "1+1",
+            "%41",
+            "50%",
+            "x&session=evil",
+            "x&session=0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f1",
+        ] {
+            let uri = vscode_uri(prompt, Some(UUID));
+            assert_eq!(crate::launch::safe_vscode_claude_uri(&uri).as_deref(), Some(uri.as_str()), "{prompt}");
+            assert_eq!(decode(&uri), pairs(prompt, Some(UUID)), "{prompt} : intact, et notre session l'emporte");
+            assert_eq!(decode(&vscode_uri(prompt, None)), pairs(prompt, None), "{prompt} : aucune session injectée");
+        }
     }
 
     #[test]
     fn session_invalide_ecartee() {
         for bad in ["", "abc", "0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1fZ", "0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0&x=1"] {
-            let uri = vscode_uri("x", Some(bad));
-            assert_eq!(decode(&uri), [("prompt".to_string(), "x".to_string())], "{bad}");
+            assert_eq!(decode(&vscode_uri("x", Some(bad))), pairs("x", None), "{bad}");
         }
-        assert_eq!(decode(&vscode_uri("x", None)).len(), 1);
     }
 
     fn env(vscode_ok: bool, wt: bool) -> Env {
         Env { vscode_ok, code: Some(PathBuf::from(r"C:\VS\Code.exe")), wt: wt.then(|| "wt".to_string()) }
     }
+
+    const WT_ARGS: [&str; 6] = ["-d", r"C:\p\Oniris", "cmd", "/k", "claude", "--continue"];
 
     #[test]
     fn plan_dans_les_trois_environnements() {
@@ -216,14 +246,36 @@ mod tests {
         assert_eq!(plan(&p, Mode::Normal, &prompts(), &env(true, false)).0[2], LaunchStep::Uri { uri: vscode_uri("Reprends ; vas-y", Some(UUID)) });
 
         let (steps, info) = plan(&p, Mode::Normal, &prompts(), &env(false, true));
-        let wt = LaunchStep::Terminal { program: "wt".into(), args: ["-d", r"C:\p\Oniris", "claude", "--continue", r"Reprends \; vas-y"].map(String::from).to_vec() };
+        let wt = LaunchStep::Terminal { program: "wt".into(), args: WT_ARGS.map(String::from).to_vec() };
         assert_eq!(steps, [code.clone(), wt]);
-        assert_eq!(info, None);
+        assert_eq!(info, Some(NO_PROMPT));
 
         assert_eq!(plan(&p, Mode::Normal, &prompts(), &env(false, false)), (vec![code], Some(MANUAL)));
         // Sans Code.exe, le lien seul ouvrirait VS Code hors du projet : repli terminal.
         let no_code = Env { code: None, ..env(true, true) };
         assert_eq!(plan(&p, Mode::Normal, &prompts(), &no_code).0.iter().map(LaunchStep::kind).collect::<Vec<_>>(), ["terminal"]);
+    }
+
+    #[test]
+    fn terminal_sans_rien_des_reglages() {
+        // `claude.cmd` passe par cmd : ni la consigne ni rien qui en dérive n'atteint la ligne de commande.
+        let hostile = Prompts { normal: "x\" & calc & %COMSPEC% ^| y".into(), orchestrator: "orchestrateur & calc".into() };
+        for mode in [Mode::Normal, Mode::Orchestrator] {
+            let (steps, _) = plan(&proj(r"C:\p\Oniris", Some(UUID)), mode, &hostile, &env(false, true));
+            let LaunchStep::Terminal { args, .. } = &steps[1] else { panic!() };
+            assert_eq!(*args, WT_ARGS.map(String::from));
+        }
+    }
+
+    #[test]
+    fn lien_trop_long_repli_terminal() {
+        let p = proj(r"C:\p\Oniris", Some(UUID));
+        let long = Prompts { normal: "é".repeat(300), orchestrator: "x".into() };
+        assert!(vscode_uri(&long.normal, Some(UUID)).len() > MAX_URL);
+        let (steps, info) = plan(&p, Mode::Normal, &long, &env(true, true));
+        assert_eq!(steps.iter().map(LaunchStep::kind).collect::<Vec<_>>(), ["code", "terminal"]);
+        assert_eq!(info, Some(NO_PROMPT));
+        assert_eq!(plan(&p, Mode::Normal, &long, &env(true, false)).1, Some(MANUAL));
     }
 
     #[test]
@@ -233,7 +285,7 @@ mod tests {
         let (steps, _) = plan(&p, Mode::Normal, &prompts(), &env(false, true));
         assert_eq!(steps[0], LaunchStep::Code { exe: PathBuf::from(r"C:\VS\Code.exe"), args: vec![path.to_string()] });
         let LaunchStep::Terminal { args, .. } = &steps[1] else { panic!() };
-        assert_eq!(args.len(), 5);
+        assert_eq!(args.len(), 6);
         assert_eq!(args[1], r#"C:\p\a&b "c" %PATH% ^x\;y"#);
         // Lien : le chemin n'y figure pas ; sans session valide, pas de `session=`.
         let (steps, _) = plan(&p, Mode::Normal, &prompts(), &env(true, true));

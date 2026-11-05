@@ -208,7 +208,9 @@ pub fn resume_env(app: &AppHandle) -> (Env, Prompts) {
     let code = resume::vscode_exe(&var, &|p: &Path| p.is_file(), || where_is("code"));
     // Alias d'exécution (WindowsApps) : `metadata` ne suit pas ce point d'analyse, `symlink_metadata` le voit.
     let alias = var("LOCALAPPDATA").map(|l| PathBuf::from(l).join(r"Microsoft\WindowsApps\wt.exe")).filter(|p| p.symlink_metadata().is_ok());
-    let wt = alias.map(|p| p.to_string_lossy().into_owned()).or_else(|| where_is("wt")?.lines().next().map(|l| l.trim().to_string()));
+    let wt = alias.map(|p| p.to_string_lossy().into_owned()).or_else(|| {
+        where_is("wt")?.lines().map(str::trim).find(|l| l.to_lowercase().ends_with(".exe")).map(str::to_string)
+    });
     let s = app.state::<AppState>().settings.read().clone();
     (Env { vscode_ok: vscode_ok_cached(), code, wt }, Prompts { normal: s.resume_prompt_normal, orchestrator: s.resume_prompt_orchestrator })
 }

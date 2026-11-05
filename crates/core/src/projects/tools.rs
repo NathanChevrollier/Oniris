@@ -85,7 +85,7 @@ impl Tool for Resume {
     fn spec(&self) -> ToolSpec {
         spec(
             "projects.resume",
-            "Reprend un projet : ouvre VS Code sur le dossier puis la dernière session Claude Code avec une invite de reprise              (mode « orchestrator » : sous-agents et graphify). Le nom est cherché sans tenir compte de la casse, par préfixe.",
+            "Reprend un projet : ouvre VS Code sur le dossier puis la dernière session Claude Code avec une invite de reprise (mode « orchestrator » : sous-agents et graphify). Le nom est cherché sans tenir compte de la casse, par préfixe.",
             json!({"type":"object","properties":{
                 "name":{"type":"string"},
                 "mode":{"type":"string","enum":["normal","orchestrator"]},
@@ -99,7 +99,7 @@ impl Tool for Resume {
         let a: ResumeArgs = parse(args)?;
         let list = (self.source)();
         let found = match &a.path {
-            Some(path) => list.iter().find(|p| &p.path == path),
+            Some(path) => list.iter().find(|p| !p.hidden && &p.path == path),
             None => find(&list, &a.name),
         };
         let p = found.ok_or_else(|| bad("projet inconnu"))?.clone();
@@ -172,11 +172,12 @@ mod tests {
         let broker = ToolBroker::new(Arc::new(Mutex::new(db())), Arc::new(|| 0), vec![resume]).unwrap();
         let go = |args: Value| broker.call(ToolCall { tool: "projects.resume".into(), args, provenance: Provenance::User, origin: Origin::User });
         let ToolOutcome::Done { output, .. } = go(json!({"name": "myemp", "mode": "orchestrator"})).await else { panic!("Free") };
-        assert_eq!(output, json!({"steps": ["code", "terminal"], "info": null}));
+        assert_eq!(output, json!({"steps": ["code", "terminal"], "info": crate::projects::resume::NO_PROMPT}));
         let t = std::time::Duration::from_secs(5);
         assert_eq!(rx.recv_timeout(t).unwrap(), r"Code.exe C:\p\MyEmpire");
-        assert_eq!(rx.recv_timeout(t).unwrap(), r"wt -d|C:\p\MyEmpire|claude|--continue|O");
+        assert_eq!(rx.recv_timeout(t).unwrap(), r"wt -d|C:\p\MyEmpire|cmd|/k|claude|--continue");
         assert!(matches!(go(json!({"name": "secret", "mode": "normal"})).await, ToolOutcome::Failed { .. }), "caché");
+        assert!(matches!(go(json!({"name": "x", "path": r"C:\p\Secret", "mode": "normal"})).await, ToolOutcome::Failed { .. }), "caché, par chemin");
         assert!(matches!(go(json!({"name": "myemp", "mode": "fou"})).await, ToolOutcome::Failed { .. }));
         // Chemin exact (interface) prioritaire sur le nom.
         let ToolOutcome::Done { .. } = go(json!({"name": "x", "path": r"C:\p\MyEmpire", "mode": "normal"})).await else { panic!("chemin") };

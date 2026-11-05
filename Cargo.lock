@@ -2873,6 +2873,7 @@ dependencies = [
  "image",
  "nucleo-matcher",
  "parking_lot",
+ "percent-encoding",
  "postcard",
  "reqwest 0.12.28",
  "rusqlite",

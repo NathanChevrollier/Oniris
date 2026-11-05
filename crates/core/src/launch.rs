@@ -25,12 +25,16 @@ pub fn safe_url(s: &str) -> Option<String> {
     Some(u.into())
 }
 
-const MAX_URL: usize = 2048;
+pub(crate) const MAX_URL: usize = 2048;
 
 const VSCODE_CLAUDE: &str = "vscode://anthropic.claude-code/open?";
 
-/// Seul lien `vscode://` admis : le préfixe exact de l'extension Claude Code, requête ASCII, sans fragment.
+/// Seul lien `vscode://` admis : le préfixe exact de l'extension Claude Code, requête ASCII, sans fragment,
+/// 2048 caractères au plus.
 pub fn safe_vscode_claude_uri(s: &str) -> Option<String> {
+    if s.len() > MAX_URL {
+        return None;
+    }
     let q = s.strip_prefix(VSCODE_CLAUDE)?;
     q.chars().all(|c| c.is_ascii_graphic() && c != '#').then(|| s.to_string())
 }
@@ -100,6 +104,10 @@ mod tests {
         ] {
             assert_eq!(safe_vscode_claude_uri(u), None, "{u}");
         }
+        let at_cap = format!("{VSCODE_CLAUDE}a={}", "x".repeat(MAX_URL - VSCODE_CLAUDE.len() - 2));
+        assert_eq!(at_cap.len(), MAX_URL);
+        assert!(safe_vscode_claude_uri(&at_cap).is_some());
+        assert_eq!(safe_vscode_claude_uri(&format!("{at_cap}x")), None, "2049 caractères");
     }
 
     #[test]

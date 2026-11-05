@@ -103,6 +103,18 @@ const RESUME_NORMAL: &str =
 const RESUME_ORCHESTRATOR: &str = "Travaille en mode orchestrateur, comme décrit dans mon CLAUDE.md global : graphify pour t'orienter, sous-agents haiku/sonnet/opus selon la tâche, parallélisation des tâches indépendantes, et relecture avant intégration.";
 const MAX_PROMPT: usize = 2000;
 
+/// Non vide, 2000 caractères au plus, et un lien `vscode://` qui tient dans la limite une fois encodé.
+fn check_prompt(p: &str) -> Result<(), String> {
+    use crate::projects::resume::{vscode_uri, DUMMY_UUID};
+    if p.trim().is_empty() || p.chars().count() > MAX_PROMPT {
+        return Err(format!("non vide, {MAX_PROMPT} caractères au plus"));
+    }
+    if vscode_uri(p, Some(DUMMY_UUID)).len() > crate::launch::MAX_URL {
+        return Err("Consigne trop longue une fois encodée (max ~600 caractères selon les accents)".into());
+    }
+    Ok(())
+}
+
 const MAX_ROOTS: usize = 20;
 const MAX_ROOT_LEN: usize = 260;
 
@@ -178,12 +190,12 @@ impl Settings {
             errs.push(e);
             self.projects_roots = d.projects_roots.clone();
         }
-        if self.resume_prompt_normal.trim().is_empty() || self.resume_prompt_normal.chars().count() > MAX_PROMPT {
-            errs.push(format!("invite de reprise : non vide, {MAX_PROMPT} caractères au plus"));
+        if let Err(e) = check_prompt(&self.resume_prompt_normal) {
+            errs.push(format!("consigne de reprise : {e}"));
             self.resume_prompt_normal = d.resume_prompt_normal.clone();
         }
-        if self.resume_prompt_orchestrator.trim().is_empty() || self.resume_prompt_orchestrator.chars().count() > MAX_PROMPT {
-            errs.push(format!("invite de reprise (orchestrateur) : non vide, {MAX_PROMPT} caractères au plus"));
+        if let Err(e) = check_prompt(&self.resume_prompt_orchestrator) {
+            errs.push(format!("consigne de reprise (orchestrateur) : {e}"));
             self.resume_prompt_orchestrator = d.resume_prompt_orchestrator.clone();
         }
         if let Err(e) = check_hotkey(&self.hotkey) {
@@ -321,7 +333,10 @@ mod tests {
         assert!(Settings { focus_minutes: 120, break_minutes: 1, ..Settings::default() }.validate().is_ok());
         assert!(bad(|s| s.resume_prompt_normal = "  ".into()));
         assert!(bad(|s| s.resume_prompt_orchestrator = "x".repeat(2001)));
-        assert!(Settings { resume_prompt_normal: "é".repeat(2000), ..Settings::default() }.validate().is_ok());
+        // 2000 caractères, mais le lien encodé deux fois dépasserait 2048 : refusé avec un message clair.
+        let long = Settings { resume_prompt_normal: "é".repeat(300), ..Settings::default() }.validate().unwrap_err();
+        assert!(long.contains("Consigne trop longue une fois encodée"), "{long}");
+        assert!(Settings { resume_prompt_normal: "x".repeat(1900), ..Settings::default() }.validate().is_ok());
     }
     #[test] fn invites_de_reprise_par_defaut() {
         let d = Settings::default();

@@ -114,10 +114,13 @@ async fn sync(db: &Db, client: &Client, token: &str, account_id: i64, now: i64) 
 
 /// Les 100 derniers mails de la boîte de réception remplacent le cache du compte.
 async fn full(db: &Db, client: &Client, token: &str, account_id: i64, now: i64) -> Result<SyncReport, SyncError> {
+    // Lu AVANT la liste : rien ne se perd entre les deux, et un compte calme garde un point de reprise récent.
+    let profile = client.profile_history_id(token).await?;
     let ids = client.list_inbox(token, FULL_MAX).await?;
     let (metas, _) = fetch(client, token, &ids).await?;
-    // Le plus récent `historyId` lu : point de départ de l'historique.
-    let history_id = metas.iter().filter_map(|m| m.history_id.parse::<u64>().ok()).max().map(|h| h.to_string());
+    // Profil sans `historyId` (inattendu) : repli sur le plus récent des mails lus.
+    let history_id = Some(profile).filter(|h| !h.is_empty())
+        .or_else(|| metas.iter().filter_map(|m| m.history_id.parse::<u64>().ok()).max().map(|h| h.to_string()));
     let c = db.lock();
     let tx = c.unchecked_transaction()?;
     let mut rep = SyncReport::default();
@@ -205,7 +208,7 @@ fn finish(c: &Connection, account_id: i64, history_id: Option<&str>, now: i64, r
 /// Note le délai d'attente après un échec (`None` : effacé).
 pub fn set_backoff(c: &Connection, account_id: i64, until_ms: Option<i64>) -> rusqlite::Result<()> {
     c.execute(
-        "INSERT INTO mail_sync(account_id, backoff_until_ms) VALUES (?1, ?2)
+        "INSERT INTO mail_sync(account_id, backoff_until_ms) SELECT ?1, ?2 WHERE EXISTS (SELECT 1 FROM accounts WHERE id = ?1)
          ON CONFLICT(account_id) DO UPDATE SET backoff_until_ms = ?2",
         params![account_id, until_ms],
     )?;
@@ -239,6 +242,7 @@ mod tests {
     }
 
     async fn inbox(server: &MockServer) {
+        Mock::given(method("GET")).and(path("/gmail/v1/users/me/profile")).respond_with(body(fixture!("profile.json"))).mount(server).await;
         Mock::given(method("GET")).and(path("/gmail/v1/users/me/messages")).and(query_param("labelIds", "INBOX")).and(query_param("maxResults", "100"))
             .respond_with(body(fixture!("list_inbox.json"))).mount(server).await;
         meta(server, "18c1a", fixture!("meta_18c1a.json")).await;
@@ -292,7 +296,7 @@ mod tests {
         let e = env(server, true);
         assert_eq!(e.run().await.unwrap(), SyncReport { added: 3, removed: 0, changed: 0 });
         assert_eq!(e.ids(), ["18c1a", "18c1b", "18c1c"]);
-        assert_eq!(e.history_id().as_deref(), Some("1500"), "plus récent historyId lu");
+        assert_eq!(e.history_id().as_deref(), Some("1500"), "historyId du profil");
         let row: (String, String, String, String, bool, String, String) = e.db.lock().query_row(
             "SELECT from_name, from_addr, subject, snippet, unread, bucket, bucket_src FROM mails WHERE id = '18c1a'", [],
             |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?)),
@@ -320,7 +324,7 @@ mod tests {
         let server = MockServer::start().await;
         Mock::given(method("GET")).and(path("/gmail/v1/users/me/history"))
             .respond_with(ResponseTemplate::new(404).set_body_raw(fixture!("history_404.json"), "application/json"))
-            .expect(1).mount(&server).await;
+            .up_to_n_times(1).expect(1).mount(&server).await;
         inbox(&server).await;
         let e = env(&server, true);
         e.seed("18c1a", 1);
@@ -334,7 +338,28 @@ mod tests {
         let kept: (String, String, Option<String>) = e.db.lock()
             .query_row("SELECT bucket, bucket_src, summary FROM mails WHERE id = '18c1a'", [], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))).unwrap();
         assert_eq!(kept, ("todo".into(), "iris".into(), Some("r".into())));
+        assert_eq!(e.history_id().as_deref(), Some("1500"), "historyId du profil, pas l'ancien");
+        // Le tour suivant repart de l'historique, pas d'une nouvelle synchronisation complète.
+        history(&server, "1500").await;
+        assert_eq!(e.run().await.unwrap(), SyncReport { added: 1, removed: 2, changed: 1 });
+        assert_eq!(e.history_id().as_deref(), Some("2000"));
+        let full_lists = server.received_requests().await.unwrap().iter().filter(|r| r.url.path() == "/gmail/v1/users/me/messages").count();
+        assert_eq!(full_lists, 1, "une seule synchronisation complète");
+        server.verify().await;
+    }
+
+    #[tokio::test] async fn compte_calme_ne_boucle_pas_en_resynchronisation() {
+        // Boîte vide : le profil donne quand même un point de reprise, le tour suivant passe par l'historique.
+        let server = MockServer::start().await;
+        Mock::given(method("GET")).and(path("/gmail/v1/users/me/profile")).respond_with(body(fixture!("profile.json"))).expect(1).mount(&server).await;
+        Mock::given(method("GET")).and(path("/gmail/v1/users/me/messages")).respond_with(body("{\"resultSizeEstimate\": 0}")).expect(1).mount(&server).await;
+        Mock::given(method("GET")).and(path("/gmail/v1/users/me/history")).and(query_param("startHistoryId", "1500"))
+            .respond_with(body("{\"historyId\": \"\"}")).expect(1).mount(&server).await;
+        let e = env(&server, true);
+        assert_eq!(e.run().await.unwrap(), SyncReport::default());
         assert_eq!(e.history_id().as_deref(), Some("1500"));
+        assert_eq!(e.run().await.unwrap(), SyncReport::default());
+        assert_eq!(e.history_id().as_deref(), Some("1500"), "historyId vide : le départ est gardé");
         server.verify().await;
     }
 
@@ -372,8 +397,8 @@ mod tests {
 
     #[tokio::test] async fn erreurs_reseau_et_401() {
         let server = MockServer::start().await;
-        Mock::given(path("/gmail/v1/users/me/messages")).respond_with(ResponseTemplate::new(503)).up_to_n_times(1).mount(&server).await;
-        Mock::given(path("/gmail/v1/users/me/messages")).respond_with(ResponseTemplate::new(401)).mount(&server).await;
+        Mock::given(method("GET")).respond_with(ResponseTemplate::new(503)).up_to_n_times(1).mount(&server).await;
+        Mock::given(method("GET")).respond_with(ResponseTemplate::new(401)).mount(&server).await;
         let e = env(&server, true);
         assert_eq!(e.run().await, Err(SyncError::Network));
         assert_eq!(e.run().await, Err(SyncError::Unauthorized));
@@ -390,9 +415,13 @@ mod tests {
         assert_eq!([1, 2, 3, 4, 5, 6, 40].map(min), [1, 2, 4, 8, 15, 15, 15]);
         assert_eq!(min(2), 2, "deux erreurs réseau : 2 minutes");
         let c = crate::test_util::db();
-        set_backoff(&c, 3, Some(99)).unwrap();
-        let until: Option<i64> = c.query_row("SELECT backoff_until_ms FROM mail_sync WHERE account_id = 3", [], |r| r.get(0)).unwrap();
+        let id = accounts::add(&c, Provider::Google, "a", 1).unwrap();
+        set_backoff(&c, id, Some(99)).unwrap();
+        let until: Option<i64> = c.query_row("SELECT backoff_until_ms FROM mail_sync WHERE account_id = ?1", [id], |r| r.get(0)).unwrap();
         assert_eq!(until, Some(99));
+        set_backoff(&c, id + 1, Some(99)).unwrap();
+        let n: i64 = c.query_row("SELECT count(*) FROM mail_sync", [], |r| r.get(0)).unwrap();
+        assert_eq!(n, 1, "pas de ligne pour un compte supprimé");
     }
 
     thread_local! {

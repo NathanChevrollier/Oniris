@@ -12,25 +12,48 @@ pub fn b64url(data: &str) -> Option<Vec<u8>> {
     B64URL.decode(data.trim()).ok()
 }
 
+/// windows-1252, octets 0x80..0x9F (les cinq non définis restent les caractères de contrôle latin-1, comme le WHATWG).
+const CP1252: [char; 32] = [
+    '€', '\u{81}', '‚', 'ƒ', '„', '…', '†', '‡', 'ˆ', '‰', 'Š', '‹', 'Œ', '\u{8D}', 'Ž', '\u{8F}',
+    '\u{90}', '‘', '’', '“', '”', '•', '–', '—', '˜', '™', 'š', '›', 'œ', '\u{9D}', 'ž', 'Ÿ',
+];
+
+/// iso-8859-15 : latin-1 sauf huit positions.
+fn latin9(b: u8) -> char {
+    match b {
+        0xA4 => '€', 0xA6 => 'Š', 0xA8 => 'š', 0xB4 => 'Ž', 0xB8 => 'ž', 0xBC => 'Œ', 0xBD => 'œ', 0xBE => 'Ÿ',
+        b => b as char,
+    }
+}
+
 /// Octets vers texte selon le jeu de caractères ; inconnu : UTF-8 avec remplacement.
 pub fn to_text(bytes: &[u8], charset: &str) -> String {
     match charset.trim().to_ascii_lowercase().as_str() {
-        // shortcut: windows-1252 traité comme latin-1 (0x80..0x9F diffèrent), à revoir si des € manquent.
-        "iso-8859-1" | "latin1" | "iso-8859-15" | "windows-1252" | "cp1252" => bytes.iter().map(|&b| b as char).collect(),
+        "iso-8859-1" | "latin1" | "iso_8859-1" => bytes.iter().map(|&b| b as char).collect(),
+        "iso-8859-15" | "latin9" | "iso_8859-15" => bytes.iter().map(|&b| latin9(b)).collect(),
+        "windows-1252" | "cp1252" => bytes.iter().map(|&b| if (0x80..0xA0).contains(&b) { CP1252[(b - 0x80) as usize] } else { b as char }).collect(),
         _ => String::from_utf8_lossy(bytes).into_owned(),
     }
 }
 
-/// Un mot encodé `=?charset?B|Q?texte?=` ; `None` s'il est mal formé.
-fn encoded_word(w: &str) -> Option<String> {
-    let inner = w.strip_prefix("=?")?.strip_suffix("?=")?;
-    let mut it = inner.splitn(3, '?');
-    let (charset, enc, text) = (it.next()?, it.next()?, it.next()?);
-    // RFC 2231 : `charset*langue`.
-    let charset = charset.split('*').next()?;
-    let bytes = match enc {
-        "B" | "b" => B64.decode(text).ok()?,
-        "Q" | "q" => {
+/// Mot encodé `=?charset?B|Q?texte?=` en tête de `s` : (jeu de caractères en minuscules, octets, longueur lue).
+fn parse_word(s: &str) -> Option<(String, Vec<u8>, usize)> {
+    let inner = s.strip_prefix("=?")?;
+    let q1 = inner.find('?')?;
+    let charset = &inner[..q1];
+    let r = &inner.as_bytes()[q1 + 1..];
+    if charset.is_empty() || charset.contains(char::is_whitespace) || r.len() < 2 || r[1] != b'?' || !r[0].is_ascii() {
+        return None;
+    }
+    let tail = &inner[q1 + 3..];
+    let end = tail.find("?=")?;
+    let text = &tail[..end];
+    if text.contains(|c: char| c == '?' || c.is_whitespace()) {
+        return None;
+    }
+    let bytes = match r[0] {
+        b'B' | b'b' => B64.decode(text).ok()?,
+        b'Q' | b'q' => {
             let (mut out, b) = (Vec::new(), text.as_bytes());
             let mut i = 0;
             while i < b.len() {
@@ -48,40 +71,46 @@ fn encoded_word(w: &str) -> Option<String> {
         }
         _ => return None,
     };
-    Some(to_text(&bytes, charset))
+    // RFC 2231 : `charset*langue`.
+    let charset = charset.split('*').next()?.to_ascii_lowercase();
+    Some((charset, bytes, 2 + q1 + 3 + end + 2))
 }
 
-/// Décode les mots encodés RFC 2047 ; les blancs entre deux mots encodés disparaissent.
+/// Décode les mots encodés RFC 2047. Les blancs entre deux mots encodés disparaissent, et les octets de mots
+/// voisins de même jeu de caractères sont joints avant décodage (caractère multioctet coupé en deux).
 pub fn decode_header(s: &str) -> String {
-    let mut out = String::new();
-    let mut rest = s;
-    let mut prev_encoded = false;
-    while let Some(start) = rest.find("=?") {
-        // Fin du mot : `?=` après les deux `?` internes.
-        let end = rest[start + 2..]
-            .match_indices('?')
-            .nth(2)
-            .map(|(i, _)| start + 2 + i)
-            .filter(|&i| rest[i..].starts_with("?="));
-        let Some(end) = end else { break };
-        let word = &rest[start..end + 2];
-        match encoded_word(word) {
-            Some(text) => {
-                let gap = &rest[..start];
-                if !(prev_encoded && gap.trim().is_empty()) {
-                    out.push_str(gap);
-                }
-                out.push_str(&text);
-                prev_encoded = true;
-            }
-            None => {
-                out.push_str(&rest[..end + 2]);
-                prev_encoded = false;
-            }
+    let flush = |out: &mut String, p: Option<(String, Vec<u8>)>| {
+        if let Some((cs, b)) = p {
+            out.push_str(&to_text(&b, &cs));
         }
-        rest = &rest[end + 2..];
+    };
+    let (mut out, mut gap, mut rest) = (String::new(), String::new(), s);
+    let mut pending: Option<(String, Vec<u8>)> = None;
+    while let Some(c) = rest.chars().next() {
+        if let Some((cs, bytes, len)) = rest.starts_with("=?").then(|| parse_word(rest)).flatten() {
+            match pending.as_mut() {
+                Some((p, b)) if *p == cs => b.extend(bytes),
+                _ => {
+                    flush(&mut out, pending.take());
+                    pending = Some((cs, bytes));
+                }
+            }
+            gap.clear();
+            rest = &rest[len..];
+            continue;
+        }
+        rest = &rest[c.len_utf8()..];
+        if pending.is_some() && c.is_whitespace() {
+            gap.push(c);
+            continue;
+        }
+        flush(&mut out, pending.take());
+        out.push_str(&gap);
+        gap.clear();
+        out.push(c);
     }
-    out.push_str(rest);
+    flush(&mut out, pending);
+    out.push_str(&gap);
     out
 }
 
@@ -117,6 +146,9 @@ mod tests {
         assert_eq!(decode_header("Prix =?x"), "Prix =?x");
         assert_eq!(decode_header("=?UTF-8?X?abc?= reste"), "=?UTF-8?X?abc?= reste", "encodage inconnu laissé tel quel");
         assert_eq!(decode_header("=?UTF-8?Q?a=?="), "=?UTF-8?Q?a=?=", "Q tronqué laissé tel quel");
+        assert_eq!(decode_header("a =? b =?UTF-8?Q?=C3=A9?= c"), "a =? b é c", "un =? isolé n'arrête pas le décodage");
+        assert_eq!(decode_header("=?UTF-8?Q?=C3?= =?utf-8?Q?=A9t=C3=A9?="), "été", "multioctet coupé entre deux mots");
+        assert_eq!(decode_header("=?UTF-8?Q?a?= =?ISO-8859-1?Q?=E9?= fin"), "aé fin");
     }
 
     #[test] fn expediteur() {
@@ -132,6 +164,9 @@ mod tests {
         assert_eq!(b64url("YQ").unwrap(), b"a");
         assert_eq!(b64url("YQ==").unwrap(), b"a");
         assert_eq!(to_text(&[0x52, 0xE9], "ISO-8859-1"), "Ré");
+        assert_eq!(to_text(&[0x80, 0x92, 0x93, 0x94, 0x85, 0x9C, 0x81, 0xE9], "Windows-1252"), "€’“”…œ\u{81}é");
+        assert_eq!(to_text(&[0xA4, 0xBD, 0xE9], "iso-8859-15"), "€œé");
+        assert_eq!(to_text(&[0xA4], "iso-8859-1"), "¤");
         assert_eq!(unescape_snippet("l&#39;accueil &amp;lt;"), "l'accueil &lt;");
     }
 }

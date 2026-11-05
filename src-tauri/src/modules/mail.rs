@@ -7,8 +7,9 @@ use oniris_core::mail::gmail;
 use oniris_core::mail::sync::{self, SyncError};
 use oniris_core::oauth::Provider;
 use oniris_core::time_util::now_ms;
+use parking_lot::Mutex;
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::LazyLock;
 use tauri::{AppHandle, Manager};
 use tokio::sync::Notify;
@@ -17,12 +18,13 @@ use tokio::sync::Notify;
 static WAKE: LazyLock<Notify> = LazyLock::new(Notify::new);
 /// Relève demandée par l'ouverture du panneau.
 static FORCE: AtomicBool = AtomicBool::new(false);
-/// Au moins un compte Gmail `ok` : sinon l'ouverture du panneau ne réveille rien.
-static HAS_ACCOUNTS: AtomicBool = AtomicBool::new(false);
-/// Dernière relève lancée (ms), en mémoire : l'ouverture du panneau ne lit pas la base.
-static LAST_RUN_MS: AtomicI64 = AtomicI64::new(0);
-/// Ouverture du panneau : relève immédiate si la dernière date de plus de 60 s.
+/// Dernière relève lancée de chaque compte relevable (ms), recopiée par la boucle : l'ouverture du panneau
+/// la lit sans toucher la base. Vide : aucun compte, l'ouverture ne réveille rien.
+static LAST_RUNS: Mutex<Vec<i64>> = Mutex::new(Vec::new());
+/// Ouverture du panneau : relève immédiate des comptes relevés il y a plus de 60 s.
 const STALE_MS: i64 = 60_000;
+/// Base illisible : nouvel essai dans une minute.
+const DB_RETRY: std::time::Duration = std::time::Duration::from_secs(60);
 
 /// À appeler dans `setup`, état géré.
 pub fn start(app: &AppHandle) {
@@ -34,84 +36,116 @@ pub fn wake() { WAKE.notify_one(); }
 
 /// Appelé par `windows::open_panel` (fil principal) : ne verrouille pas la base.
 pub fn on_panel_open(_app: &AppHandle) {
-    if HAS_ACCOUNTS.load(Ordering::SeqCst) && now_ms() - LAST_RUN_MS.load(Ordering::SeqCst) > STALE_MS {
+    let now = now_ms();
+    if LAST_RUNS.lock().iter().any(|&t| now - t > STALE_MS) {
         FORCE.store(true, Ordering::SeqCst);
         WAKE.notify_one();
     }
 }
 
-/// Échéance et échecs consécutifs de chaque compte.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Entry { due: i64, fails: u32, last_run: i64 }
+
+/// Échéance, échecs consécutifs et dernière relève de chaque compte.
 #[derive(Default)]
-struct Schedule(HashMap<i64, (i64, u32)>);
+struct Schedule(HashMap<i64, Entry>);
 
 impl Schedule {
     /// Garde les comptes relevables ; un nouveau est dû tout de suite.
     fn retain(&mut self, ids: &[i64], now: i64) {
         self.0.retain(|id, _| ids.contains(id));
         for id in ids {
-            self.0.entry(*id).or_insert((now, 0));
+            self.0.entry(*id).or_insert(Entry { due: now, fails: 0, last_run: 0 });
         }
     }
 
-    /// Comptes à relever. `force` avance les échéances normales, jamais un délai d'échec.
+    /// Comptes à relever. `force` avance l'échéance des comptes relevés il y a plus de 60 s, jamais un délai d'échec.
     fn due(&self, now: i64, force: bool) -> Vec<i64> {
-        let mut ids: Vec<i64> = self.0.iter().filter(|(_, &(at, fails))| at <= now || (force && fails == 0)).map(|(id, _)| *id).collect();
+        let mut ids: Vec<i64> = self.0.iter()
+            .filter(|(_, e)| e.due <= now || (force && e.fails == 0 && now - e.last_run > STALE_MS))
+            .map(|(id, _)| *id)
+            .collect();
         ids.sort_unstable();
         ids
     }
 
-    fn ok(&mut self, id: i64, now: i64, interval_ms: i64) { self.0.insert(id, (now + interval_ms, 0)); }
+    fn started(&mut self, id: i64, now: i64) {
+        if let Some(e) = self.0.get_mut(&id) {
+            e.last_run = now;
+        }
+    }
+
+    fn ok(&mut self, id: i64, now: i64, interval_ms: i64) {
+        if let Some(e) = self.0.get_mut(&id) {
+            (e.due, e.fails) = (now + interval_ms, 0);
+        }
+    }
 
     /// Renvoie la fin du délai d'attente.
     fn fail(&mut self, id: i64, now: i64) -> i64 {
-        let fails = self.0.get(&id).map_or(0, |e| e.1) + 1;
-        let until = now + sync::backoff_ms(fails);
-        self.0.insert(id, (until, fails));
-        until
+        let e = self.0.entry(id).or_insert(Entry { due: now, fails: 0, last_run: now });
+        e.fails += 1;
+        e.due = now + sync::backoff_ms(e.fails);
+        e.due
     }
 
-    fn next(&self) -> Option<i64> { self.0.values().map(|e| e.0).min() }
+    fn next(&self) -> Option<i64> { self.0.values().map(|e| e.due).min() }
+
+    fn last_runs(&self) -> Vec<i64> { self.0.values().map(|e| e.last_run).collect() }
 }
 
-fn gmail_ok(app: &AppHandle) -> Vec<i64> {
-    let st = app.state::<AppState>();
-    let list = accounts::list(&st.db.lock());
-    match list {
-        Ok(l) => l.into_iter().filter(|a| a.provider == Provider::Google && a.status == Status::Ok).map(|a| a.id).collect(),
-        Err(e) => {
-            tracing::warn!("mails : comptes illisibles : {e}");
-            Vec::new()
-        }
-    }
+fn gmail_ok(app: &AppHandle) -> Result<Vec<i64>, oniris_core::CoreError> {
+    let list = accounts::list(&app.state::<AppState>().db.lock())?;
+    Ok(list.into_iter().filter(|a| a.provider == Provider::Google && a.status == Status::Ok).map(|a| a.id).collect())
 }
 
 async fn run(app: AppHandle) {
-    let st = app.state::<AppState>();
-    let client = gmail::Client::new(st.account_http.clone());
+    let client = gmail::Client::new(app.state::<AppState>().account_http.clone());
     let mut sched = Schedule::default();
     loop {
-        let ids = gmail_ok(&app);
-        HAS_ACCOUNTS.store(!ids.is_empty(), Ordering::SeqCst);
+        let ids = match gmail_ok(&app) {
+            Ok(ids) => ids,
+            Err(e) => {
+                tracing::warn!("mails : comptes illisibles, nouvel essai dans une minute : {e}");
+                tokio::time::sleep(DB_RETRY).await;
+                continue;
+            }
+        };
         sched.retain(&ids, now_ms());
         if ids.is_empty() {
+            LAST_RUNS.lock().clear();
             FORCE.store(false, Ordering::SeqCst);
             WAKE.notified().await;
             continue;
         }
         let force = FORCE.swap(false, Ordering::SeqCst);
+        // Comptes dus en même temps relevés ensemble : un compte lent ne retarde pas les autres.
+        let mut set = tokio::task::JoinSet::new();
         for id in sched.due(now_ms(), force) {
             let now = now_ms();
-            LAST_RUN_MS.store(now, Ordering::SeqCst);
-            match sync::run(&st.db, &client, &st.accounts, id, now).await {
+            sched.started(id, now);
+            let (app, client) = (app.clone(), client.clone());
+            set.spawn(async move {
+                let st = app.state::<AppState>();
+                (id, now, sync::run(&st.db, &client, &st.accounts, id, now).await)
+            });
+        }
+        *LAST_RUNS.lock() = sched.last_runs();
+        let st = app.state::<AppState>();
+        let mut changed = false;
+        while let Some(done) = set.join_next().await {
+            let Ok((id, now, result)) = done else { continue };
+            match result {
                 Ok(report) => {
                     let minutes = st.settings.read().mail_poll_minutes as i64;
                     sched.ok(id, now, minutes * 60_000);
-                    if report.any() {
-                        st.events.changed(Topic::Mail);
-                    }
+                    changed |= report.any();
                 }
-                // Le compte est passé à `reauth` : il sort de la liste au tour suivant.
-                Err(SyncError::Revoked) => {}
+                // Le compte est passé à `reauth` et sort de la liste au tour suivant. Si le statut n'a pas pu être
+                // noté, le délai d'échec évite de boucler.
+                Err(SyncError::Revoked) => {
+                    sched.fail(id, now);
+                }
                 Err(_) => {
                     let until = sched.fail(id, now);
                     let r = sync::set_backoff(&st.db.lock(), id, Some(until));
@@ -120,6 +154,9 @@ async fn run(app: AppHandle) {
                     }
                 }
             }
+        }
+        if changed {
+            st.events.changed(Topic::Mail);
         }
         let wait = sched.next().map_or(0, |at| (at - now_ms()).max(0)) as u64;
         tokio::select! {
@@ -140,20 +177,46 @@ mod tests {
         let mut s = Schedule::default();
         s.retain(&[1, 2], 0);
         assert_eq!(s.due(0, false), [1, 2], "nouveaux comptes : tout de suite");
+        s.started(1, 0);
         s.ok(1, 0, 3 * MIN);
+        s.started(2, 0);
         s.fail(2, 0);
         assert_eq!(s.fail(2, MIN), 3 * MIN, "deux erreurs réseau : 2 minutes");
         assert_eq!(s.next(), Some(3 * MIN));
         assert!(s.due(2 * MIN, false).is_empty());
         assert_eq!(s.due(2 * MIN, true), [1], "le panneau avance la relève, pas le délai d'échec");
+        assert!(s.due(MIN / 2, true).is_empty(), "relevé il y a moins de 60 s : rien à forcer");
         assert_eq!(s.due(3 * MIN, false), [1, 2]);
-        for _ in 0..5 { s.fail(2, 0); }
-        assert_eq!(s.0[&2].0, 15 * MIN, "15 minutes au plus");
+        for _ in 0..5 {
+            s.fail(2, 0);
+        }
+        assert_eq!(s.0[&2].due, 15 * MIN, "15 minutes au plus");
         s.ok(2, 0, 3 * MIN);
-        assert_eq!(s.0[&2], (3 * MIN, 0), "un succès remet à zéro");
+        assert_eq!((s.0[&2].due, s.0[&2].fails), (3 * MIN, 0), "un succès remet à zéro");
         s.retain(&[1], 0);
         assert_eq!(s.due(10 * MIN, true), [1], "compte retiré ou à reconnecter : plus de relève");
+        assert_eq!(s.last_runs(), [0]);
         s.retain(&[], 0);
         assert_eq!(s.next(), None);
+    }
+
+    #[test]
+    fn fraicheur_par_compte() {
+        let mut s = Schedule::default();
+        s.retain(&[1, 2], 0);
+        s.started(1, 10 * MIN);
+        s.ok(1, 10 * MIN, 3 * MIN);
+        s.started(2, 0);
+        s.ok(2, 0, 30 * MIN);
+        assert_eq!(s.due(10 * MIN + 1, true), [2], "seul le compte relevé il y a plus de 60 s est forcé");
+    }
+
+    #[test]
+    fn revoque_sans_statut_ne_boucle_pas() {
+        let mut s = Schedule::default();
+        s.retain(&[1], 0);
+        s.started(1, 0);
+        s.fail(1, 0);
+        assert!(s.due(1, true).is_empty(), "repoussé, même à l'ouverture du panneau");
     }
 }

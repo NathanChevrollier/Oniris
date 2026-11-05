@@ -121,8 +121,10 @@ fn header<'a>(p: &'a Part, name: &str) -> Option<&'a str> {
 
 fn charset(p: &Part) -> String {
     header(p, "Content-Type")
-        .and_then(|ct| ct.split(';').find_map(|kv| kv.trim().strip_prefix("charset=").or_else(|| kv.trim().strip_prefix("CHARSET="))))
-        .map(|c| c.trim_matches('"').to_string())
+        .and_then(|ct| {
+            ct.split(';').find_map(|kv| kv.split_once('=').filter(|(k, _)| k.trim().eq_ignore_ascii_case("charset")).map(|(_, v)| v))
+        })
+        .map(|c| c.trim().trim_matches('"').to_string())
         .unwrap_or_default()
 }
 
@@ -229,21 +231,37 @@ impl Client {
     }
 
     /// Métadonnées de plusieurs mails, `CONCURRENCY` requêtes à la fois ; résultats dans l'ordre des ids.
+    /// Toute erreur autre que 404 arrête les requêtes : les ids non lus reçoivent cette première erreur.
     pub async fn get_metadata_many(&self, token: &str, ids: &[String]) -> Vec<Result<MetaMsg, GmailError>> {
-        let next = std::sync::atomic::AtomicUsize::new(0);
+        use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+        let (next, stop) = (AtomicUsize::new(0), AtomicBool::new(false));
         let results = parking_lot::Mutex::new(HashMap::new());
+        let first_err = parking_lot::Mutex::new(None);
         let worker = || async {
-            loop {
-                let i = next.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            while !stop.load(Ordering::SeqCst) {
+                let i = next.fetch_add(1, Ordering::SeqCst);
                 let Some(id) = ids.get(i) else { break };
                 let r = self.get_metadata(token, id).await;
+                if let Some(e) = r.as_ref().err().filter(|e| **e != GmailError::NotFound) {
+                    stop.store(true, Ordering::SeqCst);
+                    first_err.lock().get_or_insert_with(|| e.clone());
+                }
                 results.lock().insert(i, r);
             }
         };
         const _: () = assert!(CONCURRENCY == 4, "un worker par requête parallèle");
         tokio::join!(worker(), worker(), worker(), worker());
-        let mut map = results.into_inner();
-        (0..ids.len()).map(|i| map.remove(&i).unwrap_or(Err(GmailError::Network))).collect()
+        let (mut map, err) = (results.into_inner(), first_err.into_inner().unwrap_or(GmailError::Network));
+        (0..ids.len()).map(|i| map.remove(&i).unwrap_or_else(|| Err(err.clone()))).collect()
+    }
+
+    /// `historyId` courant de la boîte : point de départ de l'historique après une synchronisation complète.
+    pub async fn profile_history_id(&self, token: &str) -> Result<String, GmailError> {
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Profile { history_id: String }
+        let p: Profile = self.get(token, "profile", &[]).await?;
+        Ok(p.history_id)
     }
 
     /// Changements depuis `start`, toutes pages lues. 404 : `HistoryGone`.
@@ -277,6 +295,8 @@ impl Client {
                             "messagesAdded" if in_box => Change::In,
                             "messagesDeleted" => Change::Out,
                             "labelsAdded" | "labelsRemoved" if changed.iter().any(|l| ["INBOX", "TRASH", "SPAM"].contains(l)) => inbox,
+                            // Tri changé (important, catégorie) : relu en entier pour recalculer le tri heuristique.
+                            "labelsAdded" | "labelsRemoved" if in_box && changed.iter().any(|l| *l == "IMPORTANT" || l.starts_with("CATEGORY_")) => Change::In,
                             "labelsAdded" | "labelsRemoved" if changed.contains(&"UNREAD") => {
                                 if in_box { Change::Labels(labels) } else { Change::Out }
                             }
@@ -295,6 +315,8 @@ impl Client {
                 _ => break page.history_id,
             }
         };
+        // Jamais de point de reprise vide : on garde le départ.
+        let new_history_id = if new_history_id.is_empty() { start.to_string() } else { new_history_id };
         let mut d = HistoryDelta { new_history_id, ..Default::default() };
         for id in order {
             match state.remove(&id) {
@@ -339,6 +361,7 @@ impl Client {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use base64::Engine;
     use wiremock::matchers::{body_json, header as has_header, method, path, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -397,5 +420,66 @@ mod tests {
         assert_eq!(r[0].as_ref().unwrap().subject, "Réunion demain à 10 h");
         assert!(r[0].as_ref().unwrap().labels.contains(&"UNREAD".to_string()));
         assert_eq!(r.len(), 5);
+    }
+
+    #[tokio::test] async fn une_erreur_arrete_les_requetes() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET")).respond_with(ResponseTemplate::new(429)).mount(&server).await;
+        let ids: Vec<String> = (0..100).map(|i| format!("m{i}")).collect();
+        let r = client(&server).get_metadata_many("t", &ids).await;
+        let sent = server.received_requests().await.unwrap().len();
+        assert!(sent <= CONCURRENCY, "{sent} requêtes, pas une rafale");
+        assert!(r.iter().all(|x| *x == Err(GmailError::Network)), "les ids non lus portent la première erreur");
+    }
+
+    #[tokio::test] async fn libelles_ajoutes_puis_retires_dans_la_meme_page() {
+        let server = MockServer::start().await;
+        let msg = |id: &str, labels: &[&str]| serde_json::json!({"id": id, "threadId": id, "labelIds": labels});
+        let page = serde_json::json!({"history": [
+            {"id": "1", "labelsAdded": [{"message": msg("a", &["INBOX", "UNREAD"]), "labelIds": ["UNREAD"]}]},
+            {"id": "2", "labelsRemoved": [{"message": msg("a", &["INBOX"]), "labelIds": ["UNREAD"]}]},
+            {"id": "3", "labelsAdded": [{"message": msg("b", &["INBOX"]), "labelIds": ["INBOX"]}]},
+            {"id": "4", "labelsRemoved": [{"message": msg("b", &[]), "labelIds": ["INBOX"]}]},
+            {"id": "5", "labelsAdded": [{"message": msg("c", &["INBOX", "IMPORTANT"]), "labelIds": ["IMPORTANT"]}]},
+            {"id": "6", "labelsAdded": [{"message": msg("d", &["INBOX", "CATEGORY_PROMOTIONS"]), "labelIds": ["CATEGORY_PROMOTIONS"]}]},
+            {"id": "7", "labelsAdded": [{"message": msg("e", &["STARRED"]), "labelIds": ["STARRED"]}]}
+        ], "historyId": "9"});
+        Mock::given(method("GET")).and(path("/gmail/v1/users/me/history")).respond_with(ResponseTemplate::new(200).set_body_json(page)).mount(&server).await;
+        let d = client(&server).history("t", "5").await.unwrap();
+        assert_eq!(d, HistoryDelta {
+            added: vec!["c".into(), "d".into()],
+            removed: vec!["b".into()],
+            label_changed: vec![("a".into(), vec!["INBOX".into()])],
+            new_history_id: "9".into(),
+        });
+    }
+
+    #[tokio::test] async fn multipart_imbrique_sur_trois_niveaux() {
+        let server = MockServer::start().await;
+        let b = |s: &str| base64::engine::general_purpose::URL_SAFE.encode(s);
+        let part = |mime: &str, ct: &str, data: &str| serde_json::json!({"mimeType": mime, "filename": "",
+            "headers": [{"name": "content-type", "value": ct}], "body": {"size": data.len(), "data": b(data)}});
+        let msg = serde_json::json!({"id": "n", "payload": {"mimeType": "multipart/mixed", "parts": [
+            {"mimeType": "multipart/related", "parts": [
+                {"mimeType": "multipart/alternative", "parts": [
+                    part("text/plain", "text/plain; CharSet=\"windows-1252\"", "x"),
+                    part("text/html", "text/html; charset=utf-8", "<p>profond</p>"),
+                ]},
+                {"mimeType": "image/png", "filename": "logo.png", "body": {"size": 12, "attachmentId": "att1"}}
+            ]},
+            {"mimeType": "application/pdf", "filename": "a.pdf", "body": {"size": 3, "attachmentId": "att2"}}
+        ]}});
+        Mock::given(method("GET")).and(path("/gmail/v1/users/me/messages/n")).respond_with(ResponseTemplate::new(200).set_body_json(msg)).mount(&server).await;
+        let m = client(&server).get_full("t", "n").await.unwrap();
+        assert_eq!(m.html.as_deref(), Some("<p>profond</p>"));
+        assert_eq!(m.text.as_deref(), Some("x"));
+        assert_eq!(m.attachments.iter().map(|a| a.filename.as_str()).collect::<Vec<_>>(), ["logo.png", "a.pdf"]);
+    }
+
+    #[test] fn jeu_de_caracteres_sans_casse() {
+        let p = |ct: &str| Part { headers: vec![Header { name: "Content-Type".into(), value: ct.into() }], ..Default::default() };
+        assert_eq!(charset(&p("text/plain; Charset=\"ISO-8859-1\"")), "ISO-8859-1");
+        assert_eq!(charset(&p("text/plain;CHARSET = utf-8")), "utf-8");
+        assert_eq!(charset(&p("text/plain")), "");
     }
 }

@@ -1,16 +1,16 @@
 # Confidentialité d'Oniris
 
-Version 2 — 4 novembre 2026. Ce document décrit simplement ce qu'Oniris fait de tes données. Il est mis à jour à chaque nouveauté qui touche à ta vie privée.
+Version 3 — 5 novembre 2026. Ce document décrit simplement ce qu'Oniris fait de tes données. Il est mis à jour à chaque nouveauté qui touche à ta vie privée.
 
 ## En bref
 
-Oniris range tout chez toi, sur ton PC. Il n'envoie aucune statistique d'usage, et il n'y a aucun compte à créer pour l'utiliser. La seule communication avec Internet, aujourd'hui, est la météo, et seulement si tu as choisi une ville.
+Oniris range tout chez toi, sur ton PC. Il n'envoie aucune statistique d'usage, et il n'y a aucun compte à créer pour l'utiliser. Oniris ne contacte Internet que pour deux choses : la météo, seulement si tu as choisi une ville, et les icônes de tes favoris (voir plus bas).
 
 ## Où sont tes données
 
 Tout est stocké en local, dans le dossier `%APPDATA%\Oniris` :
 
-- la base de données `oniris.db` : réglages, agenda, rappels, notes, minuteurs, historique du presse-papiers, journal des actions ;
+- la base de données `oniris.db` : réglages, agenda, rappels, notes, minuteurs, historique du presse-papiers, journal des actions, favoris, statistiques d'usage de la recherche, préférences de projets ;
 - les journaux techniques (`logs`) : ils ne contiennent ni le texte de tes notes, ni celui de tes rappels, ni celui de ton presse-papiers. Seulement des identifiants, des tailles et des messages d'erreur.
 
 Supprimer ce dossier efface tout ce qu'Oniris sait de toi.
@@ -49,6 +49,26 @@ Tes favoris restent sur ton PC, dans la base d'Oniris.
 
 - **Import** : seulement quand tu cliques sur « Importer ». « Depuis les navigateurs » lit en local les signets de Chrome, Edge, Brave et Firefox (Firefox : sur une copie temporaire, supprimée aussitôt) ; « Depuis un export Nexus… » lit le fichier JSON que tu choisis. Rien n'est envoyé ailleurs, et les liens dangereux (par exemple `javascript:`) sont ignorés.
 - **Icônes** : pour afficher l'icône d'un site, Oniris envoie **quelques requêtes vers ce site, ou vers l'adresse d'icône qu'il indique (parfois un autre domaine)**, au plus une par seconde : d'abord `/favicon.ico`, puis, si besoin, sa page d'accueil pour y trouver son icône. Aucun service tiers n'est utilisé, aucun cookie n'est envoyé et Oniris s'identifie seulement par « Oniris/0.1 ». Le site voit, comme tout site web, l'adresse IP de ta connexion, et ton résolveur DNS voit aussi ces noms de domaine. Ces requêtes ont lieu après un import, un ajout et au démarrage ; l'icône est réduite et gardée sur ton PC. En cas d'échec, Oniris garde les initiales et ne réessaie pas avant 7 jours. Oniris refuse de contacter une adresse de ton réseau local.
+
+## Recherche de fichiers
+
+Pour te répondre vite, Oniris construit en mémoire une liste des **noms et des chemins** de tes fichiers et dossiers, dans les dossiers que tu as choisis (par défaut, ton dossier utilisateur), plus ceux de tes dossiers de projets.
+
+- Oniris **n'ouvre jamais le contenu de tes fichiers**. Il ne lit que leurs noms, leur emplacement et leurs propriétés de base. Une seule exception : les fichiers `.gitignore`, de petits fichiers de réglage lus pour ne pas indexer les dossiers de compilation.
+- Cette liste vit **en mémoire** ; elle est reconstruite à chaque démarrage et n'est écrite nulle part. Les fichiers marqués « à télécharger » de OneDrive sont listés par leur nom, sans être téléchargés.
+- La base garde seulement des **statistiques d'usage** : le type et le chemin de ce que tu as ouvert depuis la recherche, un score et la date du dernier usage, pour classer en premier ce que tu utilises souvent. Ces statistiques ne sont pas encore purgées automatiquement ; supprimer le dossier `%APPDATA%\Oniris` les efface.
+- Les journaux techniques ne contiennent jamais de chemin : seulement des compteurs.
+- La recherche n'envoie rien sur Internet.
+
+## Projets
+
+La carte Projets lit **en local** les dossiers de projets que tu as choisis :
+
+- **Git** : Oniris lance `git status` et `git log` (sur les 14 derniers jours, dates seulement) dans chaque projet, pour afficher la branche, le nombre de fichiers modifiés et l'activité récente. Aucune commande n'écrit dans ton dépôt et rien n'est envoyé.
+- **Plan** : si le projet contient un plan d'implémentation (`docs/superpowers/plans/*.md`), Oniris en lit les cases cochées et le titre de la tâche en cours.
+- **Sessions Claude Code** : Oniris regarde dans `~/.claude/projects` la session la plus récente du projet (sa date et son identifiant). Pour afficher un titre, il lit au plus les 256 derniers Ko de ce fichier, jamais le fichier entier, et n'en garde que 80 caractères, **en mémoire seulement**. Ce titre peut être un résumé ou ton premier message de la fenêtre lue. Il n'est pas enregistré dans la base.
+- **Reprendre** : ce bouton ouvre VS Code sur le projet puis lance Claude, sur ton PC, avec une consigne qui peut contenir ce titre. Oniris ne transmet rien à un serveur ; c'est Claude Code qui communique ensuite avec Anthropic, comme quand tu le lances toi-même.
+- La base garde seulement ce que tu choisis : projet épinglé ou masqué (son chemin).
 
 ## Historique du presse-papiers
 

@@ -21,7 +21,8 @@ const DAY_MS: i64 = 86_400_000;
 /// Fenêtre relevée : de aujourd'hui − 7 jours à + 60 jours.
 const PAST_MS: i64 = 7 * DAY_MS;
 const FUTURE_MS: i64 = 60 * DAY_MS;
-/// Au-delà, le syncToken est abandonné : la fenêtre est relue pour qu'elle glisse (nouveaux jours, récurrences).
+/// Au-delà de cet âge depuis la dernière lecture COMPLÈTE (clé `gcal_full`), la fenêtre est relue pour qu'elle glisse
+/// (nouveaux jours, récurrences). Le syncToken, lui, est réécrit à chaque relève : son âge ne dit rien.
 const TOKEN_MAX_AGE_MS: i64 = DAY_MS;
 
 /// Début de la fenêtre : minuit local du jour d'il y a 7 jours.
@@ -36,6 +37,8 @@ fn map(e: GcalError) -> SyncError {
 }
 
 fn sync_key(account_id: i64, cal: &str) -> String { format!("gcal_sync/{account_id}/{cal}") }
+/// Date de la dernière lecture complète de la fenêtre.
+fn full_key(account_id: i64, cal: &str) -> String { format!("gcal_full/{account_id}/{cal}") }
 
 /// Relève les agendas cochés d'un compte ; `true` si des lignes ont changé. Le jeton refusé (401) est oublié.
 pub async fn run(db: &Db, client: &Client, tokens: &TokenCache, account_id: i64, now: i64) -> Result<bool, SyncError> {
@@ -78,21 +81,31 @@ async fn sync(db: &Db, client: &Client, token: &str, account_id: i64, now: i64) 
     let mut changed = false;
     for cal in &cals {
         let key = sync_key(account_id, cal);
-        let stored = { kv::get(&db.lock(), &key).map_err(|e| SyncError::Other(e.to_string()))? };
-        // Jeton trop vieux : relecture complète de la fenêtre.
-        let stored = stored.filter(|(_, at)| now - at <= TOKEN_MAX_AGE_MS).map(|(v, _)| v);
+        let fkey = full_key(account_id, cal);
+        let (stored, full_at) = {
+            let c = db.lock();
+            let e = |e: crate::CoreError| SyncError::Other(e.to_string());
+            (kv::get(&c, &key).map_err(e)?.map(|(v, _)| v), kv::get(&c, &fkey).map_err(e)?.map(|(_, at)| at))
+        };
+        // Dernière lecture complète absente ou vieille de plus de 24 h : on relit la fenêtre.
+        let stored = stored.filter(|_| full_at.is_some_and(|at| now - at <= TOKEN_MAX_AGE_MS));
         let Some((page, full)) = fetch(client, token, cal, stored, now).await.map_err(map)? else {
             // Agenda disparu (404) : lignes et jeton retirés.
             let c = db.lock();
             let tx = c.unchecked_transaction()?;
+            if !account_exists(&tx, account_id)? {
+                return Ok(false);
+            }
             changed |= tx.execute("DELETE FROM external_events WHERE account_id = ?1 AND calendar_id = ?2", params![account_id, cal])? > 0;
-            kv::delete(&tx, &key).map_err(|e| SyncError::Other(e.to_string()))?;
+            for k in [&key, &fkey] {
+                kv::delete(&tx, k).map_err(|e| SyncError::Other(e.to_string()))?;
+            }
             tx.commit()?;
             continue;
         };
         let c = db.lock();
         let tx = c.unchecked_transaction()?;
-        if !tx.query_row("SELECT 1 FROM accounts WHERE id = ?1", [account_id], |_| Ok(())).optional()?.is_some() {
+        if !account_exists(&tx, account_id)? {
             return Ok(false); // compte supprimé pendant la relève : rien à réécrire
         }
         let mut n = 0;
@@ -114,11 +127,16 @@ async fn sync(db: &Db, client: &Client, token: &str, account_id: i64, now: i64) 
             Some(t) => kv::set(&tx, &key, t, now),
             None => kv::delete(&tx, &key),
         }
+        .and_then(|()| if full { kv::set(&tx, &fkey, "1", now) } else { Ok(()) })
         .map_err(|e| SyncError::Other(e.to_string()))?;
         tx.commit()?;
         changed |= n > 0;
     }
     Ok(forget_old(db, account_id, &cals, now)? | changed)
+}
+
+fn account_exists(c: &rusqlite::Connection, account_id: i64) -> rusqlite::Result<bool> {
+    Ok(c.query_row("SELECT 1 FROM accounts WHERE id = ?1", [account_id], |_| Ok(())).optional()?.is_some())
 }
 
 /// Retire les agendas décochés (lignes et syncToken) et les événements finis depuis plus de 7 jours.
@@ -130,14 +148,15 @@ fn forget_old(db: &Db, account_id: i64, kept: &[String], now: i64) -> rusqlite::
     let mut n = 0;
     for cal in known.iter().filter(|k| !kept.contains(k)) {
         n += tx.execute("DELETE FROM external_events WHERE account_id = ?1 AND calendar_id = ?2", params![account_id, cal])?;
-        tx.execute("DELETE FROM kv WHERE key = ?1", [sync_key(account_id, cal)])?;
+        tx.execute("DELETE FROM kv WHERE key IN (?1, ?2)", [sync_key(account_id, cal), full_key(account_id, cal)])?;
     }
     // Jetons orphelins : un agenda décoché alors qu'il était vide n'a pas de ligne.
-    let prefix = format!("gcal_sync/{account_id}/");
-    let keys: Vec<String> = tx.prepare("SELECT key FROM kv WHERE substr(key, 1, ?2) = ?1")?
-        .query_map(params![prefix, prefix.len() as i64], |r| r.get(0))?.collect::<Result<_, _>>()?;
-    for k in keys.iter().filter(|k| !kept.iter().any(|c| sync_key(account_id, c) == **k)) {
-        tx.execute("DELETE FROM kv WHERE key = ?1", [k])?;
+    for (prefix, key_of) in [(format!("gcal_sync/{account_id}/"), sync_key as fn(i64, &str) -> String), (format!("gcal_full/{account_id}/"), full_key)] {
+        let keys: Vec<String> = tx.prepare("SELECT key FROM kv WHERE substr(key, 1, ?2) = ?1")?
+            .query_map(params![prefix, prefix.len() as i64], |r| r.get(0))?.collect::<Result<_, _>>()?;
+        for k in keys.iter().filter(|k| !kept.iter().any(|c| key_of(account_id, c) == **k)) {
+            tx.execute("DELETE FROM kv WHERE key = ?1", [k])?;
+        }
     }
     n += tx.execute("DELETE FROM external_events WHERE account_id = ?1 AND end_ms < ?2", params![account_id, window_start(now)])?;
     tx.commit()?;
@@ -207,7 +226,8 @@ mod tests {
     }
 
     impl Env {
-        async fn run(&self) -> Result<bool, SyncError> { run(&self.db, &self.client, &self.tokens, self.id, NOW).await }
+        async fn run(&self) -> Result<bool, SyncError> { self.run_at(NOW).await }
+        async fn run_at(&self, now: i64) -> Result<bool, SyncError> { run(&self.db, &self.client, &self.tokens, self.id, now).await }
         /// (calendar, id, start, end, all_day) triés.
         fn rows(&self) -> Vec<(String, String, i64, i64, bool)> {
             self.db.lock().prepare("SELECT calendar_id, id, start_ms, end_ms, all_day FROM external_events ORDER BY calendar_id, id").unwrap()
@@ -279,12 +299,15 @@ mod tests {
             ins("moi@gmail.com", "recent", now - DAY_MS);
             kv::set(&c, &sync_key(e.id, "ancien@x"), "z", 1).unwrap();
             kv::set(&c, &sync_key(e.id, "moi@gmail.com"), "x", now).unwrap(); // incrémentale : rien n'est remplacé
+            kv::set(&c, &full_key(e.id, "moi@gmail.com"), "1", now).unwrap();
             kv::set(&c, &sync_key(e.id, "vide@x"), "z", now).unwrap(); // décoché alors qu'il était vide : aucune ligne
+            kv::set(&c, &full_key(e.id, "vide@x"), "1", now).unwrap();
         }
         assert!(e.run().await.unwrap());
         assert_eq!(e.rows().iter().map(|r| r.1.as_str()).collect::<Vec<_>>(), ["recent"]);
         assert_eq!(e.token("ancien@x"), None);
         assert_eq!(e.token("vide@x"), None, "jeton orphelin retiré");
+        assert_eq!(kv::get(&e.db.lock(), &full_key(e.id, "vide@x")).unwrap(), None);
         assert_eq!(e.token("moi@gmail.com").as_deref(), Some("T2"), "jeton d'un agenda coché gardé");
     }
 
@@ -300,12 +323,32 @@ mod tests {
         {
             let c = e.db.lock();
             c.execute("INSERT INTO external_events VALUES (?1, 'vieux', 'moi@gmail.com', 't', ?2, ?2, 0, NULL)", params![e.id, NOW]).unwrap();
-            kv::set(&c, &sync_key(e.id, "moi@gmail.com"), "S0", NOW - DAY_MS - 1).unwrap();
-            kv::set(&c, &sync_key(e.id, "team@group.calendar.google.com"), "T0", NOW - DAY_MS + 1).unwrap(); // encore frais
+            kv::set(&c, &sync_key(e.id, "moi@gmail.com"), "S0", NOW).unwrap();
+            kv::set(&c, &full_key(e.id, "moi@gmail.com"), "1", NOW - DAY_MS - 1).unwrap();
+            kv::set(&c, &sync_key(e.id, "team@group.calendar.google.com"), "T0", NOW).unwrap();
+            kv::set(&c, &full_key(e.id, "team@group.calendar.google.com"), "1", NOW - DAY_MS + 1).unwrap(); // encore frais
         }
         assert!(e.run().await.unwrap());
         assert_eq!(e.rows().iter().map(|r| r.1.as_str()).collect::<Vec<_>>(), ["n1"]);
         assert_eq!(e.token("moi@gmail.com").as_deref(), Some("S3"));
+    }
+
+    #[tokio::test]
+    async fn la_fenetre_est_relue_apres_24_h_malgre_les_releves_incrementales() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET")).and(path("/calendar/v3/users/me/calendarList")).respond_with(body(r#"{"items":[{"id":"moi@gmail.com","selected":true}]}"#)).mount(&server).await;
+        // Pas de syncToken : lecture complète ; avec S1 : incrémentale. Les deux renvoient le même jeton S1.
+        Mock::given(method("GET")).and(path(EVENTS)).and(query_param_is_missing("syncToken")).respond_with(body(fixture!("events_primary_p2.json"))).mount(&server).await;
+        Mock::given(method("GET")).and(path(EVENTS)).and(query_param("syncToken", "S1")).respond_with(body(fixture!("events_primary_p2.json"))).mount(&server).await;
+        let e = env(&server, true);
+        let h = 9 * 3_600_000;
+        let mut seen = vec![];
+        for i in 0..4 {
+            e.run_at(NOW + i * h).await.unwrap(); // 0, 9, 18, 27 h : la fenêtre est relue à 27 h seulement
+            let reqs = server.received_requests().await.unwrap();
+            seen.push(reqs.iter().filter(|r| r.url.path() == EVENTS && r.url.query().unwrap_or("").contains("timeMin")).count());
+        }
+        assert_eq!(seen, [1, 1, 1, 2], "une lecture complète au départ, puis une seule quand 24 h sont dépassées");
     }
 
     #[tokio::test]
@@ -332,12 +375,15 @@ mod tests {
             for (cal, id) in [("moi@gmail.com", "e1"), ("moi@gmail.com", "e2"), ("team@group.calendar.google.com", "t1")] {
                 c.execute("INSERT INTO external_events VALUES (?1, ?2, ?3, 't', ?4, ?4, 0, NULL)", params![e.id, id, cal, NOW]).unwrap();
             }
-            kv::set(&c, &sync_key(e.id, "moi@gmail.com"), "S1", NOW).unwrap();
-            kv::set(&c, &sync_key(e.id, "team@group.calendar.google.com"), "T1", NOW).unwrap();
+            for (cal, t) in [("moi@gmail.com", "S1"), ("team@group.calendar.google.com", "T1")] {
+                kv::set(&c, &sync_key(e.id, cal), t, NOW).unwrap();
+                kv::set(&c, &full_key(e.id, cal), "1", NOW).unwrap();
+            }
         }
         assert!(e.run().await.unwrap());
         assert_eq!(e.rows().iter().map(|r| r.1.as_str()).collect::<Vec<_>>(), ["e2"]);
         assert_eq!(e.token("team@group.calendar.google.com"), None);
+        assert_eq!(kv::get(&e.db.lock(), &full_key(e.id, "team@group.calendar.google.com")).unwrap(), None, "date de lecture complète retirée aussi");
         assert_eq!(e.token("moi@gmail.com").as_deref(), Some("S2"));
     }
 

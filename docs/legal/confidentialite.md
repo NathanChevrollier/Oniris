@@ -43,6 +43,13 @@ Si tu choisis une ville, Oniris contacte le service gratuit [Open-Meteo](https:/
 
 Pour arrêter, vide le champ « ville » : le lieu et la dernière météo mémorisés sont effacés.
 
+## Favoris
+
+Tes favoris restent sur ton PC, dans la base d'Oniris.
+
+- **Import** : seulement quand tu cliques sur « Importer ». « Depuis les navigateurs » lit en local les signets de Chrome, Edge, Brave et Firefox (Firefox : sur une copie temporaire, supprimée aussitôt) ; « Depuis un export Nexus… » lit le fichier JSON que tu choisis. Rien n'est envoyé ailleurs, et les liens dangereux (par exemple `javascript:`) sont ignorés.
+- **Icônes** : pour afficher l'icône d'un site, Oniris envoie **une requête directement à ce site** (`/favicon.ico`, puis, si besoin, sa page d'accueil pour y trouver son icône), sans passer par aucun service tiers, sans cookie et en s'identifiant seulement par « Oniris/0.1 ». Le site voit, comme tout site web, l'adresse IP de ta connexion. Ces requêtes ont lieu après un import, un ajout et au démarrage, au plus une par seconde ; l'icône est réduite et gardée sur ton PC. En cas d'échec, Oniris garde les initiales et ne réessaie pas avant 7 jours. Oniris refuse de contacter une adresse de ton réseau local.
+
 ## Historique du presse-papiers
 
 L'historique reste sur ton PC ; il n'est envoyé nulle part. Ses limites :

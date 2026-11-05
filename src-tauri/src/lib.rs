@@ -30,6 +30,7 @@ pub fn run() {
             None,
         ))
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             commands::panel_open,
             commands::panel_close,
@@ -67,6 +68,8 @@ pub fn run() {
             modules::favorites::favorites_add,
             modules::favorites::favorites_delete,
             modules::favorites::favorites_open,
+            modules::favorites::favorites_import_browsers,
+            modules::favorites::favorites_import_file,
             modules::weather::weather_get,
             modules::indexer::index_status,
             modules::search::search_query,
@@ -98,6 +101,7 @@ pub fn run() {
             modules::timers::start(app.handle());
             modules::clipboard::start(app.handle());
             modules::weather::load(app.handle());
+            modules::favicons::spawn(app.handle());
             modules::apps::start(app.handle());
             let h = app.handle().clone();
             tauri::async_runtime::spawn_blocking(move || modules::indexer::start(&h));

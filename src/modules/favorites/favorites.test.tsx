@@ -2,7 +2,7 @@ import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/re
 import userEvent from "@testing-library/user-event";
 import { it, expect, vi, afterEach, beforeEach } from "vitest";
 import { FavoritesCard, hueOf } from "./FavoritesCard";
-import { favoritesIpc, type Favorite } from "./api";
+import { favoritesIpc, importIpc, formatReport, type Favorite } from "./api";
 import { contrastRatio, hslToRgb, SAT, LIGHT, DARK } from "./contrast";
 import { usePanelStore } from "../../panel/store";
 
@@ -99,11 +99,11 @@ it("le formulaire « + » ajoute, le menu renomme et supprime", async () => {
   expect(remove).toHaveBeenCalledWith(2);
 });
 
-it("état vide : invitation et bouton Importer désactivé", async () => {
+it("état vide : invitation et bouton Importer actif", async () => {
   vi.spyOn(favoritesIpc, "list").mockResolvedValue([]);
   render(<FavoritesCard />);
   expect(await screen.findByText(/Ajoute tes sites favoris/)).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Importer" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Importer" })).toBeEnabled();
 });
 
 it("le relâchement hors de la tuile termine le glisser (capture du pointeur)", async () => {
@@ -255,4 +255,34 @@ it("« Ajouter » et « Renommer » effacent les erreurs périmées", async () =
   fireEvent.contextMenu(screen.getByRole("button", { name: "Gamma" }));
   await userEvent.click(screen.getByRole("menuitem", { name: "Renommer" }));
   expect(screen.queryByRole("alert")).toBeNull();
+});
+
+it("le bouton Importer ouvre un menu et affiche le compte rendu par navigateur", async () => {
+  vi.spyOn(favoritesIpc, "list").mockResolvedValue(three);
+  const browsers = vi.spyOn(importIpc, "browsers").mockResolvedValue([["Chrome", { added: 23, skipped_dup: 4, skipped_unsafe: 1 }], ["Firefox", { added: 1, skipped_dup: 0, skipped_unsafe: 0 }]]);
+  render(<FavoritesCard />);
+  await userEvent.click(await screen.findByRole("button", { name: "Importer" }));
+  expect(screen.getByRole("menuitem", { name: "Depuis un export Nexus…" })).toBeTruthy();
+  await userEvent.click(screen.getByRole("menuitem", { name: "Depuis les navigateurs" }));
+  expect(browsers).toHaveBeenCalled();
+  expect(await screen.findByText("Chrome : 23 ajoutés · 4 déjà présents · 1 ignoré (lien non sûr)")).toBeTruthy();
+  expect(screen.getByText("Firefox : 1 ajouté")).toBeTruthy();
+  expect(screen.queryByRole("menu")).toBeNull();
+});
+
+it("l'import d'un export Nexus : annulation silencieuse, erreur en clair", async () => {
+  vi.spyOn(favoritesIpc, "list").mockResolvedValue(three);
+  const file = vi.spyOn(importIpc, "nexusFile").mockResolvedValueOnce(null).mockRejectedValueOnce("ce fichier n'est pas un export Nexus");
+  render(<FavoritesCard />);
+  for (let i = 0; i < 2; i++) {
+    await userEvent.click(await screen.findByRole("button", { name: "Importer" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "Depuis un export Nexus…" }));
+  }
+  expect((await screen.findByRole("alert")).textContent).toBe("ce fichier n'est pas un export Nexus");
+  expect(file).toHaveBeenCalledTimes(2);
+});
+
+it("formatReport : pluriels et zéros omis", () => {
+  expect(formatReport({ added: 0, skipped_dup: 0, skipped_unsafe: 0 })).toBe("0 ajouté");
+  expect(formatReport({ added: 2, skipped_dup: 1, skipped_unsafe: 3 })).toBe("2 ajoutés · 1 déjà présent · 3 ignorés (lien non sûr)");
 });

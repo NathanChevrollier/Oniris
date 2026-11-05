@@ -1,4 +1,6 @@
 //! Favoris : table `favorites` (migration 11) et outils du courtier (`tools`).
+pub mod icon;
+pub mod import;
 pub mod tools;
 
 use crate::launch::safe_url;

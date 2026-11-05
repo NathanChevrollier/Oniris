@@ -3,7 +3,9 @@
 use crate::commands::dispatch_as_user;
 use crate::state::AppState;
 use oniris_core::events::Topic;
+use oniris_core::favorites::import::{self, ImportReport, NewFavorite};
 use oniris_core::favorites::{self, Favorite};
+use oniris_core::time_util::now_ms;
 use oniris_core::tools::ToolOutcome;
 use serde_json::json;
 use tauri::{AppHandle, Manager, State};
@@ -55,4 +57,80 @@ pub async fn favorites_open(app: AppHandle, id: i64) -> ToolOutcome {
         }
     }
     out
+}
+
+const MAX_IMPORT_BYTES: u64 = 10 * 1024 * 1024;
+
+/// Dossiers de profils (`Default`, `Profile N`) d'un navigateur Chromium : fichiers `Bookmarks` existants.
+fn chromium_files(user_data: std::path::PathBuf) -> Vec<std::path::PathBuf> {
+    let Ok(dir) = std::fs::read_dir(user_data) else { return vec![] };
+    dir.flatten()
+        .filter(|e| e.file_name().to_str().is_some_and(|n| n == "Default" || n.starts_with("Profile ")))
+        .map(|e| e.path().join("Bookmarks"))
+        .filter(|p| p.is_file())
+        .collect()
+}
+
+fn small_text(p: &std::path::Path) -> Result<String, String> {
+    if std::fs::metadata(p).map_err(|_| "fichier illisible".to_string())?.len() > MAX_IMPORT_BYTES {
+        return Err("fichier trop volumineux (10 Mo au maximum)".into());
+    }
+    std::fs::read_to_string(p).map_err(|_| "fichier illisible".to_string())
+}
+
+/// Lit les signets des navigateurs installés (seulement quand l'utilisateur clique « Importer »).
+fn read_browsers() -> Vec<(&'static str, Vec<NewFavorite>)> {
+    let env = |k: &str| std::env::var_os(k).map(std::path::PathBuf::from);
+    let mut out = Vec::new();
+    if let Some(local) = env("LOCALAPPDATA") {
+        for (name, rel) in [("Chrome", "Google/Chrome"), ("Edge", "Microsoft/Edge"), ("Brave", "BraveSoftware/Brave-Browser")] {
+            let items: Vec<_> = chromium_files(local.join(rel).join("User Data"))
+                .iter()
+                .filter_map(|p| small_text(p).ok().and_then(|t| import::from_chromium(&t).ok()))
+                .flatten()
+                .collect();
+            if !items.is_empty() {
+                out.push((name, items));
+            }
+        }
+    }
+    if let Some(roaming) = env("APPDATA") {
+        let profiles = std::fs::read_dir(roaming.join("Mozilla/Firefox/Profiles")).into_iter().flatten().flatten();
+        let items: Vec<_> = profiles
+            .map(|e| e.path().join("places.sqlite"))
+            .filter(|p| p.is_file())
+            .filter_map(|p| import::from_firefox_profile(&p).ok())
+            .flatten()
+            .collect();
+        if !items.is_empty() {
+            out.push(("Firefox", items));
+        }
+    }
+    out
+}
+
+#[tauri::command]
+pub async fn favorites_import_browsers(state: State<'_, AppState>) -> Result<Vec<(String, ImportReport)>, String> {
+    let found = tauri::async_runtime::spawn_blocking(read_browsers).await.map_err(|e| e.to_string())?;
+    let mut out = Vec::new();
+    for (name, items) in found {
+        out.push((name.to_string(), import::import(&state.db.lock(), &items, now_ms()).map_err(|e| e.to_string())?));
+    }
+    tracing::info!(browsers = out.len(), "favoris : import des navigateurs");
+    state.events.changed(Topic::Favorites);
+    Ok(out)
+}
+
+/// Export JSON de Nexus_Dashboard choisi dans la boîte de dialogue (10 Mo au maximum).
+#[tauri::command]
+pub async fn favorites_import_file(state: State<'_, AppState>, path: String) -> Result<ImportReport, String> {
+    let p = std::path::PathBuf::from(path);
+    if p.extension().is_none_or(|e| !e.eq_ignore_ascii_case("json")) {
+        return Err("choisis un fichier .json".into());
+    }
+    let text = tauri::async_runtime::spawn_blocking(move || small_text(&p)).await.map_err(|e| e.to_string())??;
+    let items = import::from_nexus(&text).map_err(|e| e.to_string())?;
+    let report = import::import(&state.db.lock(), &items, now_ms()).map_err(|e| e.to_string())?;
+    state.events.changed(Topic::Favorites);
+    Ok(report)
 }

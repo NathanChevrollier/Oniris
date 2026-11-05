@@ -6,6 +6,7 @@ import { useTopic } from "../../lib/data";
 import { useToolAction } from "../../lib/toolAction";
 import { favoritesIpc, type Favorite } from "./api";
 import { DARK, LIGHT, hsl } from "./contrast";
+import { ImportMenu } from "./ImportMenu";
 import "./favorites.css";
 
 const UNAVAILABLE = "Favoris indisponibles, réessaie.";
@@ -199,7 +200,6 @@ export function FavoritesCard() {
         {list.length === 0 && (
           <>
             <Empty icon={Star} tint="#bf5af2">Ajoute tes sites favoris, ou importe-les</Empty>
-            <button type="button" disabled title="Bientôt">Importer</button>
           </>
         )}
         {groups.map((cat, g) => (
@@ -215,6 +215,7 @@ export function FavoritesCard() {
           </div>
         ))}
       </div>
+      <ImportMenu />
       {adding && (
         <form className="fav-form" onSubmit={(e) => { e.preventDefault(); void submit(); }}>
           <input aria-label="Adresse du site" placeholder="https://…" value={url} onChange={(e) => setUrl(e.target.value)} autoFocus spellCheck={false} />

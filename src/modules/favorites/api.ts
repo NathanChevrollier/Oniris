@@ -23,3 +23,26 @@ export const favoritesIpc = {
   /** Le panneau se ferme côté Rust une fois le favori ouvert. */
   open: (id: number): Promise<ToolOutcome> => isTauri ? invoke("favorites_open", { id }) : Promise.resolve(fakeDone),
 };
+
+/** Miroir de `oniris_core::favorites::import::ImportReport`. */
+export type ImportReport = { added: number; skipped_dup: number; skipped_unsafe: number };
+
+export const importIpc = {
+  /** Un rapport par navigateur trouvé. */
+  browsers: (): Promise<[string, ImportReport][]> => isTauri ? invoke("favorites_import_browsers") : Promise.resolve([]),
+  /** Boîte de dialogue puis import ; `null` si l'utilisateur annule. */
+  nexusFile: async (): Promise<ImportReport | null> => {
+    if (!isTauri) return null;
+    const { open } = await import("@tauri-apps/plugin-dialog");
+    const path = await open({ multiple: false, filters: [{ name: "Nexus", extensions: ["json"] }] });
+    return typeof path === "string" ? invoke<ImportReport>("favorites_import_file", { path }) : null;
+  },
+};
+
+/** « 23 ajoutés · 4 déjà présents · 1 ignoré (lien non sûr) » */
+export function formatReport(r: ImportReport): string {
+  const parts = [`${r.added} ajouté${r.added > 1 ? "s" : ""}`];
+  if (r.skipped_dup) parts.push(`${r.skipped_dup} déjà présent${r.skipped_dup > 1 ? "s" : ""}`);
+  if (r.skipped_unsafe) parts.push(`${r.skipped_unsafe} ignoré${r.skipped_unsafe > 1 ? "s" : ""} (lien non sûr)`);
+  return parts.join(" · ");
+}

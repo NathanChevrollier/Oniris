@@ -1,0 +1,21 @@
+{
+  "version": "3",
+  "exportedAt": "2026-11-01T10:00:00.000Z",
+  "dashboard": { "name": "Maison" },
+  "categories": [
+    { "name": "Outils", "icon": null, "color": null, "order": 0, "isCollapsed": false },
+    { "name": "Médias", "icon": "film", "color": "#ff0000", "order": 1, "isCollapsed": true }
+  ],
+  "widgets": [
+    { "type": "link", "categoryIndex": 0, "position": { "x": 0, "y": 0, "w": 2, "h": 1 },
+      "options": { "label": "Portainer", "url": "https://portainer.example.com/", "openInNewTab": true, "checkStatus": false } },
+    { "type": "link", "categoryIndex": null, "position": { "x": 2, "y": 0, "w": 2, "h": 1 },
+      "options": { "label": "Sans catégorie", "url": "https://free.example.com/", "openInNewTab": true, "checkStatus": false } },
+    { "type": "bookmarks", "categoryIndex": 1, "position": { "x": 0, "y": 1, "w": 4, "h": 2 },
+      "options": { "title": "Séries", "layout": "grid", "openInNewTab": true, "bookmarks": [
+        { "id": "a", "title": "Jellyfin", "url": "https://jellyfin.example.com/" },
+        { "id": "b", "title": "Piégé", "url": "javascript:alert(1)" }
+      ] } },
+    { "type": "weather", "categoryIndex": 0, "position": { "x": 0, "y": 3, "w": 2, "h": 2 }, "options": { "city": "Paris" } }
+  ]
+}

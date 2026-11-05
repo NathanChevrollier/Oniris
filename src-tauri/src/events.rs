@@ -22,6 +22,7 @@ impl Events for TauriEvents {
     fn changed(&self, topic: Topic) {
         if topic == Topic::Favorites {
             crate::modules::favorites::refresh(&self.0);
+            crate::modules::favicons::spawn(&self.0);
         }
         for (t, key, next_fn) in RESCHEDULE {
             if t == topic {

@@ -1,0 +1,19 @@
+{
+  "checksum": "x", "version": 1,
+  "roots": {
+    "bookmark_bar": { "type": "folder", "name": "Barre de favoris", "children": [
+      { "type": "url", "name": "Racine barre", "url": "https://bar.example.com/" },
+      { "type": "folder", "name": "Dev", "children": [
+        { "type": "url", "name": "MDN", "url": "https://developer.mozilla.org/" },
+        { "type": "folder", "name": "Rust", "children": [
+          { "type": "url", "name": "Docs", "url": "https://doc.rust-lang.org/" }
+        ] }
+      ] },
+      { "type": "url", "name": "Bookmarklet", "url": "javascript:void(0)" }
+    ] },
+    "other": { "type": "folder", "name": "Autres favoris", "children": [
+      { "type": "url", "name": "Autre", "url": "https://other.example.com/" }
+    ] },
+    "synced": { "type": "folder", "name": "Mobile", "children": [] }
+  }
+}

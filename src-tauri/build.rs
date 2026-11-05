@@ -38,6 +38,8 @@ fn main() {
         "favorites_add",
         "favorites_delete",
         "favorites_open",
+        "favorites_import_browsers",
+        "favorites_import_file",
         "weather_get",
         "index_status",
         "search_query",

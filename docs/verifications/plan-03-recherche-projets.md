@@ -49,7 +49,7 @@ Avant de commencer, choisis tes dossiers de projets : sans eux, la carte Projets
 
 ## 5. OneDrive
 
-- [ ] ⚠️ à vérifier en priorité : si des dossiers (Documents, Bureau, Images) sont dans OneDrive, les fichiers « à la demande » (icône de nuage) sont trouvés par leur nom **sans être téléchargés** : leur icône reste un nuage et OneDrive ne se met pas à télécharger.
+- [ ] ⚠️ à vérifier en priorité : si des dossiers (Documents, Bureau, Images) sont dans OneDrive, les fichiers « à la demande » (icône de nuage, en ligne seulement) ne sont **pas trouvés** par la recherche (ils ne sont pas indexés), et OneDrive ne télécharge rien : leur icône reste un nuage. Les fichiers déjà téléchargés sur le PC, eux, sont trouvés.
 - [ ] ⚠️ à vérifier en priorité : comportement avec la redirection des dossiers connus de OneDrive (Known Folder Move, vérification reportée pendant le développement). Cherche un fichier de ton dossier Documents et un du Bureau : chacun est trouvé une seule fois (pas de doublon entre `C:\Users\toi\Documents` et `OneDrive\Documents`) et s'ouvre.
 - [ ] Les liens symboliques et jonctions ne provoquent ni boucle infinie ni doublons.
 
@@ -95,7 +95,7 @@ Avant de commencer, choisis tes dossiers de projets : sans eux, la carte Projets
 ## 11. Mode orchestrateur
 
 - [ ] Le bouton « Orchestr. » d'un projet ouvre VS Code et lance Claude avec la consigne du mode orchestrateur (celle de « Reprendre » suivie des règles d'orchestration), pas seulement celle de « Reprendre ».
-- [ ] Message de réglage « ~600 caractères » (vérification reportée) : si l'écran des paramètres existe à ce moment-là (prévu au plan 7), colle une consigne très longue pleine d'accents (é, è, à, ç, œ). Le refus doit venir à un moment cohérent avec « max ~600 caractères selon les accents ». La limite est annoncée de façon un peu optimiste pour un texte accentué : note à partir de combien de caractères ça refuse.
+- [ ] Message de réglage « ~600 caractères » (vérification reportée au plan 7, quand l'écran des paramètres arrivera ; il n'existe pas encore, ne pas la faire maintenant) : colle une consigne très longue pleine d'accents (é, è, à, ç, œ). Le refus doit venir à un moment cohérent avec « max ~600 caractères selon les accents ». La limite est annoncée de façon un peu optimiste pour un texte accentué : note à partir de combien de caractères ça refuse.
 
 ## 12. Cas particuliers
 

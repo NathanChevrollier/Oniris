@@ -11,6 +11,7 @@ Oniris range tout chez toi, sur ton PC. Il n'envoie aucune statistique d'usage, 
 Tout est stocké en local, dans le dossier `%APPDATA%\Oniris` :
 
 - la base de données `oniris.db` : réglages, agenda, rappels, notes, minuteurs, historique du presse-papiers, journal des actions, favoris, statistiques d'usage de la recherche, préférences de projets ;
+- l'instantané de l'index de recherche `index.bin` : la liste des **chemins complets** de tous les fichiers et dossiers indexés (voir « Recherche de fichiers ») ;
 - les journaux techniques (`logs`) : ils ne contiennent ni le texte de tes notes, ni celui de tes rappels, ni celui de ton presse-papiers. Seulement des identifiants, des tailles et des messages d'erreur.
 
 Supprimer ce dossier efface tout ce qu'Oniris sait de toi.
@@ -52,10 +53,11 @@ Tes favoris restent sur ton PC, dans la base d'Oniris.
 
 ## Recherche de fichiers
 
-Pour te répondre vite, Oniris construit en mémoire une liste des **noms et des chemins** de tes fichiers et dossiers, dans les dossiers que tu as choisis (par défaut, ton dossier utilisateur), plus ceux de tes dossiers de projets.
+Pour te répondre vite, Oniris construit une liste des **noms et des chemins** de tes fichiers et dossiers, dans les dossiers que tu as choisis (par défaut, ton dossier utilisateur), plus ceux de tes dossiers de projets.
 
 - Oniris **n'ouvre jamais le contenu de tes fichiers**. Il ne lit que leurs noms, leur emplacement et leurs propriétés de base. Une seule exception : les fichiers `.gitignore`, de petits fichiers de réglage lus pour ne pas indexer les dossiers de compilation.
-- Cette liste vit **en mémoire** ; elle est reconstruite à chaque démarrage et n'est écrite nulle part. Les fichiers marqués « à télécharger » de OneDrive sont listés par leur nom, sans être téléchargés.
+- Cette liste vit en mémoire et est aussi **enregistrée sur ton disque**, dans `%APPDATA%\Oniris\index.bin` : un instantané des chemins complets de tout ce qui est indexé (il contient donc les noms de tes dossiers et fichiers), pour que la recherche réponde dès le démarrage. Il est réécrit à la fin de chaque parcours complet du disque, puis toutes les 10 minutes environ si quelque chose a changé. Il disparaît avec le dossier `%APPDATA%\Oniris`.
+- Les fichiers OneDrive « à la demande » (marqués « à télécharger », icône de nuage) ne sont **pas indexés** : Oniris ne les liste pas et ne déclenche aucun téléchargement.
 - La base garde seulement des **statistiques d'usage** : le type et le chemin de ce que tu as ouvert depuis la recherche, un score et la date du dernier usage, pour classer en premier ce que tu utilises souvent. Ces statistiques ne sont pas encore purgées automatiquement ; supprimer le dossier `%APPDATA%\Oniris` les efface.
 - Les journaux techniques ne contiennent jamais de chemin : seulement des compteurs.
 - La recherche n'envoie rien sur Internet.

@@ -15,12 +15,13 @@
 .mu-artist{color:var(--txt2);font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .mu-wave{display:flex;align-items:flex-end;gap:3px;height:26px}
 .mu-wave i{flex:1;height:100%;border-radius:2px;background:linear-gradient(180deg,#fff,rgba(255,255,255,.35));
-  transform-origin:bottom;transform:scaleY(.4);animation:mu-eq .9s ease-in-out infinite alternate;will-change:transform}
+  transform-origin:bottom;transform:scaleY(var(--h,.5));animation:mu-eq .9s ease-in-out infinite alternate;will-change:transform}
 .mu-wave.paused i{animation-play-state:paused}
 .reduce-motion .mu-wave i{animation:none}
 @keyframes mu-eq{from{transform:scaleY(.18)}to{transform:scaleY(1)}}
 .mu-scrub{position:relative;margin-top:14px;height:4px;border-radius:2px;background:rgba(255,255,255,.14);cursor:pointer;touch-action:none}
 .mu-scrub::before{content:"";position:absolute;inset:-9px 0}
+.mu-scrub[aria-disabled=true]{cursor:default;opacity:.6}
 .mu-scrub:focus-visible{outline:2px solid rgba(255,255,255,.7);outline-offset:6px}
 .mu-scrub i{position:absolute;left:0;top:0;bottom:0;border-radius:2px;background:#fff;transition:width .25s linear}
 .mu-scrub i.drag{transition:none}
@@ -39,7 +40,8 @@
 .card .mu-pl:hover:enabled{background:none;color:var(--txt)}
 .mu-pl span{display:block;height:56px;border-radius:12px;margin-bottom:6px;transition:transform .25s var(--ease)}
 .mu-pl:hover span{transform:scale(1.04)}
-.mu-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:auto;padding-top:10px}
+.mu-foot{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.mu-bottom{margin-top:auto;padding-top:10px}
 .mu-foot select{min-width:0;max-width:70%;height:26px;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.07);color:var(--txt2);font:12px var(--font);padding:0 8px}
 .mu-foot select option{background:#1d1c24;color:#fff}
 .card .mu-more{margin:0;width:28px;height:26px;padding:0;justify-content:center;margin-left:auto}

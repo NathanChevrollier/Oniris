@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from "react";
+import { memo, useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from "react";
 import { MoreHorizontal, Music, Pause, Play, SkipBack, SkipForward } from "lucide-react";
 import { Card } from "../../ui/Card";
 import { Empty } from "../../ui/Empty";
@@ -14,6 +14,13 @@ const MAX_FAVORITES = 8;
 const BARS = 28;
 const NONE_COLORS: string[] = [];
 const NO_DEVICES: Device[] = [];
+const HEX = /^#[0-9a-f]{6}$/i;
+
+/** Trois couleurs `#rrggbb` valides, sinon aucune (ambiance par défaut) : rien d'autre n'entre dans le CSS. */
+export const safeColors = (colors: string[] | undefined): string[] => {
+  const ok = (colors ?? []).filter((c) => typeof c === "string" && HEX.test(c));
+  return ok.length >= 3 ? ok.slice(0, 3) : NONE_COLORS;
+};
 
 export const clock = (ms: number) => {
   const s = Math.max(0, Math.floor(ms / 1000));
@@ -24,9 +31,9 @@ export const clock = (ms: number) => {
 export const positionAt = (np: NowPlaying, now: number) =>
   Math.min(np.duration_ms, Math.max(0, np.position_ms + (np.playing ? now - np.updated_ms : 0)));
 
-/** Un seul `requestAnimationFrame`, seulement si le panneau est ouvert, l'onglet visible et la lecture en cours. */
-function usePosition(np: NowPlaying | null, active: boolean): number {
-  const [pos, setPos] = useState(0);
+/** Un seul `requestAnimationFrame`, seulement si le panneau est ouvert, l'onglet visible et la lecture en cours ; arrêté en fin de piste. */
+function usePosition(np: NowPlaying, active: boolean): number {
+  const [pos, setPos] = useState(() => positionAt(np, Date.now()));
   const [hidden, setHidden] = useState(() => typeof document !== "undefined" && document.hidden);
   useEffect(() => {
     const on = () => setHidden(document.hidden);
@@ -34,16 +41,15 @@ function usePosition(np: NowPlaying | null, active: boolean): number {
     return () => document.removeEventListener("visibilitychange", on);
   }, []);
   useEffect(() => {
-    if (!np) return;
     setPos(positionAt(np, Date.now()));
-    if (!np.playing || !active || hidden) return;
+    if (!np.playing || !active || hidden || np.duration_ms <= 0) return;
     let raf = 0;
     let last = -1;
     const tick = () => {
       const p = positionAt(np, Date.now());
-      const q = Math.floor(p / 250); // ~4 rendus par seconde, la barre glisse par transition CSS
+      const q = Math.floor(p / 250); // ~4 rendus par seconde, de la barre seule ; elle glisse par transition CSS
       if (q !== last) { last = q; setPos(p); }
-      raf = requestAnimationFrame(tick);
+      if (p < np.duration_ms) raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
@@ -63,76 +69,124 @@ function Wave({ playing }: { playing: boolean }) {
   return (
     <div className={`mu-wave${playing ? "" : " paused"}`} data-testid="wave" aria-hidden>
       {Array.from({ length: BARS }, (_, i) => (
-        <i key={i} style={{ animationDelay: `${-((i * 137) % 900)}ms`, animationDuration: `${700 + ((i * 53) % 5) * 110}ms` }} />
+        <i key={i} style={{ "--h": 0.25 + ((i * 37) % 10) / 14, animationDelay: `${-((i * 137) % 900)}ms`, animationDuration: `${700 + ((i * 53) % 5) * 110}ms` } as CSSProperties} />
       ))}
     </div>
   );
 }
 
-function Progress({ np, pos, onSeek }: { np: NowPlaying; pos: number; onSeek: (ms: number) => void }) {
+/** Barre de progression : porte seule l'état de position, le reste de la carte ne se redessine pas. */
+const Progress = memo(function Progress({ np, active, onSeek }: { np: NowPlaying; active: boolean; onSeek: (ms: number) => void }) {
+  const pos = usePosition(np, active);
   const ref = useRef<HTMLDivElement>(null);
   const [drag, setDrag] = useState<number | null>(null);
+  const known = np.duration_ms > 0; // durée inconnue : la barre ne déplace rien
   const at = (e: PointerEvent) => {
     const r = ref.current!.getBoundingClientRect();
     return r.width > 0 ? Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)) * np.duration_ms : 0;
   };
   const shown = drag ?? pos;
   const key = (e: KeyboardEvent) => {
-    const d = e.key === "ArrowRight" ? STEP_MS : e.key === "ArrowLeft" ? -STEP_MS : 0;
-    if (!d) return;
+    if (!known) return;
+    const target = e.key === "ArrowRight" ? pos + STEP_MS : e.key === "ArrowLeft" ? pos - STEP_MS : e.key === "Home" ? 0 : e.key === "End" ? np.duration_ms : null;
+    if (target == null) return;
     e.preventDefault();
-    onSeek(Math.min(np.duration_ms, Math.max(0, pos + d)));
+    onSeek(Math.min(np.duration_ms, Math.max(0, target)));
   };
   return (
     <>
       <div ref={ref} className="mu-scrub" role="slider" tabIndex={0} aria-label="Position" aria-valuemin={0} aria-valuemax={np.duration_ms}
-        aria-valuenow={Math.round(shown)} aria-valuetext={`${clock(shown)} sur ${clock(np.duration_ms)}`} onKeyDown={key}
-        onPointerDown={(e) => { ref.current?.setPointerCapture?.(e.pointerId); setDrag(at(e)); }}
+        aria-valuenow={Math.round(shown)} aria-valuetext={known ? `${clock(shown)} sur ${clock(np.duration_ms)}` : "Durée inconnue"}
+        aria-disabled={known ? undefined : true} onKeyDown={key}
+        onPointerDown={(e) => { if (!known || e.button !== 0) return; ref.current?.setPointerCapture?.(e.pointerId); setDrag(at(e)); }}
         onPointerMove={(e) => { if (drag != null) setDrag(at(e)); }}
         onPointerUp={(e) => { if (drag != null) { onSeek(at(e)); setDrag(null); } }}
         onPointerCancel={() => setDrag(null)}>
-        <i className={drag != null ? "drag" : undefined} style={{ width: `${np.duration_ms ? (shown / np.duration_ms) * 100 : 0}%` }} />
+        <i className={drag != null ? "drag" : undefined} style={{ width: `${known ? (shown / np.duration_ms) * 100 : 0}%` }} />
       </div>
-      <div className="mu-times"><span>{clock(shown)}</span><span>-{clock(np.duration_ms - shown)}</span></div>
+      <div className="mu-times"><span>{clock(shown)}</span><span>{known ? `-${clock(np.duration_ms - shown)}` : ""}</span></div>
     </>
   );
-}
+});
 
 export function MusicCard({ onAccounts, onColors }: { onAccounts?: () => void; onColors?: (colors: string[]) => void }) {
   const open = usePanelStore((s) => s.open);
   const now = useTopic<NowPlaying | null>("music", musicIpc.now, null);
-  const lists = useTopic<PlaylistsView | null>("music", musicIpc.playlists, null);
-  const devices = useTopic<Device[]>("music", () => musicIpc.devices().catch(() => NO_DEVICES), NO_DEVICES);
   const { run, error } = useToolAction(UNAVAILABLE);
   const [menu, setMenu] = useState(false);
   const menuId = useId();
-  // Après un déplacement, la position repart de là jusqu'au prochain événement du lecteur.
+  const footRef = useRef<HTMLDivElement>(null);
+  const [pinErr, setPinErr] = useState<string | null>(null);
+  // Après un déplacement réussi, la position repart de là jusqu'au prochain événement du lecteur.
   const [seeked, setSeeked] = useState<{ base: NowPlaying; ms: number; at: number } | null>(null);
   const np = useMemo(
     () => (now.data && seeked?.base === now.data ? { ...now.data, position_ms: seeked.ms, updated_ms: seeked.at } : now.data),
     [now.data, seeked],
   );
-  const pos = usePosition(np, open);
 
-  const colors = now.data?.colors ?? NONE_COLORS;
+  const colors = useMemo(() => safeColors(now.data?.colors), [now.data]);
   const colorKey = colors.join();
   useEffect(() => { onColors?.(colors); }, [colorKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const seek = useCallback((ms: number) => {
-    if (!now.data) return;
-    setSeeked({ base: now.data, ms, at: Date.now() });
-    void run(musicIpc.seek(ms));
+  // Playlists (cache seul côté Rust) : rechargées à l'ouverture, au changement de piste, ou tant qu'elles ne sont pas là.
+  // Appareils (appel Spotify) : seulement connecté, au changement de piste, à l'ouverture et au focus du sélecteur.
+  const [view, setViewState] = useState<PlaylistsView | null>(null);
+  const viewRef = useRef<PlaylistsView | null>(null);
+  const setView = useCallback((v: PlaylistsView | null) => { viewRef.current = v; setViewState(v); }, []);
+  const reqLists = useRef(0);
+  const loadLists = useCallback(() => {
+    const id = ++reqLists.current;
+    musicIpc.playlists().then((v) => { if (reqLists.current === id) setView(v); }, () => {});
+  }, [setView]);
+  const [devices, setDevices] = useState<Device[]>(NO_DEVICES);
+  const reqDev = useRef(0);
+  const loadDevices = useCallback(() => {
+    const id = ++reqDev.current;
+    musicIpc.devices().then((d) => { if (reqDev.current === id) setDevices(d); }, () => {});
+  }, []);
+
+  const trackKey = now.data ? `${now.data.title}|${now.data.artist}` : "";
+  const lastTrack = useRef("");
+  useEffect(() => { if (open) loadLists(); }, [open, loadLists]);
+  useEffect(() => {
+    if (!open) return;
+    const v = viewRef.current;
+    if (v && v.connected && v.all.length > 0 && lastTrack.current === trackKey) return;
+    lastTrack.current = trackKey;
+    loadLists();
+  }, [open, now.data, trackKey, loadLists]);
+  const connected = view?.connected ?? false;
+  useEffect(() => { if (open && connected) loadDevices(); }, [open, connected, trackKey, loadDevices]);
+
+  const seek = useCallback(async (ms: number) => {
+    if (!now.data || now.data.duration_ms <= 0) return;
+    const base = now.data;
+    if (await run(musicIpc.seek(ms))) setSeeked({ base, ms, at: Date.now() });
   }, [now.data, run]);
 
-  const view = lists.data;
-  const connected = view?.connected ?? false;
-  const active = devices.data.find((d) => d.active);
   const togglePin = (id: string) => {
-    if (!view) return;
-    const ids = view.favorites.map((p) => p.id);
-    const next = ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id].slice(0, MAX_FAVORITES);
-    void musicIpc.setFavorites(next).then(lists.reload, lists.reload);
+    const cur = viewRef.current;
+    if (!cur) return;
+    const pinned = cur.favorites.some((p) => p.id === id);
+    if (!pinned && cur.favorites.length >= MAX_FAVORITES) { setPinErr(`${MAX_FAVORITES} playlists au maximum.`); return; }
+    const added = cur.all.find((p) => p.id === id);
+    const favorites = pinned ? cur.favorites.filter((p) => p.id !== id) : added ? [...cur.favorites, added] : cur.favorites;
+    setView({ ...cur, favorites }); // optimiste
+    setPinErr(null);
+    musicIpc.setFavorites(favorites.map((p) => p.id)).catch(() => { setPinErr("Impossible d'enregistrer les playlists."); loadLists(); });
   };
+
+  // Le menu se ferme avec Échap ou un clic à l'extérieur.
+  useEffect(() => {
+    if (!menu) return;
+    const esc = (e: globalThis.KeyboardEvent) => { if (e.key === "Escape") { e.stopPropagation(); setMenu(false); } };
+    const out = (e: globalThis.PointerEvent) => { if (!footRef.current?.contains(e.target as Node)) setMenu(false); };
+    document.addEventListener("keydown", esc, true);
+    document.addEventListener("pointerdown", out);
+    return () => { document.removeEventListener("keydown", esc, true); document.removeEventListener("pointerdown", out); };
+  }, [menu]);
+
+  const active = devices.find((d) => d.active);
 
   return (
     <Card title="En lecture" span={4} delay={0.05}
@@ -141,7 +195,7 @@ export function MusicCard({ onAccounts, onColors }: { onAccounts?: () => void; o
         {np ? (
           <>
             <div className="mu-top">
-              <div className="mu-cover" style={{ "--c1": np.colors[0] ?? "#ff7448", "--c2": np.colors[1] ?? "#3b1d6e" } as CSSProperties}>
+              <div className="mu-cover" style={{ "--c1": colors[0] ?? "#ff7448", "--c2": colors[1] ?? "#3b1d6e" } as CSSProperties}>
                 {np.cover && <img src={np.cover} alt="" />}
               </div>
               <div className="mu-meta">
@@ -153,7 +207,7 @@ export function MusicCard({ onAccounts, onColors }: { onAccounts?: () => void; o
                 <Wave playing={np.playing} />
               </div>
             </div>
-            <Progress np={np} pos={pos} onSeek={seek} />
+            <Progress np={np} active={open} onSeek={seek} />
             <div className="mu-ctrls">
               <button type="button" aria-label="Précédent" onClick={() => void run(musicIpc.previous())}><SkipBack size={20} fill="currentColor" /></button>
               <button type="button" className="pp" aria-label={np.playing ? "Pause" : "Lecture"} onClick={() => void run(musicIpc.toggle())}>
@@ -165,7 +219,7 @@ export function MusicCard({ onAccounts, onColors }: { onAccounts?: () => void; o
         ) : (
           <Empty icon={Music} tint="#ff7448" role="status">Rien en lecture</Empty>
         )}
-        {error && <p className="mu-err" role="alert">{error}</p>}
+        {(error || pinErr) && <p className="mu-err" role="alert">{error ?? pinErr}</p>}
 
         {view == null ? (
           <p className="mu-note" role="status">Chargement des playlists…</p>
@@ -186,27 +240,27 @@ export function MusicCard({ onAccounts, onColors }: { onAccounts?: () => void; o
                   ))}
                 </ul>
               )}
-            <div className="mu-foot">
-              {devices.data.length > 0 && (
-                <select aria-label="Appareil" value={active?.id ?? ""} onChange={(e) => void run(musicIpc.transfer(e.target.value)).then(devices.reload)}>
-                  {!active && <option value="" disabled>Appareil…</option>}
-                  {devices.data.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-                </select>
-              )}
-              <button type="button" className="mu-more" aria-label="Choisir les playlists" aria-expanded={menu} aria-controls={menuId} onClick={() => setMenu(!menu)}><MoreHorizontal size={16} /></button>
-            </div>
-            {menu && (
-              <ul id={menuId} className="mu-menu" aria-label="Playlists épinglées">
-                {view.all.map((p) => {
-                  const pinned = view.favorites.some((f) => f.id === p.id);
-                  return (
+            <div ref={footRef} className="mu-bottom">
+              <div className="mu-foot">
+                {devices.length > 0 && (
+                  <select aria-label="Appareil" value={active?.id ?? ""} onFocus={loadDevices}
+                    onChange={(e) => void run(musicIpc.transfer(e.target.value)).then(loadDevices)}>
+                    {!active && <option value="" disabled>Appareil…</option>}
+                    {devices.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                  </select>
+                )}
+                <button type="button" className="mu-more" aria-label="Choisir les playlists" aria-expanded={menu} aria-controls={menuId} onClick={() => setMenu(!menu)}><MoreHorizontal size={16} /></button>
+              </div>
+              {menu && (
+                <ul id={menuId} className="mu-menu" aria-label="Playlists épinglées">
+                  {view.all.map((p) => (
                     <li key={p.id}>
-                      <label><input type="checkbox" checked={pinned} disabled={!pinned && view.favorites.length >= MAX_FAVORITES} onChange={() => togglePin(p.id)} />{p.name}</label>
+                      <label><input type="checkbox" checked={view.favorites.some((f) => f.id === p.id)} onChange={() => togglePin(p.id)} />{p.name}</label>
                     </li>
-                  );
-                })}
-              </ul>
-            )}
+                  ))}
+                </ul>
+              )}
+            </div>
           </>
         )}
       </div>
@@ -218,11 +272,12 @@ export function MusicCard({ onAccounts, onColors }: { onAccounts?: () => void; o
 export function Ambient({ colors }: { colors: string[] }) {
   const [layers, setLayers] = useState<{ id: number; colors: string[]; out: boolean }[]>([]);
   const seq = useRef(0);
-  const key = colors.slice(0, 3).join();
+  const safe = safeColors(colors);
+  const key = safe.join();
   useEffect(() => {
     const id = ++seq.current;
-    if (id === 1 && colors.length < 3) return; // rien à fondre au premier rendu : aucune minuterie
-    setLayers((ls) => [...ls.map((l) => ({ ...l, out: true })), ...(colors.length >= 3 ? [{ id, colors: colors.slice(0, 3), out: false }] : [])]);
+    if (id === 1 && safe.length < 3) return; // rien à fondre au premier rendu : aucune minuterie
+    setLayers((ls) => [...ls.map((l) => ({ ...l, out: true })), ...(safe.length >= 3 ? [{ id, colors: safe, out: false }] : [])]);
     const t = setTimeout(() => setLayers((ls) => ls.filter((l) => !l.out)), 1300);
     return () => clearTimeout(t);
   }, [key]); // eslint-disable-line react-hooks/exhaustive-deps

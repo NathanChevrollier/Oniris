@@ -11,6 +11,7 @@ pub mod music;
 pub mod projects;
 pub mod reminders;
 pub mod search;
+pub mod sites;
 pub mod smtc;
 pub mod notes;
 pub mod timers;

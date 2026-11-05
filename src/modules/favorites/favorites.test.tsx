@@ -4,11 +4,13 @@ import { it, expect, vi, afterEach, beforeEach } from "vitest";
 import { FavoritesCard, hueOf } from "./FavoritesCard";
 import { favoritesIpc, importIpc, formatReport, type Favorite } from "./api";
 import { contrastRatio, hslToRgb, SAT, LIGHT, DARK } from "./contrast";
+import { sitesIpc } from "../sites/api";
 import { usePanelStore } from "../../panel/store";
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 beforeEach(() => {
   usePanelStore.setState({ open: true });
+  vi.spyOn(sitesIpc, "list").mockResolvedValue([]); // la section Sites a ses propres tests
   // jsdom n'a pas PointerEvent : MouseEvent porte clientX/clientY.
   (window as unknown as { PointerEvent: unknown }).PointerEvent ??= MouseEvent;
   // Tuiles de 50 px alignées sur une ligne : la tuile i occupe [50i, 50i+50).

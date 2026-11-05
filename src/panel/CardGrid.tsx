@@ -11,7 +11,7 @@ const SLOTS: Record<SlotId, { title: string; span: 3 | 4 | 5 | 6; icon: LucideIc
   agenda: { title: "Agenda", span: 3, icon: CalendarDays, tint: "#ffd60a" },
   projects: { title: "Projets", span: 6, icon: FolderGit2, tint: "#30d158", hint: "Reprendre là où tu t'étais arrêté" },
   pc: { title: "Ce PC", span: 3, icon: Cpu, tint: "#64d2ff" },
-  vps: { title: "Favoris", span: 3, icon: Server, tint: "#bf5af2", hint: "Tes sites, d'un coup d'œil" },
+  vps: { title: "VPS et favoris", span: 3, icon: Server, tint: "#bf5af2", hint: "Tes sites, d'un coup d'œil" },
   notes: { title: "Notes", span: 4, icon: StickyNote, tint: "#ffd60a" },
   clipboard: { title: "Presse-papiers", span: 5, icon: ClipboardList, tint: "#64d2ff" },
   timer: { title: "Minuteur", span: 3, icon: Timer, tint: "#ff7448" },

@@ -48,6 +48,8 @@
     "allow-projects-resume",
     "dialog:allow-open",
     "allow-weather-get",
+    "allow-sites-list",
+    "allow-sites-set",
     "allow-index-status",
     "allow-search-query",
     "allow-search-open",

@@ -81,6 +81,16 @@ L'historique reste sur ton PC ; il n'est envoyé nulle part. Ses limites :
 - tu peux désactiver l'historique à tout moment : clic droit sur l'icône d'Oniris dans la zone de notification, puis décoche « Historique du presse-papiers ». Plus rien n'est lu ni enregistré ensuite. Les éléments déjà gardés restent jusqu'à ce que tu les supprimes ou que la purge les retire ;
 - il est purgé automatiquement, au démarrage d'Oniris et après chaque copie : les éléments plus vieux que la durée choisie (7 jours par défaut) et ceux au-delà du nombre maximal (200 par défaut) sont supprimés, sauf ceux que tu as épinglés. Ici, la suppression est réelle : l'élément est effacé de la base.
 
+## Sondes des sites
+
+Si tu ajoutes des sites dans la carte « VPS et favoris », Oniris envoie **chaque minute** une requête `GET` simple à chacun de ces sites, et seulement à eux, pour savoir s'ils répondent et en combien de temps :
+
+- aucun cookie n'est envoyé ni conservé, et rien d'autre qu'une requête ordinaire (l'agent annoncé est `Oniris-sonde/<version>`) ; Oniris lit au plus 64 Ko de la réponse, puis l'abandonne sans la garder ;
+- la base garde, pour chaque site, la date, le code de réponse et le temps de réponse, pendant **24 heures** au plus ; la purge est faite à chaque relève ;
+- en cas de panne ou de lenteur, Oniris t'envoie une notification Windows locale avec le nom que tu as donné au site ; rien n'est envoyé à un tiers ;
+- les journaux techniques ne contiennent ni adresse ni nom de site ;
+- sans site dans la liste, Oniris n'envoie aucune requête de ce genre.
+
 ## À venir
 
 Ces fonctions n'existent pas encore. Chacune ajoutera sa propre section ici avant d'être disponible :

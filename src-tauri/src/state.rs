@@ -110,6 +110,9 @@ impl AppState {
         let media: Arc<dyn oniris_core::music::MediaControl> = Arc::new(crate::modules::smtc::Smtc);
         let spotify = oniris_core::music::tools::Web::new(db.clone(), events.clone(), accounts.clone(), oniris_core::music::spotify::Client::new(account_http.clone()));
         tools.extend(oniris_core::music::tools::all(&media, &spotify));
+        let handle = app.clone();
+        let sites: oniris_core::sites::tools::Source = Arc::new(move || crate::modules::sites::list(&handle.state::<AppState>()));
+        tools.push(Arc::new(oniris_core::sites::tools::Status { source: sites }));
         let broker = Arc::new(ToolBroker::new(db.clone(), clock, tools)?);
         broker.mark_interrupted();
         broker.expire_stale();

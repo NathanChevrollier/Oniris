@@ -11,6 +11,9 @@ export type HotkeySetting = {
   key: string;
 };
 
+/** Miroir de `oniris_core::Site` : `url` en http(s) (300), `name` de 1 à 40 caractères, `slow_ms` 300..=10000. */
+export type Site = { name: string; url: string; slow_ms: number };
+
 export type Settings = {
   user_name: string;
   hotkey: HotkeySetting;
@@ -43,6 +46,8 @@ export type Settings = {
   spotify_client_id: string;
   /** Intervalle de relève des mails, 2..=5 minutes. */
   mail_poll_minutes: number;
+  /** Sites surveillés (sondes toutes les 60 s), 30 au plus. */
+  sites: Site[];
 };
 
 const RESUME_NORMAL = "Reprends là où tu en étais sur ce projet. Appuie-toi sur le plan de développement et l'historique git. Commence par me dire où on en est.";
@@ -72,6 +77,7 @@ export const DEFAULT_SETTINGS: Settings = {
   google_client_id: "",
   spotify_client_id: "",
   mail_poll_minutes: 3,
+  sites: [],
 };
 
 /** Paramètres courants : chargés au montage, puis suivis via `oniris://settings`. */

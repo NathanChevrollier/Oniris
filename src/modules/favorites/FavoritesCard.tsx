@@ -7,6 +7,7 @@ import { useToolAction } from "../../lib/toolAction";
 import { favoritesIpc, type Favorite } from "./api";
 import { DARK, LIGHT, hsl } from "./contrast";
 import { ImportMenu } from "./ImportMenu";
+import { SitesSection } from "../sites/SitesSection";
 import "./favorites.css";
 
 const UNAVAILABLE = "Favoris indisponibles, réessaie.";
@@ -195,7 +196,8 @@ export function FavoritesCard() {
   };
 
   return (
-    <Card title="Favoris" span={3} delay={0.3}>
+    <Card title="VPS et favoris" span={3} delay={0.3}>
+      <SitesSection />
       <div ref={root}>
         {list.length === 0 && (
           <>

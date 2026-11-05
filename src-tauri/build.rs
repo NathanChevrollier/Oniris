@@ -46,6 +46,8 @@ fn main() {
         "projects_set_roots",
         "projects_resume",
         "weather_get",
+        "sites_list",
+        "sites_set",
         "index_status",
         "search_query",
         "search_open",

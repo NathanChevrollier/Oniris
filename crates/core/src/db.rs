@@ -214,6 +214,18 @@ Migration {
         PRIMARY KEY(account_id, calendar_id, id)
     ) STRICT;
     CREATE INDEX external_events_start ON external_events(start_ms);",
+},
+Migration {
+    version: 16,
+    // Sondes des sites surveillés (`site` = URL), gardées 24 h. `ms` et `status` vides : pas de réponse.
+    sql: "CREATE TABLE probes (
+        site TEXT NOT NULL,
+        at_ms INTEGER NOT NULL,
+        ms INTEGER,
+        status INTEGER,
+        ok INTEGER NOT NULL
+    ) STRICT;
+    CREATE INDEX probes_site_at ON probes(site, at_ms);",
 }];
 
 pub fn open_db(path: &Path) -> Result<Connection, CoreError> {

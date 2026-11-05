@@ -1,0 +1,24 @@
+.sites{margin:0 0 8px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+.sites-head{display:flex;align-items:center;justify-content:space-between;gap:6px}
+.sites-count{margin:0;font:600 10.5px var(--font);letter-spacing:.04em;text-transform:uppercase;color:var(--txt3)}
+.card .sites-edit{width:20px;height:20px;margin:0;padding:0;display:grid;place-items:center;border:0;border-radius:999px;background:none;color:var(--txt3);cursor:pointer}
+.card .sites-edit:hover,.card .sites-edit[aria-pressed="true"]{background:rgba(255,255,255,.1);color:var(--txt)}
+.card .sites-edit:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+.sites-empty{margin:6px 0 0;font:12px var(--font);color:var(--txt2)}
+.site-list{list-style:none;margin:6px 0 0;padding:0;display:flex;flex-direction:column;gap:5px;max-height:132px;overflow-y:auto;scrollbar-width:thin}
+.site{display:flex;align-items:center;gap:8px;min-height:18px;font:12px var(--font);color:var(--txt)}
+.site-dot{flex:none;width:8px;height:8px;border-radius:50%;background:var(--txt3)}
+.site-dot.up{background:#30d158;box-shadow:0 0 6px rgba(48,209,88,.55)}
+.site-dot.slow{background:#ff9f0a;box-shadow:0 0 6px rgba(255,159,10,.55)}
+.site-dot.down{background:#ff453a;box-shadow:0 0 6px rgba(255,69,58,.55)}
+.site-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.site-spark{flex:none;width:48px;height:14px;color:var(--txt3)}
+.site:has(.site-dot.slow) .site-spark{color:#ff9f0a}
+.site:has(.site-dot.down) .site-spark{color:#ff453a}
+.site-ms{flex:none;min-width:44px;text-align:right;font:11px var(--font);font-variant-numeric:tabular-nums;color:var(--txt2)}
+.card .site-del{flex:none;width:18px;height:18px;margin:0;padding:0;display:grid;place-items:center;border:0;border-radius:999px;background:rgba(255,255,255,.08);color:var(--txt2);cursor:pointer}
+.card .site-del:hover,.card .site-del:focus-visible{background:rgba(255,69,58,.3);color:var(--txt);outline:0}
+.site-form{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+.site-form input{padding:6px 10px;border-radius:12px;border:1px solid var(--line);background:rgba(255,255,255,.06);color:var(--txt);font:12.5px var(--font);outline:0}
+.site-form input:focus{border-color:rgba(255,140,100,.35)}
+.site-form button{align-self:flex-start;margin-top:0;display:inline-flex;align-items:center;gap:4px}

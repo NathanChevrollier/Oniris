@@ -19,6 +19,46 @@ impl Default for HotkeySetting {
     }
 }
 
+/// Site surveillé : `url` en http(s), `slow_ms` : seuil de lenteur.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Site {
+    pub name: String,
+    pub url: String,
+    #[serde(default = "default_slow_ms")]
+    pub slow_ms: u32,
+}
+
+fn default_slow_ms() -> u32 { 1500 }
+
+const MAX_SITES: usize = 30;
+
+/// Rogne, puis : nom non vide (40), URL http(s) avec hôte (300), seuil 300..=10000, pas de doublon d'URL.
+fn check_sites(sites: &mut [Site]) -> Result<(), String> {
+    for s in sites.iter_mut() {
+        s.name = s.name.trim().to_string();
+        s.url = s.url.trim().to_string();
+    }
+    if sites.len() > MAX_SITES {
+        return Err(format!("sites : {MAX_SITES} au plus"));
+    }
+    for (i, s) in sites.iter().enumerate() {
+        let http = url::Url::parse(&s.url).ok().filter(|u| matches!(u.scheme(), "http" | "https") && u.host_str().is_some());
+        if http.is_none() || s.url.chars().count() > 300 {
+            return Err("sites : adresse http(s) de 300 caractères au plus".into());
+        }
+        if s.name.is_empty() || s.name.chars().count() > 40 {
+            return Err("sites : nom de 1 à 40 caractères".into());
+        }
+        if !(300..=10_000).contains(&s.slow_ms) {
+            return Err("sites : seuil de lenteur hors de 300..=10000 ms".into());
+        }
+        if sites[..i].iter().any(|o| o.url == s.url) {
+            return Err("sites : adresse déjà surveillée".into());
+        }
+    }
+    Ok(())
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
@@ -51,6 +91,8 @@ pub struct Settings {
     pub spotify_client_id: String,
     /// Intervalle de relève des mails, 2..=5 minutes.
     pub mail_poll_minutes: u8,
+    /// Sites surveillés par sondes toutes les 60 s (30 au plus).
+    pub sites: Vec<Site>,
 }
 
 impl Default for Settings {
@@ -79,6 +121,7 @@ impl Default for Settings {
             google_client_id: String::new(),
             spotify_client_id: String::new(),
             mail_poll_minutes: 3,
+            sites: Vec::new(),
         }
     }
 }
@@ -235,6 +278,10 @@ impl Settings {
                 errs.push(format!("{field} : 200 caractères au plus, sans espace"));
                 *id = def.clone();
             }
+        }
+        if let Err(e) = check_sites(&mut self.sites) {
+            errs.push(e);
+            self.sites = d.sites.clone();
         }
         if let Err(e) = check_hotkey(&self.hotkey) {
             errs.push(e);
@@ -394,6 +441,27 @@ mod tests {
         assert_eq!(s.spotify_client_id, "abc");
         let d = Settings::default();
         assert_eq!((d.google_client_id.as_str(), d.spotify_client_id.as_str()), ("", ""));
+    }
+    #[test] fn sites_http_seulement_et_30_au_plus() {
+        let site = |n: &str, u: &str| Site { name: n.into(), url: u.into(), slow_ms: 1500 };
+        let with = |v: Vec<Site>| Settings { sites: v, ..Settings::default() }.validate();
+        assert!(with(vec![site("Blog", "https://blog.example.org"), site("Nexus", "http://nexus.example.com:8080/health")]).is_ok());
+        for u in ["ftp://x.example.com", "javascript:alert(1)", "file:///C:/x", "example.com", "https://", "https://x.example.com/".repeat(20).as_str()] {
+            assert!(with(vec![site("X", u)]).is_err(), "{u}");
+        }
+        assert!(with(vec![site("  ", "https://a.example.com")]).is_err());
+        assert!(with(vec![site(&"n".repeat(41), "https://a.example.com")]).is_err());
+        assert!(with(vec![Site { slow_ms: 299, ..site("A", "https://a.example.com") }]).is_err());
+        assert!(with(vec![Site { slow_ms: 10_001, ..site("A", "https://a.example.com") }]).is_err());
+        assert!(with(vec![site("A", "https://a.example.com"), site("B", "https://a.example.com")]).is_err());
+        let many = |n: usize| (0..n).map(|i| site("S", &format!("https://s{i}.example.com"))).collect::<Vec<_>>();
+        assert!(with(many(30)).is_ok());
+        assert!(with(many(31)).is_err());
+        let mut s = Settings { sites: vec![site(" A ", " https://a.example.com ")], ..Settings::default() };
+        assert!(s.fix().is_empty());
+        assert_eq!((s.sites[0].name.as_str(), s.sites[0].url.as_str()), ("A", "https://a.example.com"));
+        let s: Settings = serde_json::from_str(r#"{"sites":[{"name":"A","url":"https://a.example.com"}]}"#).unwrap();
+        assert_eq!(s.sites[0].slow_ms, 1500);
     }
     #[test] fn invites_de_reprise_par_defaut() {
         let d = Settings::default();

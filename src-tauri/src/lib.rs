@@ -78,6 +78,8 @@ pub fn run() {
             modules::projects::projects_set_roots,
             modules::projects::projects_resume,
             modules::weather::weather_get,
+            modules::sites::sites_list,
+            modules::sites::sites_set,
             modules::accounts::accounts_list,
             modules::accounts::accounts_set_google_app,
             modules::accounts::accounts_set_spotify_app,
@@ -140,6 +142,7 @@ pub fn run() {
             modules::clipboard::start(app.handle());
             modules::weather::load(app.handle());
             modules::mail::start(app.handle());
+            modules::sites::start(app.handle());
             modules::favicons::spawn(app.handle());
             modules::apps::start(app.handle());
             modules::projects::refresh(app.handle());
@@ -173,6 +176,7 @@ mod tests {
             ("projects.rs", include_str!("modules/projects.rs")),
             ("reminders.rs", include_str!("modules/reminders.rs")),
             ("search.rs", include_str!("modules/search.rs")),
+            ("sites.rs", include_str!("modules/sites.rs")),
             ("smtc.rs", include_str!("modules/smtc.rs")),
             ("system.rs", include_str!("modules/system.rs")),
             ("timers.rs", include_str!("modules/timers.rs")),

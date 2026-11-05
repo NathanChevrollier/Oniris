@@ -46,7 +46,7 @@ mod tests {
     #[test]
     fn la_pilule_n_ecoute_que_les_minuteurs() {
         assert_eq!(windows_for(Topic::Timers), ["panel", "pill"]);
-        for t in [Topic::Agenda, Topic::Reminders, Topic::Notes, Topic::Clipboard, Topic::Weather, Topic::Favorites, Topic::Projects, Topic::Accounts, Topic::Mail, Topic::Music] {
+        for t in [Topic::Agenda, Topic::Reminders, Topic::Notes, Topic::Clipboard, Topic::Weather, Topic::Favorites, Topic::Projects, Topic::Accounts, Topic::Mail, Topic::Music, Topic::Sites] {
             assert_eq!(windows_for(t), ["panel"], "{t:?}");
         }
     }

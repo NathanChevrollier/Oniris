@@ -43,18 +43,26 @@ pub fn apply_settings(app: &AppHandle, mut settings: Settings) -> Result<(), Str
     let state = app.state::<AppState>();
     settings.weather_city = settings.weather_city.trim().to_string();
     settings.normalize_roots();
+    for s in &mut settings.sites {
+        s.name = s.name.trim().to_string();
+        s.url = s.url.trim().to_string();
+    }
     settings.validate()?;
     save_settings(&state.db.lock(), &settings).map_err(|e| e.to_string())?;
     let cfg = HotkeyConfig::from_setting(&settings.hotkey, settings.hold_threshold_ms as u64);
     *state.hotkey.write() = cfg;
     let hide = settings.hide_pill_in_fullscreen;
     let changed = state.hide_pill_in_fullscreen.swap(hide, Ordering::SeqCst) != hide;
-    let old_city = std::mem::replace(&mut *state.settings.write(), settings.clone()).weather_city;
+    let old = std::mem::replace(&mut *state.settings.write(), settings.clone());
     crate::tray::sync_autostart(app, settings.autostart);
     if changed {
         fullscreen::reapply(app);
     }
-    if old_city != settings.weather_city {
+    if old.sites != settings.sites {
+        crate::modules::sites::wake(); // sonde tout de suite les nouveaux sites, ou se rendort si la liste est vide
+        state.events.changed(oniris_core::events::Topic::Sites);
+    }
+    if old.weather_city != settings.weather_city {
         crate::modules::weather::city_changed(app, &settings.weather_city);
     }
     app.emit("oniris://settings", settings).map_err(|e| e.to_string())

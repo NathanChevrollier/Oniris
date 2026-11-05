@@ -46,7 +46,7 @@ impl std::fmt::Debug for ExtEvent {
 pub struct EventsPage {
     /// Événements à ajouter ou mettre à jour (les `cancelled` n'y sont pas).
     pub items: Vec<ExtEvent>,
-    /// Ids des événements annulés : à retirer.
+    /// Ids des événements annulés ou devenus illisibles : à retirer.
     pub cancelled: Vec<String>,
     pub next_sync_token: Option<String>,
     /// 410 : le syncToken est périmé, resynchronisation complète.
@@ -175,10 +175,13 @@ impl Client {
                 return Ok(EventsPage { gone: true, ..Default::default() });
             };
             for r in l.items {
+                let id = r.id.clone();
                 if r.status == "cancelled" {
-                    out.cancelled.push(r.id);
+                    out.cancelled.push(id);
                 } else if let Some(e) = convert(r) {
                     out.items.push(e);
+                } else {
+                    out.cancelled.push(id); // heure illisible : on retire l'ancienne ligne plutôt que de la garder périmée
                 }
             }
             out.next_sync_token = l.next_sync_token;

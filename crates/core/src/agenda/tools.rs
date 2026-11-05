@@ -136,9 +136,10 @@ impl Tool for DeleteEvent {
 #[async_trait]
 impl Tool for ListEvents {
     fn spec(&self) -> ToolSpec {
-        spec("agenda.list", "Liste les événements qui chevauchent [from_ms, to_ms[.",
+        // Contient aussi les titres des agendas Google : le journal ne garde que le nombre d'éléments.
+        ToolSpec { sensitive_output: true, ..spec("agenda.list", "Liste les événements qui chevauchent [from_ms, to_ms[.",
             json!({"type":"object","required":["from_ms","to_ms"],"properties":{"from_ms":{"type":"integer"},"to_ms":{"type":"integer"}}}),
-            Permission::Free)
+            Permission::Free) }
     }
     fn describe(&self, _: &Value) -> ConfirmationText { low("Lire l'agenda") }
     async fn run(&self, args: &Value) -> Result<ToolResult, ToolError> {

@@ -1,0 +1,7 @@
+{
+  "kind": "calendar#events",
+  "nextSyncToken": "S2",
+  "items": [
+    {"kind": "calendar#event", "id": "e1", "status": "confirmed", "summary": "Sans heure"}
+  ]
+}

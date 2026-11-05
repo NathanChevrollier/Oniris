@@ -21,3 +21,17 @@ export function useFocusCard(card: string, input: RefObject<HTMLInputElement | n
     return () => window.removeEventListener(EVENT, on);
   }, [card, input, setQuery]);
 }
+
+const PALETTE = "oniris:focus-palette";
+
+/** Met le focus dans la barre de commande avec `text` (ex. « p » + espace : portée projets). */
+export const focusPalette = (text: string) => window.dispatchEvent(new CustomEvent<string>(PALETTE, { detail: text }));
+
+/** Côté palette : appelle `on(text)` à chaque demande. */
+export function usePaletteFocus(on: (text: string) => void) {
+  useEffect(() => {
+    const h = (e: Event) => on((e as CustomEvent<string>).detail);
+    window.addEventListener(PALETTE, h);
+    return () => window.removeEventListener(PALETTE, h);
+  });
+}

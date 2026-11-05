@@ -66,14 +66,13 @@ fn git_info(path: &Path) -> (Option<String>, u32, [u8; 14]) {
     (st.branch, st.dirty, git::bucket_activity(&times, now_ms() / 1000))
 }
 
-/// Racines des projets : `projects_roots`, à défaut les racines de recherche (dossier utilisateur si vides).
+/// Dossiers de projets configurés ; vide tant que l'utilisateur n'en a pas choisi (aucun balayage du dossier utilisateur).
+fn roots_of(configured: &[String]) -> Vec<PathBuf> {
+    configured.iter().map(PathBuf::from).collect()
+}
+
 fn roots(app: &AppHandle) -> Vec<PathBuf> {
-    let s = app.state::<AppState>().settings.read().clone();
-    if s.projects_roots.is_empty() {
-        crate::modules::indexer::effective_roots(&s.search_roots, &[], dirs::home_dir())
-    } else {
-        s.projects_roots.iter().map(PathBuf::from).collect()
-    }
+    roots_of(&app.state::<AppState>().settings.read().projects_roots)
 }
 
 /// Range `list` dans le cache (préférences relues pour ne pas écraser un épinglage fait pendant le calcul).
@@ -168,11 +167,26 @@ pub async fn projects_hide(state: State<'_, AppState>, path: String, hidden: boo
     set_pref(&state, &path, |p| p.hidden = hidden, |c| projects::set_hidden(c, &path, hidden))
 }
 
+/// Chaque racine doit être un dossier existant, pas une racine de lecteur : elles élargissent la liste blanche de `files.open`/`files.run`.
+fn check_roots(roots: &[String]) -> Result<(), String> {
+    for r in roots {
+        let p = Path::new(r.trim());
+        if p.parent().is_none() {
+            return Err("Choisis un dossier précis, pas un lecteur entier.".into());
+        }
+        if !p.is_dir() {
+            return Err("Ce dossier n'existe pas.".into());
+        }
+    }
+    Ok(())
+}
+
 /// Enregistre les dossiers de projets (validés comme tout réglage) puis relance l'inventaire.
 /// shortcut : l'indexeur de fichiers n'est pas redémarrable à chaud (`OnceLock`) ; les nouvelles racines n'y
 /// entrent qu'au prochain lancement, la liste des projets, elle, est à jour tout de suite.
 #[tauri::command]
 pub async fn projects_set_roots(app: AppHandle, roots: Vec<String>) -> Result<(), String> {
+    check_roots(&roots)?;
     let mut s = app.state::<AppState>().settings.read().clone();
     s.projects_roots = roots;
     crate::commands::apply_settings(&app, s)?;
@@ -245,6 +259,27 @@ mod tests {
         full.extend(args.iter().map(|s| s.to_string()));
         let mut c = spawn_hidden("git", &full, None, &[]).unwrap();
         assert!(c.wait().unwrap().success(), "git {args:?}");
+    }
+
+    #[test]
+    fn sans_racine_configuree_aucun_projet() {
+        assert!(roots_of(&[]).is_empty());
+        assert!(projects::detect(&roots_of(&[])).is_empty());
+        assert_eq!(roots_of(&["/p".into()]), [PathBuf::from("/p")]);
+    }
+
+    #[test]
+    fn racines_refusees_si_absentes_fichiers_ou_lecteurs() {
+        let t = tempfile::tempdir().unwrap();
+        let f = t.path().join("f.txt");
+        std::fs::write(&f, "x").unwrap();
+        let s = |p: &Path| p.to_string_lossy().into_owned();
+        assert!(check_roots(&[s(t.path())]).is_ok());
+        assert!(check_roots(&[]).is_ok());
+        assert_eq!(check_roots(&[s(&t.path().join("absent"))]).unwrap_err(), "Ce dossier n'existe pas.");
+        assert!(check_roots(&[s(&f)]).is_err(), "un fichier n'est pas un dossier");
+        assert!(check_roots(&[s(t.path()), "/".into()]).unwrap_err().contains("lecteur"));
+        assert!(check_roots(&[r"C:\".into()]).is_err() && check_roots(&[r"D:\".into()]).is_err());
     }
 
     #[test]

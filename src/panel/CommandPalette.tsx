@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { AppWindow, FileText, Folder, FolderGit2, Slash, Star, StickyNote, type LucideIcon } from "lucide-react";
 import { invoke, ipc, isTauri, listen, type ToolOutcome } from "../lib/ipc";
 import { friendlyError, useToolAction } from "../lib/toolAction";
-import { focusCard } from "../lib/focusCard";
+import { focusCard, usePaletteFocus } from "../lib/focusCard";
 import { timersIpc } from "../modules/timers/api";
 import { notesIpc } from "../modules/notes/api";
 import { remindersIpc } from "../modules/reminders/api";
@@ -268,6 +268,8 @@ export function CommandPalette({ onCommand = () => {} }: { onCommand?: (text: st
     const un = listen<IndexStatus>("oniris://index", (e) => setIndexed(e.payload.state === "indexing" ? e.payload.done : null));
     return () => { window.removeEventListener("keydown", onKey); un.then((f) => f()); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  usePaletteFocus((t) => { input.current?.focus(); edit(t); });
 
   useEffect(() => { document.getElementById(`pal-opt-${sel}`)?.scrollIntoView?.({ block: "nearest" }); }, [sel, hits]);
 

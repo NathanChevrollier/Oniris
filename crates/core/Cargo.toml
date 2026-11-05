@@ -26,9 +26,9 @@ base64 = "0.23"
 tempfile = "3"
 getrandom = "0.3"
 ammonia = "4.2.4"
+chrono-tz = "0.10"
 
 [dev-dependencies]
-chrono-tz = "0.10"
 percent-encoding = "2"
 tokio = { version = "1", features = ["rt", "macros", "time"] }
 wiremock = "0.6"

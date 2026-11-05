@@ -1,0 +1,9 @@
+{
+  "kind": "calendar#events",
+  "nextSyncToken": "S2",
+  "items": [
+    {"kind": "calendar#event", "id": "e1", "status": "confirmed", "summary": "Revue de sprint",
+     "start": {"dateTime": "2026-11-12T15:00:00+01:00"}, "end": {"dateTime": "2026-11-12T16:00:00+01:00"}},
+    {"kind": "calendar#event", "id": "e3", "status": "cancelled"}
+  ]
+}

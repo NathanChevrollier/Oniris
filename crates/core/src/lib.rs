@@ -1,6 +1,7 @@
 pub mod accounts;
 pub mod agenda;
 pub mod apps;
+pub mod calendar;
 pub mod launch;
 pub mod mail;
 pub mod clipboard;

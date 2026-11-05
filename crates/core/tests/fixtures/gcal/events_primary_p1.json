@@ -1,0 +1,12 @@
+{
+  "kind": "calendar#events",
+  "timeZone": "Europe/Paris",
+  "nextPageToken": "p2",
+  "items": [
+    {"kind": "calendar#event", "id": "e1", "status": "confirmed", "summary": "Revue de sprint", "location": "Salle 4",
+     "start": {"dateTime": "2026-11-12T10:00:00+01:00", "timeZone": "Europe/Paris"},
+     "end": {"dateTime": "2026-11-12T11:30:00+01:00", "timeZone": "Europe/Paris"}},
+    {"kind": "calendar#event", "id": "e2", "status": "confirmed", "summary": "Conge",
+     "start": {"date": "2026-11-14"}, "end": {"date": "2026-11-16"}}
+  ]
+}

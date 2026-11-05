@@ -198,6 +198,22 @@ Migration {
         last_ok_ms INTEGER,
         backoff_until_ms INTEGER
     ) STRICT;",
+},
+Migration {
+    version: 15,
+    // Événements des agendas Google (lecture seule). Le syncToken de chaque agenda est dans `kv` : gcal_sync/<compte>/<agenda>.
+    sql: "CREATE TABLE external_events (
+        account_id INTEGER NOT NULL,
+        id TEXT NOT NULL,
+        calendar_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        start_ms INTEGER NOT NULL,
+        end_ms INTEGER NOT NULL,
+        all_day INTEGER NOT NULL,
+        location TEXT,
+        PRIMARY KEY(account_id, calendar_id, id)
+    ) STRICT;
+    CREATE INDEX external_events_start ON external_events(start_ms);",
 }];
 
 pub fn open_db(path: &Path) -> Result<Connection, CoreError> {

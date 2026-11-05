@@ -1,0 +1,8 @@
+{
+  "kind": "calendar#events",
+  "nextSyncToken": "S3",
+  "items": [
+    {"kind": "calendar#event", "id": "n1", "status": "confirmed", "summary": "Seul survivant",
+     "start": {"dateTime": "2026-11-20T10:00:00+01:00"}, "end": {"dateTime": "2026-11-20T11:00:00+01:00"}}
+  ]
+}

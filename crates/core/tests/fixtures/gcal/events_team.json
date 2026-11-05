@@ -1,0 +1,8 @@
+{
+  "kind": "calendar#events",
+  "nextSyncToken": "T1",
+  "items": [
+    {"kind": "calendar#event", "id": "t1", "status": "confirmed", "summary": "Point equipe",
+     "start": {"dateTime": "2026-11-12T08:00:00Z"}, "end": {"dateTime": "2026-11-12T08:30:00Z"}}
+  ]
+}

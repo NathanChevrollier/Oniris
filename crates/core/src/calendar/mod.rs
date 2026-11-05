@@ -1,0 +1,309 @@
+//! Agendas Google en lecture seule : relève incrémentale (`syncToken` dans `kv`, clé `gcal_sync/<compte>/<agenda>`)
+//! vers la table `external_events` (migration 15), et outil `calendar.list`. Journal : ids et nombres seulement.
+pub mod google;
+
+use crate::accounts::TokenCache;
+use crate::agenda::{between, Event};
+use crate::kv;
+use crate::mail::sync::SyncError;
+use crate::oauth::OAuthError;
+use crate::tools::helpers::{failed, low, parse, spec};
+use crate::tools::{ConfirmationText, Permission, Tool, ToolError, ToolResult, ToolSpec};
+use crate::Db;
+use async_trait::async_trait;
+use google::{Client, EventsPage, GcalError, Query};
+use rusqlite::{params, OptionalExtension};
+use serde::Deserialize;
+use serde_json::{json, Value};
+use std::sync::Arc;
+
+const DAY_MS: i64 = 86_400_000;
+/// Fenêtre relevée : de aujourd'hui − 7 jours à + 60 jours.
+const PAST_MS: i64 = 7 * DAY_MS;
+const FUTURE_MS: i64 = 60 * DAY_MS;
+
+fn map(e: GcalError) -> SyncError {
+    match e {
+        GcalError::Network => SyncError::Network,
+        GcalError::Unauthorized => SyncError::Unauthorized,
+        e => SyncError::Other(e.to_string()),
+    }
+}
+
+fn sync_key(account_id: i64, cal: &str) -> String { format!("gcal_sync/{account_id}/{cal}") }
+
+/// Relève les agendas cochés d'un compte ; `true` si des lignes ont changé. Le jeton refusé (401) est oublié.
+pub async fn run(db: &Db, client: &Client, tokens: &TokenCache, account_id: i64, now: i64) -> Result<bool, SyncError> {
+    let token = tokens.access_token(account_id).await.map_err(|e| match e {
+        OAuthError::Revoked => SyncError::Revoked,
+        OAuthError::Network => SyncError::Network,
+        OAuthError::Other(m) => SyncError::Other(m),
+    })?;
+    let r = sync(db, client, &token, account_id, now).await;
+    match &r {
+        Ok(changed) => tracing::info!("agenda Google : compte {account_id} : {}", if *changed { "mis à jour" } else { "inchangé" }),
+        Err(e) => tracing::warn!("agenda Google : compte {account_id} : {e}"),
+    }
+    if r == Err(SyncError::Unauthorized) {
+        tokens.forget(account_id);
+    }
+    r
+}
+
+/// Page suivante depuis le syncToken, sinon (ou après un 410) la fenêtre complète. `None` : agenda disparu (404).
+async fn fetch(client: &Client, token: &str, cal: &str, stored: Option<String>, now: i64) -> Result<Option<(EventsPage, bool)>, GcalError> {
+    let missing = |e: GcalError| if e == GcalError::Status(404) { Ok(None) } else { Err(e) };
+    if let Some(t) = &stored {
+        match client.events(token, cal, Query::Sync(t)).await {
+            Ok(p) if !p.gone => return Ok(Some((p, false))),
+            Ok(_) => tracing::info!("agenda Google : syncToken périmé, resynchronisation complète"),
+            Err(e) => return missing(e),
+        }
+    }
+    match client.events(token, cal, Query::Window { time_min_ms: now - PAST_MS, time_max_ms: now + FUTURE_MS }).await {
+        Ok(p) => Ok(Some((p, true))),
+        Err(e) => missing(e),
+    }
+}
+
+async fn sync(db: &Db, client: &Client, token: &str, account_id: i64, now: i64) -> Result<bool, SyncError> {
+    let cals = client.list_calendars(token).await.map_err(map)?;
+    let mut changed = false;
+    for cal in &cals {
+        let key = sync_key(account_id, cal);
+        let stored = { kv::get(&db.lock(), &key).map_err(|e| SyncError::Other(e.to_string()))?.map(|(v, _)| v) };
+        let Some((page, full)) = fetch(client, token, cal, stored, now).await.map_err(map)? else { continue };
+        let c = db.lock();
+        let tx = c.unchecked_transaction()?;
+        if !tx.query_row("SELECT 1 FROM accounts WHERE id = ?1", [account_id], |_| Ok(())).optional()?.is_some() {
+            return Ok(false); // compte supprimé pendant la relève : rien à réécrire
+        }
+        let mut n = 0;
+        if full {
+            n += tx.execute("DELETE FROM external_events WHERE account_id = ?1 AND calendar_id = ?2", params![account_id, cal])?;
+        }
+        for id in &page.cancelled {
+            n += tx.execute("DELETE FROM external_events WHERE account_id = ?1 AND calendar_id = ?2 AND id = ?3", params![account_id, cal, id])?;
+        }
+        for e in &page.items {
+            n += tx.execute(
+                "INSERT INTO external_events(account_id, id, calendar_id, title, start_ms, end_ms, all_day, location) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+                 ON CONFLICT(account_id, calendar_id, id) DO UPDATE SET title = excluded.title, start_ms = excluded.start_ms,
+                 end_ms = excluded.end_ms, all_day = excluded.all_day, location = excluded.location",
+                params![account_id, e.id, cal, e.title, e.start_ms, e.end_ms, e.all_day, e.location],
+            )?;
+        }
+        match &page.next_sync_token {
+            Some(t) => kv::set(&tx, &key, t, now),
+            None => kv::delete(&tx, &key),
+        }
+        .map_err(|e| SyncError::Other(e.to_string()))?;
+        tx.commit()?;
+        changed |= n > 0;
+    }
+    Ok(forget_old(db, account_id, &cals, now)? | changed)
+}
+
+/// Retire les agendas décochés (lignes et syncToken) et les événements finis depuis plus de 7 jours.
+fn forget_old(db: &Db, account_id: i64, kept: &[String], now: i64) -> rusqlite::Result<bool> {
+    let c = db.lock();
+    let tx = c.unchecked_transaction()?;
+    let known: Vec<String> = tx.prepare("SELECT DISTINCT calendar_id FROM external_events WHERE account_id = ?1")?
+        .query_map([account_id], |r| r.get(0))?.collect::<Result<_, _>>()?;
+    let mut n = 0;
+    for cal in known.iter().filter(|k| !kept.contains(k)) {
+        n += tx.execute("DELETE FROM external_events WHERE account_id = ?1 AND calendar_id = ?2", params![account_id, cal])?;
+        tx.execute("DELETE FROM kv WHERE key = ?1", [sync_key(account_id, cal)])?;
+    }
+    n += tx.execute("DELETE FROM external_events WHERE account_id = ?1 AND end_ms < ?2", params![account_id, now - PAST_MS])?;
+    tx.commit()?;
+    Ok(n > 0)
+}
+
+/// `calendar.list { from_ms, to_ms }` : événements locaux et Google qui chevauchent [from_ms, to_ms[ (lecture seule, libre).
+pub struct ListEvents { pub db: Db }
+
+#[derive(Deserialize)]
+struct ListArgs { from_ms: i64, to_ms: i64 }
+
+#[async_trait]
+impl Tool for ListEvents {
+    fn spec(&self) -> ToolSpec {
+        spec("calendar.list", "Liste les événements locaux et des agendas Google qui chevauchent [from_ms, to_ms[ (lecture seule).",
+            json!({"type":"object","required":["from_ms","to_ms"],"properties":{"from_ms":{"type":"integer"},"to_ms":{"type":"integer"}}}),
+            Permission::Free)
+    }
+    fn describe(&self, _: &Value) -> ConfirmationText { low("Lire les agendas") }
+    async fn run(&self, args: &Value) -> Result<ToolResult, ToolError> {
+        let a: ListArgs = parse(args)?;
+        let list: Vec<Event> = between(&self.db.lock(), a.from_ms, a.to_ms).map_err(failed)?;
+        Ok(ToolResult { output: json!(list), undo: None })
+    }
+}
+
+pub fn all(db: &Db) -> Vec<Arc<dyn Tool>> { vec![Arc::new(ListEvents { db: db.clone() })] }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::accounts::{self, Configs};
+    use crate::events::NoEvents;
+    use crate::oauth::{self, Provider, ProviderConfig, Tokens};
+    use crate::secrets::{account_key, MemorySecrets, SecretStore};
+    use crate::tools::{Origin, Provenance, ToolBroker, ToolCall, ToolOutcome};
+    use chrono::{Local, NaiveDate, TimeZone};
+    use wiremock::matchers::{header, method, path, query_param, query_param_is_missing};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    macro_rules! fixture { ($n:literal) => { include_str!(concat!("../../tests/fixtures/gcal/", $n)) } }
+    const NOW: i64 = 1_794_000_000_000;
+    const EVENTS: &str = "/calendar/v3/calendars/moi@gmail.com/events";
+    const TEAM: &str = "/calendar/v3/calendars/team@group.calendar.google.com/events";
+
+    fn body(s: &str) -> ResponseTemplate { ResponseTemplate::new(200).set_body_raw(s.to_string(), "application/json") }
+    fn local_midnight(y: i32, m: u32, d: u32) -> i64 {
+        Local.from_local_datetime(&NaiveDate::from_ymd_opt(y, m, d).unwrap().and_hms_opt(0, 0, 0).unwrap()).earliest().unwrap().timestamp_millis()
+    }
+
+    struct Env { db: Db, client: Client, tokens: TokenCache, id: i64 }
+
+    fn env(server: &MockServer, with_token: bool) -> Env {
+        let db: Db = Arc::new(parking_lot::Mutex::new(crate::test_util::db()));
+        let id = accounts::add(&db.lock(), Provider::Google, "moi@gmail.com", 1).unwrap();
+        let secrets = Arc::new(MemorySecrets::default());
+        secrets.set(&account_key(id), "r").unwrap();
+        let url = format!("{}/token", server.uri());
+        let configs: Configs = Arc::new(move |_| Some(ProviderConfig { token_url: url.clone(), ..oauth::providers::google("g", Some("s".into())) }));
+        let tokens = TokenCache::new(db.clone(), secrets, Arc::new(NoEvents), reqwest::Client::new(), configs);
+        if with_token {
+            tokens.insert(id, Tokens { access: "tok".into(), refresh: None, expires_at_ms: crate::time_util::now_ms() + 3_600_000 }).unwrap();
+        }
+        Env { db, client: Client { http: reqwest::Client::new(), base: server.uri() }, tokens, id }
+    }
+
+    impl Env {
+        async fn run(&self) -> Result<bool, SyncError> { run(&self.db, &self.client, &self.tokens, self.id, NOW).await }
+        /// (calendar, id, start, end, all_day) triés.
+        fn rows(&self) -> Vec<(String, String, i64, i64, bool)> {
+            self.db.lock().prepare("SELECT calendar_id, id, start_ms, end_ms, all_day FROM external_events ORDER BY calendar_id, id").unwrap()
+                .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get::<_, i64>(4)? != 0))).unwrap().map(Result::unwrap).collect()
+        }
+        fn token(&self, cal: &str) -> Option<String> { kv::get(&self.db.lock(), &sync_key(self.id, cal)).unwrap().map(|v| v.0) }
+    }
+
+    async fn calendars(server: &MockServer) {
+        Mock::given(method("GET")).and(path("/calendar/v3/users/me/calendarList")).and(header("authorization", "Bearer tok"))
+            .respond_with(body(fixture!("calendar_list.json"))).mount(server).await;
+    }
+
+    #[tokio::test]
+    async fn complete_puis_incrementale_puis_410_resynchronise() {
+        let server = MockServer::start().await;
+        calendars(&server).await;
+        // Complète : deux pages, un annulé retiré, jour entier, fuseau sans décalage.
+        Mock::given(method("GET")).and(path(EVENTS)).and(query_param("singleEvents", "true")).and(query_param_is_missing("syncToken")).and(query_param_is_missing("pageToken"))
+            .respond_with(body(fixture!("events_primary_p1.json"))).up_to_n_times(1).mount(&server).await;
+        Mock::given(method("GET")).and(path(EVENTS)).and(query_param("pageToken", "p2")).and(query_param("timeMin", google::rfc3339(NOW - PAST_MS)))
+            .respond_with(body(fixture!("events_primary_p2.json"))).up_to_n_times(1).mount(&server).await;
+        Mock::given(method("GET")).and(path(TEAM)).and(query_param_is_missing("syncToken")).respond_with(body(fixture!("events_team.json"))).up_to_n_times(1).mount(&server).await;
+        let e = env(&server, true);
+        assert!(e.run().await.unwrap());
+        let d = |y, m, dd| local_midnight(y, m, dd);
+        let ny = chrono_tz::America::New_York.with_ymd_and_hms(2026, 11, 13, 9, 0, 0).unwrap().timestamp_millis();
+        let paris = |h| chrono_tz::Europe::Paris.with_ymd_and_hms(2026, 11, 12, h, 0, 0).unwrap().timestamp_millis();
+        let rows = e.rows();
+        assert_eq!(rows.len(), 4, "e4 annulé et agenda décoché absents : {rows:?}");
+        assert_eq!(rows[0], ("moi@gmail.com".into(), "e1".into(), paris(10), paris(10) + 90 * 60_000, false), "décalage +01:00 converti tel quel");
+        assert_eq!(rows[1], ("moi@gmail.com".into(), "e2".into(), d(2026, 11, 14), d(2026, 11, 16), true), "journée entière : minuit local, fin exclue");
+        assert_eq!(rows[2], ("moi@gmail.com".into(), "e3".into(), ny, ny + 3_600_000, false), "fuseau de l'événement");
+        assert_eq!(rows[3].1, "t1");
+        assert_eq!((e.token("moi@gmail.com").as_deref(), e.token("team@group.calendar.google.com").as_deref()), (Some("S1"), Some("T1")));
+
+        // Incrémentale : e1 déplacé, e3 annulé, rien pour l'équipe.
+        Mock::given(method("GET")).and(path(EVENTS)).and(query_param("syncToken", "S1")).respond_with(body(fixture!("events_primary_sync.json"))).up_to_n_times(1).expect(1).mount(&server).await;
+        Mock::given(method("GET")).and(path(TEAM)).and(query_param("syncToken", "T1")).respond_with(body(fixture!("events_empty_sync.json"))).up_to_n_times(1).expect(1).mount(&server).await;
+        assert!(e.run().await.unwrap());
+        let rows = e.rows();
+        assert_eq!(rows.iter().map(|r| r.1.as_str()).collect::<Vec<_>>(), ["e1", "e2", "t1"]);
+        assert_eq!(rows[0].2, paris(15));
+        assert_eq!(e.token("moi@gmail.com").as_deref(), Some("S2"));
+        assert_eq!(e.token("team@group.calendar.google.com").as_deref(), Some("T2"));
+
+        // 410 : resynchronisation complète de cet agenda, sans doublon ; l'ancien contenu disparaît.
+        Mock::given(method("GET")).and(path(EVENTS)).and(query_param("syncToken", "S2")).respond_with(ResponseTemplate::new(410)).up_to_n_times(1).expect(1).mount(&server).await;
+        Mock::given(method("GET")).and(path(EVENTS)).and(query_param_is_missing("syncToken")).respond_with(body(fixture!("events_primary_resync.json"))).up_to_n_times(1).expect(1).mount(&server).await;
+        Mock::given(method("GET")).and(path(TEAM)).and(query_param("syncToken", "T2")).respond_with(body(fixture!("events_empty_sync.json"))).mount(&server).await;
+        assert!(e.run().await.unwrap());
+        assert_eq!(e.rows().iter().map(|r| r.1.as_str()).collect::<Vec<_>>(), ["n1", "t1"]);
+        assert_eq!(e.token("moi@gmail.com").as_deref(), Some("S3"));
+    }
+
+    #[tokio::test]
+    async fn agenda_decoche_et_vieux_evenements_retires() {
+        let server = MockServer::start().await;
+        calendars(&server).await;
+        Mock::given(method("GET")).and(path(EVENTS)).respond_with(body(fixture!("events_empty_sync.json"))).mount(&server).await;
+        Mock::given(method("GET")).and(path(TEAM)).respond_with(body(fixture!("events_empty_sync.json"))).mount(&server).await;
+        let e = env(&server, true);
+        let now = NOW;
+        {
+            let c = e.db.lock();
+            let ins = |cal: &str, id: &str, end: i64| c.execute("INSERT INTO external_events VALUES (?1, ?2, ?3, 't', ?4, ?4, 0, NULL)", params![e.id, id, cal, end]).unwrap();
+            ins("ancien@x", "a", now);
+            ins("moi@gmail.com", "vieux", now - 8 * DAY_MS);
+            ins("moi@gmail.com", "recent", now - DAY_MS);
+            kv::set(&c, &sync_key(e.id, "ancien@x"), "z", 1).unwrap();
+            kv::set(&c, &sync_key(e.id, "moi@gmail.com"), "x", 1).unwrap(); // incrémentale : rien n'est remplacé
+        }
+        assert!(e.run().await.unwrap());
+        assert_eq!(e.rows().iter().map(|r| r.1.as_str()).collect::<Vec<_>>(), ["recent"]);
+        assert_eq!(e.token("ancien@x"), None);
+    }
+
+    #[tokio::test]
+    async fn erreurs_et_revocation_sans_ecriture() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST")).and(path("/token")).respond_with(ResponseTemplate::new(400).set_body_raw(r#"{"error":"invalid_grant"}"#, "application/json")).mount(&server).await;
+        let e = env(&server, false);
+        assert_eq!(e.run().await, Err(SyncError::Revoked));
+        assert_eq!(accounts::get(&e.db.lock(), e.id).unwrap().unwrap().status, accounts::Status::Reauth);
+        let server = MockServer::start().await;
+        Mock::given(method("GET")).and(path("/calendar/v3/users/me/calendarList")).respond_with(ResponseTemplate::new(503)).mount(&server).await;
+        let e = env(&server, true);
+        assert_eq!(e.run().await, Err(SyncError::Network));
+        let server = MockServer::start().await;
+        Mock::given(method("GET")).and(path("/calendar/v3/users/me/calendarList")).respond_with(ResponseTemplate::new(403)).mount(&server).await;
+        let e = env(&server, true);
+        assert!(matches!(e.run().await, Err(SyncError::Other(m)) if m.contains("403")));
+        assert!(e.rows().is_empty());
+    }
+
+    #[tokio::test]
+    async fn outil_list_fusionne_et_refuse_de_deplacer_ou_supprimer_un_externe() {
+        let db: Db = Arc::new(parking_lot::Mutex::new(crate::test_util::db()));
+        let acct = accounts::add(&db.lock(), Provider::Google, "moi@gmail.com", 1).unwrap();
+        crate::agenda::insert(&db.lock(), &crate::agenda::NewEvent { title: "local".into(), start_ms: 2000, ..Default::default() }).unwrap();
+        db.lock().execute("INSERT INTO external_events VALUES (?1, 'g', 'c', 'ext', 1000, 3000, 0, NULL)", [acct]).unwrap();
+        let ev: Arc<dyn crate::events::Events> = Arc::new(NoEvents);
+        let mut tools = all(&db);
+        tools.extend(crate::agenda::tools::all(&db, &ev));
+        let broker = ToolBroker::new(db.clone(), Arc::new(|| 0), tools).unwrap();
+        let call = |tool: &str, args: Value| ToolCall { tool: tool.into(), args, provenance: Provenance::User, origin: Origin::User };
+        let ToolOutcome::Done { output, .. } = broker.call(call("calendar.list", json!({"from_ms": 0, "to_ms": 10_000}))).await else { panic!() };
+        let l = output.as_array().unwrap();
+        assert_eq!(l.iter().map(|e| (e["source"].as_str().unwrap(), e["readonly"].as_bool().unwrap())).collect::<Vec<_>>(), [("google", true), ("local", false)], "tri par heure");
+        let key = l[0]["key"].clone();
+        for (tool, args) in [
+            ("agenda.move_event", json!({"id": 0, "start_ms": 5})), ("agenda.move_event", json!({"id": key, "start_ms": 5})),
+            ("agenda.delete_event", json!({"id": 0})), ("agenda.delete_event", json!({"id": key})),
+        ] {
+            let mut out = broker.call(call(tool, args.clone())).await;
+            if let ToolOutcome::NeedsConfirmation(p) = out {
+                out = broker.resolve(p.action_id, true).await; // la suppression passe par l'accord, puis échoue
+            }
+            assert!(matches!(out, ToolOutcome::Failed { .. }), "{tool} {args}");
+        }
+        let n: i64 = db.lock().query_row("SELECT start_ms FROM external_events", [], |r| r.get(0)).unwrap();
+        assert_eq!(n, 1000);
+    }
+}

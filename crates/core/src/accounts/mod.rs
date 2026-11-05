@@ -88,12 +88,14 @@ pub fn set_status(c: &Connection, id: i64, status: Status) -> Result<(), CoreErr
     Ok(())
 }
 
-/// Supprime le compte, ses mails en cache et son jeton d'actualisation (le secret part même si la ligne manquait).
-/// La tâche agenda y ajoute l'effacement de ses lignes.
+/// Supprime le compte, ses mails et événements Google en cache, ses jetons de synchronisation et son jeton
+/// d'actualisation (le secret part même si la ligne manquait).
 pub fn remove(c: &Connection, secrets: &dyn SecretStore, id: i64) -> Result<(), CoreError> {
     let tx = c.unchecked_transaction()?;
     tx.execute("DELETE FROM mails WHERE account_id = ?1", [id])?;
     tx.execute("DELETE FROM mail_sync WHERE account_id = ?1", [id])?;
+    tx.execute("DELETE FROM external_events WHERE account_id = ?1", [id])?;
+    tx.execute("DELETE FROM kv WHERE key LIKE ?1", [format!("gcal_sync/{id}/%")])?;
     let n = tx.execute("DELETE FROM accounts WHERE id = ?1", [id])?;
     tx.commit()?;
     secrets.delete(&account_key(id));
@@ -316,6 +318,10 @@ mod tests {
         assert_eq!(list(&c).unwrap()[8].color, PALETTE[0]);
     }
 
+    fn left_of(c: &Connection, t: &str) -> Option<String> {
+        c.query_row(&format!("SELECT group_concat(account_id) FROM {t}"), [], |r| r.get(0)).unwrap()
+    }
+
     #[test] fn supprimer_efface_le_secret() {
         let c = crate::test_util::db();
         let s = MemorySecrets::default();
@@ -326,7 +332,14 @@ mod tests {
             c.execute("INSERT INTO mails VALUES (?1, 'm', 't', 'n', 'a', 's', '', 1, 0, '[]', 'read', 'heuristic', NULL, NULL)", [acc]).unwrap();
             c.execute("INSERT INTO mail_sync(account_id, history_id) VALUES (?1, '1')", [acc]).unwrap();
         }
+        for acc in [id, id + 1] {
+            c.execute("INSERT INTO external_events VALUES (?1, 'e', 'cal', 't', 1, 2, 0, NULL)", [acc]).unwrap();
+            crate::kv::set(&c, &format!("gcal_sync/{acc}/cal"), "tok", 1).unwrap();
+        }
         remove(&c, &s, id).unwrap();
+        assert_eq!(left_of(&c, "external_events"), Some((id + 1).to_string()));
+        let keys: String = c.query_row("SELECT group_concat(key) FROM kv WHERE key LIKE 'gcal_sync/%'", [], |r| r.get(0)).unwrap();
+        assert_eq!(keys, format!("gcal_sync/{}/cal", id + 1), "jetons de synchronisation du compte effacés, pas ceux des autres");
         let left = |t: &str| c.query_row(&format!("SELECT group_concat(account_id) FROM {t}"), [], |r| r.get::<_, Option<String>>(0)).unwrap();
         assert_eq!((left("mails"), left("mail_sync")), (Some((id + 1).to_string()), Some((id + 1).to_string())), "mails du compte effacés, pas ceux des autres");
         assert_eq!(s.get(&account_key(id)), None);

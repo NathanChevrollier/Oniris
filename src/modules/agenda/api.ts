@@ -2,17 +2,25 @@ import { invoke, isTauri, type ToolOutcome } from "../../lib/ipc";
 
 /** Miroir de `oniris_core::agenda::Event`. */
 export type AgendaEvent = {
-  id: number; title: string; start_ms: number; end_ms: number | null; all_day: boolean; color: string | null; notes: string | null;
+  /** Table `events` ; 0 pour un événement Google (utiliser `key`). */
+  id: number;
+  /** Clé unique : `l:<id>` (local) ou `g:<compte>:<agenda>:<id>` (Google). */
+  key: string;
+  source: "local" | "google";
+  /** Lecture seule : ni déplaçable ni supprimable. */
+  readonly: boolean;
+  title: string; start_ms: number; end_ms: number | null; all_day: boolean; color: string | null; notes: string | null;
 };
 
 /** Événements factices pour l'aperçu navigateur (hors Tauri) : aujourd'hui et quelques jours du mois. */
 function fakeEvents(): AgendaEvent[] {
   const at = (dayOffset: number, h: number, m = 0) => { const d = new Date(); d.setDate(d.getDate() + dayOffset); d.setHours(h, m, 0, 0); return d.getTime(); };
   const mk = (id: number, title: string, start_ms: number, end_ms: number | null = null): AgendaEvent =>
-    ({ id, title, start_ms, end_ms, all_day: false, color: null, notes: null });
+    ({ id, key: `l:${id}`, source: "local", readonly: false, title, start_ms, end_ms, all_day: false, color: null, notes: null });
   return [
     mk(1, "Point projet", at(0, 10), at(0, 11)),
     mk(2, "Dentiste", at(0, 14, 30), at(0, 15, 15)),
+    { ...mk(0, "Réunion d'équipe", at(0, 16), at(0, 17)), key: "g:1:cal:fake", source: "google", readonly: true, color: "#0a84ff" },
     mk(3, "Déjeuner avec Léa", at(2, 12, 30), at(2, 14)),
     mk(4, "Livraison serveur", at(5, 9)),
     mk(5, "Revue de code", at(9, 16), at(9, 17)),

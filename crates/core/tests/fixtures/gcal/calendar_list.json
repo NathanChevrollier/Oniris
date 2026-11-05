@@ -1,0 +1,8 @@
+{
+  "kind": "calendar#calendarList",
+  "items": [
+    {"kind": "calendar#calendarListEntry", "id": "moi@gmail.com", "summary": "moi@gmail.com", "primary": true, "selected": true, "accessRole": "owner"},
+    {"kind": "calendar#calendarListEntry", "id": "team@group.calendar.google.com", "summary": "Equipe", "selected": true, "accessRole": "reader"},
+    {"kind": "calendar#calendarListEntry", "id": "fr.french@group.v.calendar.google.com", "summary": "Jours feries", "accessRole": "reader"}
+  ]
+}

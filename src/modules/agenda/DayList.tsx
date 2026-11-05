@@ -8,10 +8,11 @@ export function DayList({ events, onDelete }: { events: AgendaEvent[]; onDelete:
   return (
     <ul className="dl">
       {events.map((e) => (
-        <li key={e.id}>
+        <li key={e.key}>
           <time>{e.all_day ? "Journée" : hhmm(new Date(e.start_ms))}</time>
+          {e.source === "google" && <i className="dot" style={{ background: e.color ?? undefined }} />}
           <span>{e.title}</span>
-          <button type="button" aria-label={`Supprimer ${e.title}`} onClick={() => onDelete(e.id)}><X size={13} /></button>
+          {!e.readonly && <button type="button" aria-label={`Supprimer ${e.title}`} onClick={() => onDelete(e.id)}><X size={13} /></button>}
         </li>
       ))}
     </ul>

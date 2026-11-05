@@ -4,6 +4,7 @@ use crate::state::AppState;
 use oniris_core::accounts::{self, Status};
 use oniris_core::events::Topic;
 use crate::commands::dispatch_as_user;
+use oniris_core::calendar;
 use oniris_core::mail::gmail;
 use oniris_core::mail::tools::{self as mail_tools, MailRow};
 use oniris_core::tools::ToolOutcome;
@@ -122,7 +123,9 @@ fn gmail_ok(app: &AppHandle) -> Result<Vec<i64>, oniris_core::CoreError> {
 }
 
 async fn run(app: AppHandle) {
-    let client = gmail::Client::new(app.state::<AppState>().account_http.clone());
+    let http = app.state::<AppState>().account_http.clone();
+    let client = gmail::Client::new(http.clone());
+    let gcal = calendar::google::Client::new(http);
     let mut sched = Schedule::default();
     loop {
         let ids = match gmail_ok(&app) {
@@ -148,19 +151,26 @@ async fn run(app: AppHandle) {
         for id in sched.due(now_ms(), force) {
             let now = now_ms();
             sched.started(id, now);
-            let (app, client) = (app.clone(), client.clone());
+            let (app, client, gcal) = (app.clone(), client.clone(), gcal.clone());
             let handle = set.spawn(async move {
                 let st = app.state::<AppState>();
-                sync::run(&st.db, &client, &st.accounts, id, now).await
+                let mail = sync::run(&st.db, &client, &st.accounts, id, now).await;
+                // Agenda Google à la suite des mails, mêmes cadence et délai ; une erreur de l'un n'empêche pas l'autre.
+                let cal = if mail == Err(SyncError::Revoked) { Ok(false) } else { calendar::run(&st.db, &gcal, &st.accounts, id, now).await };
+                (mail, cal)
             });
             tasks.insert(handle.id(), (id, now));
         }
         *LAST_RUNS.lock() = sched.last_runs();
         let st = app.state::<AppState>();
-        let mut changed = false;
+        let (mut changed, mut agenda_changed) = (false, false);
         while let Some(done) = set.join_next_with_id().await {
             let (task, result) = match done {
-                Ok((task, r)) => (task, Some(r)),
+                Ok((task, (mail, cal))) => {
+                    agenda_changed |= cal == Ok(true);
+                    // Accès révoqué vu par l'agenda : le compte est déjà en `reauth`, on ne le relève plus.
+                    (task, Some(if cal == Err(SyncError::Revoked) { Err(SyncError::Revoked) } else { mail }))
+                }
                 Err(e) => (e.id(), None),
             };
             let Some((id, now)) = tasks.remove(&task) else { continue };
@@ -179,6 +189,9 @@ async fn run(app: AppHandle) {
         }
         if changed {
             st.events.changed(Topic::Mail);
+        }
+        if agenda_changed {
+            st.events.changed(Topic::Agenda);
         }
         let wait = sched.next().map_or(0, |at| (at - now_ms()).max(0)) as u64;
         tokio::select! {

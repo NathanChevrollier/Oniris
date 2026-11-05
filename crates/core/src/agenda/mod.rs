@@ -6,9 +6,19 @@ use chrono::{Datelike, Duration, Local, TimeZone};
 use rusqlite::{params, Connection, Row};
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Source { Local, Google }
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Event {
+    /// Identifiant de la table `events` ; 0 pour un événement externe (ses ids sont du texte : voir `key`).
     pub id: i64,
+    /// Clé unique côté interface : `l:<id>` (local) ou `g:<compte>:<agenda>:<id>` (Google).
+    pub key: String,
+    pub source: Source,
+    /// Lecture seule : ni déplaçable ni supprimable (tout événement Google).
+    pub readonly: bool,
     pub title: String,
     pub start_ms: i64,
     pub end_ms: Option<i64>,
@@ -30,8 +40,9 @@ pub struct NewEvent {
 const COLS: &str = "id, title, start_ms, end_ms, all_day, color, notes";
 
 fn from_row(r: &Row) -> rusqlite::Result<Event> {
+    let id: i64 = r.get(0)?;
     Ok(Event {
-        id: r.get(0)?, title: r.get(1)?, start_ms: r.get(2)?, end_ms: r.get(3)?,
+        id, key: format!("l:{id}"), source: Source::Local, readonly: false, title: r.get(1)?, start_ms: r.get(2)?, end_ms: r.get(3)?,
         all_day: r.get::<_, i64>(4)? != 0, color: r.get(5)?, notes: r.get(6)?,
     })
 }
@@ -62,7 +73,8 @@ pub fn get(c: &Connection, id: i64) -> Result<Option<Event>, CoreError> {
     Ok(rows.next().transpose()?)
 }
 
-/// Événements qui chevauchent [from_ms, to_ms[. La fin est exclue : finir pile à `from_ms` ne compte pas ;
+/// Événements locaux puis externes (Google, couleur du compte) qui chevauchent [from_ms, to_ms[, triés par heure.
+/// La fin est exclue : finir pile à `from_ms` ne compte pas ;
 /// un événement sans fin (ou de durée nulle) est un instant, compté si `start_ms >= from_ms`.
 pub fn between(c: &Connection, from_ms: i64, to_ms: i64) -> Result<Vec<Event>, CoreError> {
     let mut st = c.prepare(&format!(
@@ -71,8 +83,27 @@ pub fn between(c: &Connection, from_ms: i64, to_ms: i64) -> Result<Vec<Event>, C
              (end_ms > start_ms AND end_ms > ?1) OR ((end_ms IS NULL OR end_ms = start_ms) AND start_ms >= ?1))
          ORDER BY start_ms, id"
     ))?;
-    let rows = st.query_map([from_ms, to_ms], from_row)?;
-    Ok(rows.collect::<Result<_, _>>()?)
+    let mut all: Vec<Event> = st.query_map([from_ms, to_ms], from_row)?.collect::<Result<_, _>>()?;
+    // Les externes ont toujours une fin ; un instant (fin = début) suit la même règle que ci-dessus.
+    let mut st = c.prepare(
+        "SELECT e.account_id, e.calendar_id, e.id, e.title, e.start_ms, e.end_ms, e.all_day, a.color
+         FROM external_events e JOIN accounts a ON a.id = e.account_id
+         WHERE e.start_ms < ?2 AND ((e.end_ms > e.start_ms AND e.end_ms > ?1) OR (e.end_ms = e.start_ms AND e.start_ms >= ?1))
+         ORDER BY e.start_ms, e.account_id, e.calendar_id, e.id",
+    )?;
+    let ext = st.query_map([from_ms, to_ms], |r| {
+        let (acct, cal, id): (i64, String, String) = (r.get(0)?, r.get(1)?, r.get(2)?);
+        Ok(Event {
+            id: 0, key: format!("g:{acct}:{cal}:{id}"), source: Source::Google, readonly: true,
+            title: r.get(3)?, start_ms: r.get(4)?, end_ms: Some(r.get(5)?), all_day: r.get::<_, i64>(6)? != 0,
+            color: r.get(7)?, notes: None,
+        })
+    })?;
+    for e in ext {
+        all.push(e?);
+    }
+    all.sort_by_key(|e| e.start_ms); // stable : locaux avant externes à heure égale
+    Ok(all)
 }
 
 /// Jours (1..=31, heure locale) du mois [month_start_ms, month_end_ms[ qui portent au moins un événement.
@@ -163,5 +194,24 @@ mod tests {
         insert(&c, &ev("hors", ms(2026, 12, 2, 10), None)).unwrap();
         let days = days_with_events(&c, ms(2026, 11, 1, 0), ms(2026, 12, 1, 0)).unwrap();
         assert_eq!(days, vec![1, 12, 20, 21, 22]);
+    }
+
+    #[test]
+    fn fusion_triee_avec_les_externes_en_lecture_seule() {
+        let c = db();
+        let acct = crate::accounts::add(&c, crate::oauth::Provider::Google, "moi@gmail.com", 1).unwrap();
+        let color: String = c.query_row("SELECT color FROM accounts", [], |r| r.get(0)).unwrap();
+        let loc = insert(&c, &ev("local", ms(2026, 11, 12, 10), Some(ms(2026, 11, 12, 11)))).unwrap();
+        for (id, h) in [("b", 9), ("a", 14)] {
+            c.execute("INSERT INTO external_events VALUES (?1, ?2, 'cal', 't', ?3, ?4, 0, NULL)", params![acct, id, ms(2026, 11, 12, h), ms(2026, 11, 12, h + 1)]).unwrap();
+        }
+        // Hors fenêtre, et un compte supprimé (pas de jointure) : ignorés.
+        c.execute("INSERT INTO external_events VALUES (?1, 'z', 'cal', 't', ?2, ?3, 0, NULL)", params![acct, ms(2026, 11, 20, 9), ms(2026, 11, 20, 10)]).unwrap();
+        c.execute("INSERT INTO external_events VALUES (99, 'o', 'cal', 't', ?1, ?2, 0, NULL)", params![ms(2026, 11, 12, 12), ms(2026, 11, 12, 13)]).unwrap();
+        let got = between(&c, ms(2026, 11, 12, 0), ms(2026, 11, 13, 0)).unwrap();
+        assert_eq!(got.iter().map(|e| e.key.clone()).collect::<Vec<_>>(), [format!("g:{acct}:cal:b"), format!("l:{loc}"), format!("g:{acct}:cal:a")]);
+        assert_eq!(got.iter().map(|e| (e.source, e.readonly)).collect::<Vec<_>>(), [(Source::Google, true), (Source::Local, false), (Source::Google, true)]);
+        assert_eq!(got[0].color.as_deref(), Some(color.as_str()), "couleur du compte");
+        assert_eq!(days_with_events(&c, ms(2026, 11, 1, 0), ms(2026, 12, 1, 0)).unwrap(), vec![12, 20], "les points du calendrier incluent les externes");
     }
 }

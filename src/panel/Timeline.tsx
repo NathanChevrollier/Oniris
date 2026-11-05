@@ -2,7 +2,7 @@ import type { CSSProperties } from "react";
 import { hhmm, nowPosition, useNow } from "../lib/time";
 import { usePanelStore } from "./store";
 
-export type TimelineItem = { start: Date; end?: Date; label: string; kind: "event" | "reminder"; color?: string };
+export type TimelineItem = { start: Date; end?: Date; label: string; kind: "event" | "reminder"; color?: string; readonly?: boolean };
 
 /** Marqueur « maintenant », isolé : re-rendu à la minute, panneau ouvert uniquement. */
 function NowMarker({ startHour, endHour }: { startHour: number; endHour: number }) {
@@ -23,7 +23,7 @@ export function Timeline({ startHour, endHour, items }: { startHour: number; end
           return <div key={i} className="rem" title={it.label} style={{ left: `calc(${pct(it.start)}% - 4px)`, "--c": color } as CSSProperties} />;
         const end = it.end ?? new Date(it.start.getTime() + 3_600_000); // sans fin : une heure par défaut
         return (
-          <div key={i} className="ev" title={it.label}
+          <div key={i} className="ev" title={it.label} data-readonly={it.readonly || undefined}
             style={{ left: `${pct(it.start)}%`, width: `calc(${pct(end) - pct(it.start)}% - 4px)`, "--c": color } as CSSProperties}>
             {it.label} <small>{hhmm(it.start)}{it.end && `–${hhmm(it.end)}`}</small>
           </div>

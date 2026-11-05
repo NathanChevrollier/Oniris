@@ -1,0 +1,10 @@
+{
+  "kind": "calendar#events",
+  "nextSyncToken": "S1",
+  "items": [
+    {"kind": "calendar#event", "id": "e3", "status": "confirmed", "summary": "Appel New York",
+     "start": {"dateTime": "2026-11-13T09:00:00", "timeZone": "America/New_York"},
+     "end": {"dateTime": "2026-11-13T10:00:00", "timeZone": "America/New_York"}},
+    {"kind": "calendar#event", "id": "e4", "status": "cancelled"}
+  ]
+}

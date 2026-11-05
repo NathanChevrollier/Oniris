@@ -46,7 +46,7 @@ export function Panel({ onCommand = logCommand }: { onCommand?: (text: string) =
   const today = useTopic<AgendaEvent[]>("agenda", () => agendaIpc.between(...dayBounds(new Date())), NO_EVENTS, dayKey(now));
   // Les événements « journée entière » n'ont pas d'heure : ils restent dans la carte Agenda.
   const items = useMemo<TimelineItem[]>(() => today.data.filter((e) => !e.all_day).map((e) => ({
-    start: new Date(e.start_ms), end: e.end_ms == null ? undefined : new Date(e.end_ms), label: e.title, kind: "event", color: e.color ?? undefined,
+    start: new Date(e.start_ms), end: e.end_ms == null ? undefined : new Date(e.end_ms), label: e.title, kind: "event", color: e.color ?? undefined, readonly: e.readonly,
   })), [today.data]);
 
   const reminders = useTopic<Reminder[]>("reminders", remindersIpc.list, NO_REMINDERS, dayKey(now));

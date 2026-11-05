@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-projects-set-roots"
+description = "Enables the projects_set_roots command without any pre-configured scope."
+commands.allow = ["projects_set_roots"]
+
+[[permission]]
+identifier = "deny-projects-set-roots"
+description = "Denies the projects_set_roots command without any pre-configured scope."
+commands.deny = ["projects_set_roots"]

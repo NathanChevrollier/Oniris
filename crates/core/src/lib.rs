@@ -8,6 +8,7 @@ pub mod events;
 pub mod favorites;
 pub mod kv;
 pub mod notes;
+pub mod projects;
 pub mod reminders;
 pub mod search;
 pub mod system;

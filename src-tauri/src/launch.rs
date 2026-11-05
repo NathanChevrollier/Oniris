@@ -9,7 +9,6 @@ use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_APARTME
 use windows::Win32::UI::Shell::ShellExecuteW;
 use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
 
-#[allow(dead_code)] // utilisé par spawn_hidden (tâches suivantes)
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 const DETACHED_PROCESS: u32 = 0x0000_0008;
 
@@ -44,10 +43,17 @@ pub fn open_url(u: &str) {
     shell_open(u.into());
 }
 
-/// Outil console : sans fenêtre, arguments séparés (aucune chaîne shell).
-#[allow(dead_code)] // appelé par les tâches suivantes
-pub fn spawn_hidden(program: &str, args: &[String], cwd: Option<&Path>) -> std::io::Result<Child> {
-    spawn(program, args, cwd, CREATE_NO_WINDOW)
+/// Outil console : sans fenêtre, arguments séparés (aucune chaîne shell). Sortie standard capturée
+/// (`Child::stdout`), entrée et erreur à la poubelle ; `env` s'ajoute à l'environnement hérité.
+pub fn spawn_hidden(program: &str, args: &[String], cwd: Option<&Path>, env: &[(&str, &str)]) -> std::io::Result<Child> {
+    use std::process::Stdio;
+    let mut c = Command::new(program);
+    c.args(args).envs(env.iter().copied()).creation_flags(CREATE_NO_WINDOW);
+    c.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null());
+    if let Some(d) = cwd {
+        c.current_dir(d);
+    }
+    c.spawn()
 }
 
 /// Application graphique : détachée de notre console et de notre cycle de vie.

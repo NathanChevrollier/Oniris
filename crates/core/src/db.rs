@@ -148,6 +148,14 @@ Migration {
         created_ms INTEGER NOT NULL
     ) STRICT;
     CREATE UNIQUE INDEX favorites_url ON favorites(url) WHERE deleted = 0;",
+},
+Migration {
+    version: 12,
+    sql: "CREATE TABLE project_prefs (
+        path TEXT PRIMARY KEY,
+        pinned INTEGER NOT NULL DEFAULT 0,
+        hidden INTEGER NOT NULL DEFAULT 0
+    ) STRICT;",
 }];
 
 pub fn open_db(path: &Path) -> Result<Connection, CoreError> {

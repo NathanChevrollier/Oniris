@@ -357,6 +357,30 @@
           "markdownDescription": "Enables the pill_resize command without any pre-configured scope."
         },
         {
+          "description": "Enables the projects_hide command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-projects-hide",
+          "markdownDescription": "Enables the projects_hide command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the projects_list command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-projects-list",
+          "markdownDescription": "Enables the projects_list command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the projects_pin command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-projects-pin",
+          "markdownDescription": "Enables the projects_pin command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the projects_set_roots command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-projects-set-roots",
+          "markdownDescription": "Enables the projects_set_roots command without any pre-configured scope."
+        },
+        {
           "description": "Enables the reminders_complete command without any pre-configured scope.",
           "type": "string",
           "const": "allow-reminders-complete",
@@ -619,6 +643,30 @@
           "type": "string",
           "const": "deny-pill-resize",
           "markdownDescription": "Denies the pill_resize command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the projects_hide command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-projects-hide",
+          "markdownDescription": "Denies the projects_hide command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the projects_list command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-projects-list",
+          "markdownDescription": "Denies the projects_list command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the projects_pin command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-projects-pin",
+          "markdownDescription": "Denies the projects_pin command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the projects_set_roots command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-projects-set-roots",
+          "markdownDescription": "Denies the projects_set_roots command without any pre-configured scope."
         },
         {
           "description": "Denies the reminders_complete command without any pre-configured scope.",

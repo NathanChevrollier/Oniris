@@ -38,6 +38,8 @@ pub struct AppState {
     pub usage: RwLock<oniris_core::search::UsageMap>,
     /// Entrées de recherche des favoris, reconstruites sur `Topic::Favorites` (la frappe ne lit jamais la base).
     pub favorites: RwLock<Arc<Vec<oniris_core::search::Item>>>,
+    /// Inventaire des projets, recalculé en tâche de fond (`modules::projects`).
+    pub projects: RwLock<oniris_core::projects::ProjectsCache>,
     /// Plus récent numéro de requête reçu par `search_query` (les plus anciennes abandonnent).
     pub search_req: AtomicU32,
     /// Garde le journal fichier vivant (vidage à la fermeture).
@@ -78,6 +80,9 @@ impl AppState {
         });
         tools.extend(oniris_core::apps::tools::all(&opener, roots, &apps));
         tools.extend(oniris_core::favorites::tools::all(&db, &events, &opener));
+        let handle = app.clone();
+        let projects: oniris_core::projects::tools::Source = Arc::new(move || handle.state::<AppState>().projects.read().list.clone());
+        tools.extend(oniris_core::projects::tools::all(&projects));
         let broker = Arc::new(ToolBroker::new(db.clone(), clock, tools)?);
         broker.mark_interrupted();
         broker.expire_stale();
@@ -93,6 +98,7 @@ impl AppState {
             apps,
             usage: RwLock::new(usage),
             favorites: RwLock::new(Arc::new(favorites)),
+            projects: RwLock::default(),
             search_req: AtomicU32::new(0),
             http: oniris_core::weather::client()
                 .inspect_err(|e| tracing::error!("météo : client HTTP impossible, météo indisponible : {e}"))

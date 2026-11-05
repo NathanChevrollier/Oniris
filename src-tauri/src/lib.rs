@@ -70,6 +70,10 @@ pub fn run() {
             modules::favorites::favorites_open,
             modules::favorites::favorites_import_browsers,
             modules::favorites::favorites_import_file,
+            modules::projects::projects_list,
+            modules::projects::projects_pin,
+            modules::projects::projects_hide,
+            modules::projects::projects_set_roots,
             modules::weather::weather_get,
             modules::indexer::index_status,
             modules::search::search_query,
@@ -103,6 +107,7 @@ pub fn run() {
             modules::weather::load(app.handle());
             modules::favicons::spawn(app.handle());
             modules::apps::start(app.handle());
+            modules::projects::refresh(app.handle());
             let h = app.handle().clone();
             tauri::async_runtime::spawn_blocking(move || modules::indexer::start(&h));
             tray::build(app.handle())?;
@@ -127,6 +132,7 @@ mod tests {
             ("clipboard.rs", include_str!("modules/clipboard.rs")),
             ("favorites.rs", include_str!("modules/favorites.rs")),
             ("notes.rs", include_str!("modules/notes.rs")),
+            ("projects.rs", include_str!("modules/projects.rs")),
             ("reminders.rs", include_str!("modules/reminders.rs")),
             ("search.rs", include_str!("modules/search.rs")),
             ("system.rs", include_str!("modules/system.rs")),

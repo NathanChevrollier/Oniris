@@ -1,6 +1,6 @@
 //! Outils `files.open` et `apps.launch` (libres) ; l'ouverture réelle est injectée via `Opener`.
 use super::Inventory;
-use crate::launch::{is_executable, safe_path, Opener};
+use crate::launch::{is_clsid_dir, is_executable, safe_path, Opener};
 use crate::tools::helpers::{bad, low, parse, spec};
 use crate::tools::{ConfirmationText, Permission, Risk, Tool, ToolError, ToolResult, ToolSpec};
 use async_trait::async_trait;
@@ -55,7 +55,11 @@ impl Tool for FilesOpen {
 /// Chemin canonique (le seul à ouvrir) si l'argument est dans les racines.
 fn checked(a: &Value, roots: &Roots) -> Result<PathBuf, ToolError> {
     let PathArgs { path } = parse(a)?;
-    safe_path(&PathBuf::from(path), &roots()).ok_or_else(|| bad("chemin hors des dossiers autorisés"))
+    let canon = safe_path(&PathBuf::from(path), &roots()).ok_or_else(|| bad("chemin hors des dossiers autorisés"))?;
+    if is_clsid_dir(&canon) {
+        return Err(bad("dossier spécial refusé"));
+    }
+    Ok(canon)
 }
 
 #[async_trait]
@@ -64,8 +68,11 @@ impl Tool for FilesRun {
         spec("files.run", "Exécute un programme ou un script des dossiers de recherche (confirmation requise).", json!({"type":"object","properties":{"path":{"type":"string"}},"required":["path"]}), Permission::Confirm)
     }
     fn describe(&self, a: &Value) -> ConfirmationText {
-        let name = a["path"].as_str().and_then(|p| std::path::Path::new(p).file_name()).map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-        ConfirmationText { summary: format!("Exécuter {name}"), details: name, risk: Risk::High }
+        let p = std::path::Path::new(a["path"].as_str().unwrap_or_default());
+        let name = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        // Le dossier parent aide à repérer un homonyme ; ce texte va à l'écran de confirmation, jamais à tracing.
+        let dir = p.parent().map(|d| d.to_string_lossy().into_owned()).unwrap_or_default();
+        ConfirmationText { summary: format!("Exécuter {name} (dans {dir})"), details: name, risk: Risk::High }
     }
     async fn run(&self, a: &Value) -> Result<ToolResult, ToolError> {
         let canon = checked(a, &self.roots)?;
@@ -167,9 +174,13 @@ mod tests {
         assert!(fake.0.lock().is_empty());
         let exe = root.join("x.exe");
         let ToolOutcome::NeedsConfirmation(p) = call(&broker, "files.run", json!({"path": exe})).await else { panic!("Confirm attendu") };
-        assert!(p.text.summary.contains("x.exe") && p.text.risk == Risk::High);
+        assert!(p.text.summary.contains("x.exe") && p.text.summary.contains(root.to_string_lossy().as_ref()) && p.text.risk == Risk::High);
         assert!(fake.0.lock().is_empty(), "rien n'est ouvert avant confirmation");
         assert!(matches!(call(&broker, "files.open", json!({"path": root.join("dossier")})).await, ToolOutcome::Done { .. }));
         assert_eq!(fake.0.lock().len(), 1);
+        let clsid = root.join("Corbeille.{645FF040-5081-101B-9F08-00AA002F954E}");
+        std::fs::create_dir_all(&clsid).unwrap();
+        assert!(!matches!(call(&broker, "files.open", json!({"path": clsid})).await, ToolOutcome::Done { .. }));
+        assert_eq!(fake.0.lock().len(), 1, "jonction CLSID jamais ouverte");
     }
 }

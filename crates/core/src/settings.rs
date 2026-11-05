@@ -129,6 +129,21 @@ fn check_roots(roots: &[String], field: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Racines de projets : elles élargissent la liste blanche de `files.open`/`files.run`, donc ni racine de lecteur ni `..`.
+fn check_project_roots(roots: &[String]) -> Result<(), String> {
+    check_roots(roots, "dossiers de projets")?;
+    for r in roots {
+        let p = std::path::Path::new(r);
+        if p.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
+            return Err("dossiers de projets : '..' interdit".into());
+        }
+        if p.parent().is_none() {
+            return Err("dossiers de projets : choisis un dossier précis, pas un lecteur entier".into());
+        }
+    }
+    Ok(())
+}
+
 impl Settings {
     /// Rogne les dossiers, retire les vides et les doublons (casse ignorée, comme Windows). Sans erreur possible.
     pub fn normalize_roots(&mut self) {
@@ -182,11 +197,12 @@ impl Settings {
             self.weather_city = d.weather_city.clone();
         }
         self.normalize_roots();
+        // Peut viser un lecteur entier : élargit la liste blanche d'ouverture par choix.
         if let Err(e) = check_roots(&self.search_roots, "dossiers de recherche") {
             errs.push(e);
             self.search_roots = d.search_roots.clone();
         }
-        if let Err(e) = check_roots(&self.projects_roots, "dossiers de projets") {
+        if let Err(e) = check_project_roots(&self.projects_roots) {
             errs.push(e);
             self.projects_roots = d.projects_roots.clone();
         }
@@ -315,6 +331,11 @@ mod tests {
         assert!(bad(|s| s.projects_roots = roots(21)));
         assert!(bad(|s| s.search_roots = vec!["relatif\\dossier".into()]));
         assert!(bad(|s| s.projects_roots = vec![format!("C:\\{}", "d".repeat(258))]));
+        assert!(bad(|s| s.projects_roots = vec!["C:\\".into()]));
+        assert!(bad(|s| s.projects_roots = vec!["C:/".into()]));
+        assert!(bad(|s| s.projects_roots = vec!["C:\\Users\\..\\Windows".into()]));
+        assert!(bad(|s| s.projects_roots = vec!["C:\\a\\..\\..".into()]));
+        assert!(Settings { projects_roots: vec!["C:\\Users\\x".into()], search_roots: vec!["D:\\".into()], ..Settings::default() }.validate().is_ok());
         assert!(Settings { search_roots: roots(20), projects_roots: vec![format!("C:\\{}", "d".repeat(257))], ..Settings::default() }.validate().is_ok());
         let mut s = Settings { search_roots: vec![" C:\\a ".into(), "c:\\A".into(), "  ".into()], ..Settings::default() };
         assert!(s.fix().is_empty());

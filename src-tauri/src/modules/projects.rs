@@ -167,15 +167,17 @@ pub async fn projects_hide(state: State<'_, AppState>, path: String, hidden: boo
     set_pref(&state, &path, |p| p.hidden = hidden, |c| projects::set_hidden(c, &path, hidden))
 }
 
-/// Chaque racine doit être un dossier existant, pas une racine de lecteur : elles élargissent la liste blanche de `files.open`/`files.run`.
+/// Chaque racine doit être un dossier existant (canonique : `..` et liens résolus) ; le refus d'un lecteur entier
+/// est dans `Settings::validate`, ré-appliqué ici sur le chemin canonique.
 fn check_roots(roots: &[String]) -> Result<(), String> {
     for r in roots {
         let p = Path::new(r.trim());
-        if p.parent().is_none() {
-            return Err("Choisis un dossier précis, pas un lecteur entier.".into());
-        }
         if !p.is_dir() {
             return Err("Ce dossier n'existe pas.".into());
+        }
+        let c = std::fs::canonicalize(p).map_err(|_| "Ce dossier n'existe pas.".to_string())?;
+        if c.parent().is_none() {
+            return Err("Choisis un dossier précis, pas un lecteur entier.".into());
         }
     }
     Ok(())

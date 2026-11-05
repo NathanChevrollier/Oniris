@@ -29,22 +29,35 @@ pub(crate) const MAX_URL: usize = 2048;
 
 const VSCODE_CLAUDE: &str = "vscode://anthropic.claude-code/open?";
 
-/// Seul lien `vscode://` admis : le préfixe exact de l'extension Claude Code, requête ASCII, sans fragment,
+/// Seul lien `vscode://` admis : le préfixe exact de l'extension Claude Code, requête restreinte à l'alphabet d'`encode2`,
 /// 2048 caractères au plus.
 pub fn safe_vscode_claude_uri(s: &str) -> Option<String> {
     if s.len() > MAX_URL {
         return None;
     }
     let q = s.strip_prefix(VSCODE_CLAUDE)?;
-    q.chars().all(|c| c.is_ascii_graphic() && c != '#').then(|| s.to_string())
+    // Alphabet exact d'`encode2` (alphanumériques, `%`, `+`, `.`, `_`, `*`, `-`) plus `&` et `=` des clés fixes.
+    q.chars().all(|c| c.is_ascii_alphanumeric() || "%&=+._*-".contains(c)).then(|| s.to_string())
 }
 
 /// Extensions qui exécutent du code : réservées à `files.run` (confirmation).
 pub(crate) const EXECUTABLE: &[&str] = &[
     "exe", "bat", "cmd", "com", "ps1", "psm1", "vbs", "vbe", "js", "jse", "wsf", "wsh", "hta", "msi", "msp", "scr", "cpl", "jar", "reg", "lnk", "url", "pif", "application",
     "appref-ms", "msc", "gadget", "inf", "scf", "chm", "py", "pyw", "ps1xml", "wsc", "xll", "sh", "jnlp", "diagcab", "search-ms", "library-ms", "settingcontent-ms", "docm",
-    "xlsm", "pptm", "dotm", "xltm", "xlam", "ppam",
+    "xlsm", "pptm", "dotm", "xltm", "xlam", "ppam", "theme", "themepack", "deskthemepack", "appinstaller", "msix", "msixbundle", "appx", "appxbundle", "iso", "img", "vhd",
+    "vhdx", "rdp", "website", "vsto", "wsb", "xlsb", "xla", "ppsm", "potm", "sldm", "searchconnector-ms",
 ];
+
+/// Dossier `Nom.{GUID}` : jonction CLSID qui ouvre un objet shell au lieu d'un dossier.
+pub fn is_clsid_dir(p: &Path) -> bool {
+    let name = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let n = name.len();
+    // `.{` + 36 caractères d'un GUID + `}`
+    n >= 39 && name.is_char_boundary(n - 39) && {
+        let t = &name[n - 39..];
+        t.starts_with(".{") && t.ends_with('}') && t[2..38].chars().all(|c| c.is_ascii_hexdigit() || c == '-')
+    }
+}
 
 /// Le fichier (nom canonique ; tout nom contenant `:` est un flux ADS, refusé) a-t-il une extension exécutable ?
 pub fn is_executable(p: &Path) -> bool {
@@ -56,8 +69,15 @@ pub fn is_executable(p: &Path) -> bool {
 }
 
 fn plain(p: &Path) -> String {
-    let s = p.to_string_lossy();
-    s.strip_prefix(r"\\?\").unwrap_or(&s).to_string()
+    unverbatim(&p.to_string_lossy())
+}
+
+/// `\\?\C:\x` devient `C:\x` et `\\?\UNC\srv\share` devient `\\srv\share` (resterait relatif sinon).
+fn unverbatim(s: &str) -> String {
+    match s.strip_prefix(r"\\?\UNC\") {
+        Some(r) => format!(r"\\{r}"),
+        None => s.strip_prefix(r"\\?\").unwrap_or(s).to_string(),
+    }
 }
 
 /// Chemin absolu existant, une fois canonique (sans `..` ni lien) dans l'une des racines (insensible à la casse).
@@ -99,6 +119,12 @@ mod tests {
             "vscode://anthropic.claude-code/open?a=1#f",
             "vscode://anthropic.claude-code/open?a=é",
             "vscode://anthropic.claude-code/open?a b",
+            "vscode://anthropic.claude-code/open?a=\"x",
+            "vscode://anthropic.claude-code/open?a=<x",
+            "vscode://anthropic.claude-code/open?a=>x",
+            "vscode://anthropic.claude-code/open?a=^x",
+            "vscode://anthropic.claude-code/open?a=|x",
+            "vscode://anthropic.claude-code/open?a=\\x",
             "VSCODE://anthropic.claude-code/open?a=1",
             " vscode://anthropic.claude-code/open?a=1",
         ] {
@@ -137,6 +163,25 @@ mod tests {
         for n in ["a.txt", "exe", "a.exe.txt", "a.docx"] {
             assert!(!is_executable(Path::new(n)), "{n}");
         }
+    }
+
+    #[test]
+    fn prefixe_verbatim_ote() {
+        assert_eq!(unverbatim(r"\\?\C:\a\b"), r"C:\a\b");
+        assert_eq!(unverbatim(r"\\?\UNC\srv\share\d"), r"\\srv\share\d");
+        assert_eq!(unverbatim(r"C:\a"), r"C:\a");
+        assert!(Path::new(&unverbatim(r"\\?\UNC\srv\share\d")).is_absolute());
+    }
+
+    #[test]
+    fn nouvelles_extensions_et_jonctions_clsid() {
+        for e in ["theme", "themepack", "deskthemepack", "appinstaller", "msix", "msixbundle", "appx", "appxbundle", "iso", "img", "vhd", "vhdx", "rdp", "website", "vsto", "wsb", "xlsb", "xla", "xlam", "ppsm", "potm", "sldm", "settingcontent-ms", "library-ms", "searchconnector-ms"] {
+            assert!(is_executable(Path::new(&format!("a.{e}"))), "{e}");
+        }
+        assert!(is_clsid_dir(Path::new(r"C:\x\Corbeille.{645FF040-5081-101B-9F08-00AA002F954E}")));
+        assert!(!is_clsid_dir(Path::new(r"C:\x\Dossier")));
+        assert!(!is_clsid_dir(Path::new(r"C:\x\Dossier.{pas-un-guid-pas-un-guid-pas-un-guid}")));
+        assert!(!is_clsid_dir(Path::new("é")));
     }
 
     #[test]

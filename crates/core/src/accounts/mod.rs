@@ -20,7 +20,7 @@ impl Status {
     fn as_str(self) -> &'static str { match self { Status::Ok => "ok", Status::Reauth => "reauth" } }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(Clone, PartialEq, Serialize)]
 pub struct Account {
     pub id: i64,
     pub provider: Provider,
@@ -29,6 +29,13 @@ pub struct Account {
     pub color: String,
     pub status: Status,
     pub created_ms: i64,
+}
+
+/// Sans le nom : c'est souvent une adresse.
+impl std::fmt::Debug for Account {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Account").field("id", &self.id).field("provider", &self.provider).field("status", &self.status).finish_non_exhaustive()
+    }
 }
 
 const COLS: &str = "id, provider, label, color, status, created_ms";
@@ -202,6 +209,7 @@ mod tests {
         add(&c, Provider::Google, "c@gmail.com", 4).unwrap();
         assert_eq!(list(&c).unwrap().last().unwrap().color, PALETTE[1]);
         assert!(add(&c, Provider::Google, "  ", 5).is_err());
+        assert!(!format!("{:?}", get(&c, a).unwrap()).contains("gmail"), "le nom n'est pas dans le Debug");
         assert!(matches!(set_status(&c, 999, Status::Ok), Err(CoreError::NotFound(_))));
         // Au-delà de 8 comptes : la palette reboucle.
         for i in 0..6 { add(&c, Provider::Google, &format!("x{i}"), 6).unwrap(); }

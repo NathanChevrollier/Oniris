@@ -10,19 +10,33 @@ const PAGE_KO: &str = "<!doctype html><meta charset=\"utf-8\"><title>Oniris</tit
 
 /// Attend le code d'autorisation, `timeout` au plus (5 minutes en production).
 pub async fn wait_code(state: &str, timeout: Duration) -> Result<String, String> {
-    let listener = TcpListener::bind(("127.0.0.1", LOOPBACK_PORT))
-        .await
-        .map_err(|_| format!("Le port {LOOPBACK_PORT} est déjà utilisé : ferme l'application qui l'occupe, puis réessaie."))?;
-    serve(listener, state, timeout).await
+    serve(bind(LOOPBACK_PORT).await?, state, timeout).await
+}
+
+/// Lie `127.0.0.1:port` ; erreurs en clair, sans essayer d'autre port.
+async fn bind(port: u16) -> Result<TcpListener, String> {
+    TcpListener::bind(("127.0.0.1", port)).await.map_err(|e| match e.kind() {
+        std::io::ErrorKind::AddrInUse => format!("Le port {port} est déjà utilisé : ferme l'application qui l'occupe, puis réessaie."),
+        std::io::ErrorKind::PermissionDenied => format!("Windows refuse l'écoute sur le port {port} (pare-feu ou plage réservée) : réessaie après un redémarrage."),
+        _ => format!("Écoute locale impossible sur le port {port} ({:?}).", e.kind()),
+    })
 }
 
 /// Cœur de `wait_code`, sur un écouteur déjà lié (les tests lient le port 0).
 async fn serve(listener: TcpListener, state: &str, timeout: Duration) -> Result<String, String> {
     let wait = async {
         loop {
-            let Ok((mut stream, _)) = listener.accept().await else { continue };
+            let mut stream = match listener.accept().await {
+                Ok((s, _)) => s,
+                Err(_) => {
+                    // Erreur passagère (connexion avortée…) : pas de boucle active.
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                    continue;
+                }
+            };
             // Un client muet ne bloque pas l'écoute plus de 5 s.
             let Ok(Some(target)) = tokio::time::timeout(Duration::from_secs(5), request_target(&mut stream)).await else {
+                respond(&mut stream, "404 Not Found", "").await;
                 continue;
             };
             match callback(&target, state) {
@@ -116,6 +130,26 @@ mod tests {
         assert!(get(port, "/callback?code=c&state=mauvais").await.starts_with("HTTP/1.1 400"));
         assert!(task.await.unwrap().unwrap_err().contains("state"));
         assert!(TcpStream::connect(("127.0.0.1", port)).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn port_pris_message_clair() {
+        let (_l, port) = listener().await;
+        let e = bind(port).await.unwrap_err();
+        assert!(e.contains("déjà utilisé") && e.contains(&port.to_string()), "{e}");
+    }
+
+    #[tokio::test]
+    async fn requete_non_get_recoit_un_404() {
+        let (l, port) = listener().await;
+        let task = tokio::spawn(async move { serve(l, "s", Duration::from_secs(10)).await });
+        let mut s = TcpStream::connect(("127.0.0.1", port)).await.unwrap();
+        s.write_all(b"POST /callback?code=c&state=s HTTP/1.1\r\n\r\n").await.unwrap();
+        let mut out = String::new();
+        s.read_to_string(&mut out).await.unwrap();
+        assert!(out.starts_with("HTTP/1.1 404"), "{out}");
+        assert_eq!(get(port, "/callback?code=c&state=s").await.lines().next(), Some("HTTP/1.1 200 OK"));
+        assert_eq!(task.await.unwrap(), Ok("c".into()));
     }
 
     #[tokio::test]

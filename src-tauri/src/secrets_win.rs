@@ -13,12 +13,16 @@ fn target(key: &str) -> String { format!("Oniris/{key}") }
 impl SecretStore for WinCredentials {
     fn get(&self, key: &str) -> Option<String> {
         let mut p: *mut CREDENTIALW = std::ptr::null_mut();
-        // SAFETY : `p` est rempli par CredReadW en cas de succès, lu puis libéré par CredFree.
+        // SAFETY : `p` est rempli par CredReadW en cas de succès, lu puis toujours libéré par CredFree.
         unsafe {
             CredReadW(&HSTRING::from(target(key)), CRED_TYPE_GENERIC, None, &mut p).ok()?;
             let c = &*p;
-            let blob = std::slice::from_raw_parts(c.CredentialBlob, c.CredentialBlobSize as usize);
-            let v = String::from_utf8(blob.to_vec()).ok();
+            // Blob vide : le pointeur peut être nul, et from_raw_parts(NULL, 0) est un comportement indéfini.
+            let v = if c.CredentialBlob.is_null() || c.CredentialBlobSize == 0 {
+                Some(String::new())
+            } else {
+                String::from_utf8(std::slice::from_raw_parts(c.CredentialBlob, c.CredentialBlobSize as usize).to_vec()).ok()
+            };
             CredFree(p as *const _);
             v
         }
@@ -54,8 +58,13 @@ mod tests {
     #[ignore]
     fn vrai_coffre_aller_retour() {
         let key = format!("test-{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos());
+        struct Cleanup(String);
+        impl Drop for Cleanup { fn drop(&mut self) { WinCredentials.delete(&self.0); } }
+        let _cleanup = Cleanup(key.clone());
         let w = WinCredentials;
         assert_eq!(w.get(&key), None);
+        w.set(&key, "").unwrap();
+        assert_eq!(w.get(&key).as_deref(), Some(""));
         w.set(&key, "valeur-é").unwrap();
         assert_eq!(w.get(&key).as_deref(), Some("valeur-é"));
         w.set(&key, "autre").unwrap();

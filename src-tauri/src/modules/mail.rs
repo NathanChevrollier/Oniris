@@ -4,7 +4,7 @@ use crate::state::AppState;
 use oniris_core::accounts::{self, Status};
 use oniris_core::events::Topic;
 use oniris_core::mail::gmail;
-use oniris_core::mail::sync::{self, SyncError};
+use oniris_core::mail::sync::{self, SyncError, SyncReport};
 use oniris_core::oauth::Provider;
 use oniris_core::time_util::now_ms;
 use parking_lot::Mutex;
@@ -94,6 +94,24 @@ impl Schedule {
     fn last_runs(&self) -> Vec<i64> { self.0.values().map(|e| e.last_run).collect() }
 }
 
+/// Applique le résultat d'une relève (`None` : la tâche a planté) ; renvoie (mails changés, délai à noter en base).
+fn settle(sched: &mut Schedule, id: i64, now: i64, result: Option<Result<SyncReport, SyncError>>, interval_ms: i64) -> (bool, Option<i64>) {
+    match result {
+        Some(Ok(report)) => {
+            sched.ok(id, now, interval_ms);
+            (report.any(), None)
+        }
+        // Le compte est passé à `reauth` et sort de la liste au tour suivant. Si le statut n'a pas pu être
+        // noté, le délai d'échec évite de boucler.
+        Some(Err(SyncError::Revoked)) => {
+            sched.fail(id, now);
+            (false, None)
+        }
+        // Erreur ou plantage : délai croissant, sinon le compte resterait dû et la boucle le relancerait aussitôt.
+        Some(Err(_)) | None => (false, Some(sched.fail(id, now))),
+    }
+}
+
 fn gmail_ok(app: &AppHandle) -> Result<Vec<i64>, oniris_core::CoreError> {
     let list = accounts::list(&app.state::<AppState>().db.lock())?;
     Ok(list.into_iter().filter(|a| a.provider == Provider::Google && a.status == Status::Ok).map(|a| a.id).collect())
@@ -121,37 +139,37 @@ async fn run(app: AppHandle) {
         let force = FORCE.swap(false, Ordering::SeqCst);
         // Comptes dus en même temps relevés ensemble : un compte lent ne retarde pas les autres.
         let mut set = tokio::task::JoinSet::new();
+        // Compte de chaque tâche, gardé hors de la tâche : un plantage ne le perd pas.
+        let mut tasks = HashMap::new();
         for id in sched.due(now_ms(), force) {
             let now = now_ms();
             sched.started(id, now);
             let (app, client) = (app.clone(), client.clone());
-            set.spawn(async move {
+            let handle = set.spawn(async move {
                 let st = app.state::<AppState>();
-                (id, now, sync::run(&st.db, &client, &st.accounts, id, now).await)
+                sync::run(&st.db, &client, &st.accounts, id, now).await
             });
+            tasks.insert(handle.id(), (id, now));
         }
         *LAST_RUNS.lock() = sched.last_runs();
         let st = app.state::<AppState>();
         let mut changed = false;
-        while let Some(done) = set.join_next().await {
-            let Ok((id, now, result)) = done else { continue };
-            match result {
-                Ok(report) => {
-                    let minutes = st.settings.read().mail_poll_minutes as i64;
-                    sched.ok(id, now, minutes * 60_000);
-                    changed |= report.any();
-                }
-                // Le compte est passé à `reauth` et sort de la liste au tour suivant. Si le statut n'a pas pu être
-                // noté, le délai d'échec évite de boucler.
-                Err(SyncError::Revoked) => {
-                    sched.fail(id, now);
-                }
-                Err(_) => {
-                    let until = sched.fail(id, now);
-                    let r = sync::set_backoff(&st.db.lock(), id, Some(until));
-                    if let Err(e) = r {
-                        tracing::warn!("mails : compte {id} : délai non noté : {e}");
-                    }
+        while let Some(done) = set.join_next_with_id().await {
+            let (task, result) = match done {
+                Ok((task, r)) => (task, Some(r)),
+                Err(e) => (e.id(), None),
+            };
+            let Some((id, now)) = tasks.remove(&task) else { continue };
+            if result.is_none() {
+                tracing::error!("mails : compte {id} : la relève a planté");
+            }
+            let interval = st.settings.read().mail_poll_minutes as i64 * 60_000;
+            let (any, backoff) = settle(&mut sched, id, now, result, interval);
+            changed |= any;
+            if let Some(until) = backoff {
+                let r = sync::set_backoff(&st.db.lock(), id, Some(until));
+                if let Err(e) = r {
+                    tracing::warn!("mails : compte {id} : délai non noté : {e}");
                 }
             }
         }
@@ -218,5 +236,23 @@ mod tests {
         s.started(1, 0);
         s.fail(1, 0);
         assert!(s.due(1, true).is_empty(), "repoussé, même à l'ouverture du panneau");
+    }
+
+    #[test]
+    fn un_plantage_applique_le_delai_croissant() {
+        let mut s = Schedule::default();
+        s.retain(&[1], 0);
+        s.started(1, 0);
+        assert_eq!(settle(&mut s, 1, 0, None, 3 * MIN), (false, Some(MIN)), "plantage : délai d'une minute noté");
+        assert!(s.due(1, false).is_empty(), "plus dû tout de suite : pas de boucle");
+        assert_eq!(s.next(), Some(MIN));
+        assert_eq!(settle(&mut s, 1, MIN, None, 3 * MIN), (false, Some(3 * MIN)), "second plantage : 2 minutes");
+        let ok = SyncReport { added: 1, removed: 0, changed: 0 };
+        assert_eq!(settle(&mut s, 1, 0, Some(Ok(ok)), 3 * MIN), (true, None));
+        assert_eq!(s.0[&1].fails, 0);
+        assert_eq!(settle(&mut s, 1, 0, Some(Ok(SyncReport::default())), 3 * MIN), (false, None), "rien de changé : pas d'événement");
+        assert_eq!(settle(&mut s, 1, 0, Some(Err(SyncError::Network)), 3 * MIN), (false, Some(MIN)));
+        assert_eq!(settle(&mut s, 1, 0, Some(Err(SyncError::Revoked)), 3 * MIN), (false, None));
+        assert!(s.due(1, true).is_empty());
     }
 }

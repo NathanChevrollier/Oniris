@@ -13,6 +13,7 @@ import { PcCard } from "../modules/system/PcCard";
 import { ClipboardCard } from "../modules/clipboard/ClipboardCard";
 import { ProjectsCard } from "../modules/projects/ProjectsCard";
 import { FavoritesCard } from "../modules/favorites/FavoritesCard";
+import { MailCard } from "../modules/mail/MailCard";
 import { useNow } from "../lib/time";
 import { agendaIpc, dayBounds, dayKey, type AgendaEvent } from "../modules/agenda/api";
 import { remindersIpc, type Reminder } from "../modules/reminders/api";
@@ -77,7 +78,7 @@ export function Panel({ onCommand = logCommand }: { onCommand?: (text: string) =
           </div>
           <Timeline startHour={settings.timeline_start_hour} endHour={settings.timeline_end_hour} items={[...items, ...dots]} />
           <ConfirmQueue subscribe={onConfirm} resolve={toolIpc.resolve} />
-          <CardGrid slots={{ agenda: <AgendaCard />, projects: <ProjectsCard />, notes: <NotesCard />, clipboard: <ClipboardCard />, vps: <FavoritesCard />, pc: <PcCard />, timer: <TimerCard /> }} />
+          <CardGrid slots={{ mails: <MailCard onAccounts={openAccounts} />, agenda: <AgendaCard />, projects: <ProjectsCard />, notes: <NotesCard />, clipboard: <ClipboardCard />, vps: <FavoritesCard />, pc: <PcCard />, timer: <TimerCard /> }} />
           <CommandPalette onCommand={onCommand} />
           <div className="handle" />
         </div>

@@ -1,0 +1,44 @@
+.mail-seg{display:inline-flex;padding:3px;border-radius:11px;background:rgba(255,255,255,.07);gap:2px;margin-bottom:10px}
+.card .mail-seg button{height:auto;margin:0;padding:5px 11px;border:0;border-radius:8px;background:none;font:12px var(--font);color:var(--txt2);cursor:pointer}
+.card .mail-seg button.on{background:rgba(255,255,255,.14);color:#fff;box-shadow:0 1px 4px rgba(0,0,0,.25)}
+.mail-seg b{margin-left:4px;color:var(--txt3);font-weight:600}
+.mail-seg .on b{color:var(--acc)}
+.mail-list{list-style:none;margin:0;padding:0}
+.mail-row{position:relative;margin:0 -10px;border-radius:14px;transition:background .2s}
+.mail-row:hover,.mail-row:focus-within{background:rgba(255,255,255,.06)}
+.card .mail-open{display:flex;gap:12px;align-items:flex-start;width:100%;height:auto;margin:0;padding:10px;border:0;background:none;text-align:left;color:var(--txt);font:inherit;cursor:pointer}
+.mail-av{flex:none;position:relative;width:36px;height:36px;border-radius:50%;display:grid;place-items:center;font:600 13px var(--font);background:rgba(255,255,255,.1);color:var(--txt)}
+.mail-av::after{content:"";position:absolute;right:-3px;bottom:-3px;width:11px;height:11px;border-radius:50%;border:2px solid #1d1c24;background:var(--c)}
+.mail-body{display:flex;flex-direction:column;min-width:0;flex:1}
+.mail-l1{display:flex;justify-content:space-between;gap:8px;font-size:13.5px}
+.mail-l1 b{font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.unread .mail-l1 b{font-weight:700}
+.mail-l1 time{font-size:11.5px;color:var(--txt3);flex:none}
+.mail-row:hover time,.mail-row:focus-within time{opacity:0}
+.mail-subj{font-size:12.5px;color:var(--txt2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mail-ai{font-size:12px;color:rgba(255,190,160,.9);margin-top:3px;display:flex;gap:6px;align-items:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mail-tag{font-size:10.5px;padding:1px 7px;border-radius:6px;background:rgba(255,116,72,.18);color:#ffb59a;font-weight:600;flex:none}
+.mail-dot{flex:none;width:8px;height:8px;border-radius:50%;background:var(--acc);margin-top:6px}
+.mail-acts{position:absolute;right:10px;top:10px;display:flex;gap:4px;opacity:0;transition:opacity .2s}
+.mail-row:hover .mail-acts,.mail-row:focus-within .mail-acts{opacity:1}
+.card .mail-acts button{width:28px;height:28px;margin:0;padding:0;justify-content:center;border-radius:9px;background:rgba(40,40,48,.95);border:1px solid var(--line2);color:var(--txt);cursor:pointer}
+.card .mail-acts button:hover,.card .mail-acts button:focus-visible{background:rgba(70,70,80,.95)}
+.card .mail-btn{display:inline-flex;align-items:center;gap:5px;height:26px;margin:0;padding:0 10px;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.06);color:var(--txt);font:12px var(--font);cursor:pointer}
+.card .mail-btn:disabled{opacity:.5;cursor:default}
+.mail-cta{margin-top:10px}
+.mail-reauth{display:block;width:100%;margin:0 0 10px;padding:7px 10px;border-radius:12px;border:1px solid rgba(255,159,10,.35);background:rgba(255,159,10,.14);color:#ffc470;font:12px var(--font);text-align:left;cursor:pointer}
+.mail-reader{display:flex;flex-direction:column;gap:8px;min-height:380px}
+.mail-rbar{display:flex;flex-wrap:wrap;gap:6px}
+.card .mail-rsubj{margin:2px 0 0;font:600 14px var(--font);overflow-wrap:anywhere}
+.mail-rfrom{margin:0;font-size:12px;color:var(--txt2);overflow-wrap:anywhere}
+.mail-frame{width:100%;height:260px;border:0;border-radius:12px;background:#fff}
+.mail-att{list-style:none;margin:0;padding:0;font-size:12px;color:var(--txt2)}
+.mail-links h5{margin:0 0 4px;font:600 10.5px var(--font);letter-spacing:.04em;text-transform:uppercase;color:var(--txt3)}
+.mail-links ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
+.card .mail-links button{display:block;max-width:100%;height:auto;margin:0;padding:2px 0;border:0;background:none;color:#8ec5ff;font:12px var(--font);text-align:left;text-decoration:underline;overflow-wrap:anywhere;cursor:pointer}
+.mail-compose{display:flex;flex-direction:column;gap:6px}
+.mail-compose label:not(.sr-only){display:flex;align-items:center;gap:8px;font-size:12px;color:var(--txt3)}
+.mail-compose input,.mail-compose textarea{flex:1;box-sizing:border-box;padding:6px 10px;border-radius:12px;border:1px solid var(--line);background:rgba(255,255,255,.06);color:var(--txt);font:12.5px var(--font);outline:0}
+.mail-compose textarea{min-height:90px;resize:vertical}
+.mail-compose input:focus,.mail-compose textarea:focus{border-color:rgba(255,140,100,.35)}
+.mail-compose .mail-btn{align-self:flex-start}

@@ -23,7 +23,9 @@ const KNOWN: Record<string, string> = {
 
 /** Message affichable pour une erreur brute du courtier (« échec : … », « arguments invalides : … »). */
 export function friendlyError(raw: string, fallback: string): string {
-  return KNOWN[raw.replace(/^(arguments invalides|échec) : /, "")] ?? fallback;
+  const known = KNOWN[raw.replace(/^(arguments invalides|échec) : /, "")];
+  // Envoi masqué dans le journal puis approuvé après un redémarrage : les arguments ne se relisent plus.
+  return known ?? (raw.startsWith("arguments invalides") ? "Action expirée, recommence." : fallback);
 }
 
 /**

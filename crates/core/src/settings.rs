@@ -46,6 +46,9 @@ pub struct Settings {
     /// Invites de « Reprendre » (Claude Code), non vides, 2000 caractères au plus.
     pub resume_prompt_normal: String,
     pub resume_prompt_orchestrator: String,
+    /// Identifiants client OAuth (vide = non configuré) : 200 caractères au plus, sans espace.
+    pub google_client_id: String,
+    pub spotify_client_id: String,
 }
 
 impl Default for Settings {
@@ -71,6 +74,8 @@ impl Default for Settings {
             projects_roots: Vec::new(),
             resume_prompt_normal: RESUME_NORMAL.into(),
             resume_prompt_orchestrator: format!("{RESUME_NORMAL} {RESUME_ORCHESTRATOR}"),
+            google_client_id: String::new(),
+            spotify_client_id: String::new(),
         }
     }
 }
@@ -213,6 +218,16 @@ impl Settings {
         if let Err(e) = check_prompt(&self.resume_prompt_orchestrator) {
             errs.push(format!("consigne de reprise (orchestrateur) : {e}"));
             self.resume_prompt_orchestrator = d.resume_prompt_orchestrator.clone();
+        }
+        for (id, def, field) in [
+            (&mut self.google_client_id, &d.google_client_id, "identifiant client Google"),
+            (&mut self.spotify_client_id, &d.spotify_client_id, "identifiant client Spotify"),
+        ] {
+            *id = id.trim().to_string();
+            if id.chars().count() > 200 || id.chars().any(char::is_whitespace) {
+                errs.push(format!("{field} : 200 caractères au plus, sans espace"));
+                *id = def.clone();
+            }
         }
         if let Err(e) = check_hotkey(&self.hotkey) {
             errs.push(e);
@@ -358,6 +373,15 @@ mod tests {
         let long = Settings { resume_prompt_normal: "é".repeat(300), ..Settings::default() }.validate().unwrap_err();
         assert!(long.contains("Consigne trop longue une fois encodée"), "{long}");
         assert!(Settings { resume_prompt_normal: "x".repeat(1900), ..Settings::default() }.validate().is_ok());
+        assert!(bad(|s| s.google_client_id = "x".repeat(201)));
+        assert!(bad(|s| s.spotify_client_id = "ab cd".into()));
+        assert!(bad(|s| s.google_client_id = "ab	cd".into()));
+        assert!(Settings { google_client_id: "1-x.apps.googleusercontent.com".into(), spotify_client_id: "x".repeat(200), ..Settings::default() }.validate().is_ok());
+        let mut s = Settings { spotify_client_id: " abc ".into(), ..Settings::default() };
+        assert!(s.fix().is_empty());
+        assert_eq!(s.spotify_client_id, "abc");
+        let d = Settings::default();
+        assert_eq!((d.google_client_id.as_str(), d.spotify_client_id.as_str()), ("", ""));
     }
     #[test] fn invites_de_reprise_par_defaut() {
         let d = Settings::default();

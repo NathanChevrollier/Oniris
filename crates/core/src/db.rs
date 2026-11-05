@@ -156,6 +156,19 @@ Migration {
         pinned INTEGER NOT NULL DEFAULT 0,
         hidden INTEGER NOT NULL DEFAULT 0
     ) STRICT;",
+},
+Migration {
+    version: 13,
+    // label : adresse ou nom affiché ; status : ok | reauth. Les jetons sont dans le coffre Windows, jamais ici.
+    sql: "CREATE TABLE accounts (
+        id INTEGER PRIMARY KEY,
+        provider TEXT NOT NULL,
+        label TEXT NOT NULL,
+        color TEXT NOT NULL,
+        status TEXT NOT NULL,
+        created_ms INTEGER NOT NULL
+    ) STRICT;
+    CREATE UNIQUE INDEX accounts_provider_label ON accounts(provider, label);",
 }];
 
 pub fn open_db(path: &Path) -> Result<Connection, CoreError> {

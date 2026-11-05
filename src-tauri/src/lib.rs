@@ -5,9 +5,13 @@ mod hotkey;
 mod launch;
 mod logging;
 mod modules;
+#[allow(dead_code)] // branché par la tâche 2 (feuille « Comptes »)
+mod oauth_loopback;
 #[cfg(any(debug_assertions, feature = "perf"))]
 mod perf;
 mod scheduler;
+#[allow(dead_code)] // branché par la tâche 2 (feuille « Comptes »)
+mod secrets_win;
 mod state;
 mod tray;
 mod windows;

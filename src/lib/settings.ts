@@ -38,6 +38,9 @@ export type Settings = {
   /** Invites de « Reprendre » (Claude Code) : non vides, 2000 caractères au plus. */
   resume_prompt_normal: string;
   resume_prompt_orchestrator: string;
+  /** Identifiants client OAuth (vide = non configuré) : 200 caractères au plus, sans espace. */
+  google_client_id: string;
+  spotify_client_id: string;
 };
 
 const RESUME_NORMAL = "Reprends là où tu en étais sur ce projet. Appuie-toi sur le plan de développement et l'historique git. Commence par me dire où on en est.";
@@ -64,6 +67,8 @@ export const DEFAULT_SETTINGS: Settings = {
   projects_roots: [],
   resume_prompt_normal: RESUME_NORMAL,
   resume_prompt_orchestrator: `${RESUME_NORMAL} Travaille en mode orchestrateur, comme décrit dans mon CLAUDE.md global : graphify pour t'orienter, sous-agents haiku/sonnet/opus selon la tâche, parallélisation des tâches indépendantes, et relecture avant intégration.`,
+  google_client_id: "",
+  spotify_client_id: "",
 };
 
 /** Paramètres courants : chargés au montage, puis suivis via `oniris://settings`. */

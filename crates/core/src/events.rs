@@ -3,7 +3,7 @@ use serde::Serialize;
 /// Sujet de données dont l'UI doit se rafraîchir.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize)]
 #[serde(rename_all = "lowercase")]
-pub enum Topic { Agenda, Reminders, Notes, Timers, Clipboard, Weather, Favorites, Projects }
+pub enum Topic { Agenda, Reminders, Notes, Timers, Clipboard, Weather, Favorites, Projects, Accounts }
 
 /// Notifie l'UI qu'un sujet a changé.
 ///
@@ -22,6 +22,7 @@ mod tests {
     #[test]
     fn topic_serializes_lowercase() {
         assert_eq!(serde_json::to_string(&Topic::Reminders).unwrap(), "\"reminders\"");
+        assert_eq!(serde_json::to_string(&Topic::Accounts).unwrap(), "\"accounts\"");
         NoEvents.changed(Topic::Agenda);
     }
 }

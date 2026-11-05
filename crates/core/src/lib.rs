@@ -1,3 +1,4 @@
+pub mod accounts;
 pub mod agenda;
 pub mod apps;
 pub mod launch;
@@ -8,9 +9,11 @@ pub mod events;
 pub mod favorites;
 pub mod kv;
 pub mod notes;
+pub mod oauth;
 pub mod projects;
 pub mod reminders;
 pub mod search;
+pub mod secrets;
 pub mod system;
 pub mod timers;
 mod settings;

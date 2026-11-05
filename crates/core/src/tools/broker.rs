@@ -14,6 +14,9 @@ pub struct ToolBroker {
     db: Db,
     clock: Clock,
     tools: HashMap<String, Arc<dyn Tool>>,
+    /// Vrais arguments des actions en attente dont le journal n'a qu'une forme masquée (mémoire seulement :
+    /// après un redémarrage, l'action approuvée échoue au lieu de s'exécuter avec le masque).
+    masked: parking_lot::Mutex<HashMap<i64, Value>>,
 }
 
 impl ToolBroker {
@@ -27,7 +30,7 @@ impl ToolBroker {
             }
             map.insert(name, t);
         }
-        Ok(Self { db, clock, tools: map })
+        Ok(Self { db, clock, tools: map, masked: Default::default() })
     }
 
     pub fn specs(&self) -> Vec<ToolSpec> {
@@ -51,23 +54,29 @@ impl ToolBroker {
         let confirm = tool.spec().permission == Permission::Confirm
             || matches!(call.provenance, Provenance::Untrusted { .. });
         let now = (self.clock)();
+        let logged = tool.journal_args(&call.args);
         if confirm {
             let text = tool.describe(&call.args);
             let expires = now + PENDING_TTL_MS;
             let ins = journal::insert(&self.db.lock(), NewRow {
-                ts: now, tool: &call.tool, args: &call.args, origin: &call.origin, prov: &call.provenance,
+                ts: now, tool: &call.tool, args: &logged, origin: &call.origin, prov: &call.provenance,
                 status: "pending", result: None, undo: None, expires: Some(expires),
             });
             return match ins {
-                Ok(id) => ToolOutcome::NeedsConfirmation(PendingAction {
+                Ok(id) => {
+                    if logged != call.args {
+                        self.masked.lock().insert(id, call.args.clone());
+                    }
+                    ToolOutcome::NeedsConfirmation(PendingAction {
                     action_id: id, tool: call.tool, text, provenance: call.provenance, expires_at_ms: expires,
-                }),
+                })
+                }
                 Err(e) => ToolOutcome::Failed { action_id: -1, error: e.to_string() },
             };
         }
         // Ligne `running` écrite AVANT `run` (journal fidèle même si l'app meurt), verrou relâché pendant `run`.
         let id = match journal::insert(&self.db.lock(), NewRow {
-            ts: now, tool: &call.tool, args: &call.args, origin: &call.origin, prov: &call.provenance,
+            ts: now, tool: &call.tool, args: &logged, origin: &call.origin, prov: &call.provenance,
             status: "running", result: None, undo: None, expires: None,
         }) {
             Ok(id) => id,
@@ -105,6 +114,8 @@ impl ToolBroker {
     pub async fn resolve(&self, action_id: i64, approved: bool) -> ToolOutcome {
         self.expire_stale();
         let fail = |e: ToolError| ToolOutcome::Failed { action_id, error: e.to_string() };
+        // Retirés quelle que soit l'issue : une action ne se résout qu'une fois.
+        let masked = self.masked.lock().remove(&action_id);
         let row = {
             let c = self.db.lock();
             let claimed = if approved {
@@ -129,7 +140,7 @@ impl ToolBroker {
         let Some(row) = row else { return fail(ToolError::NotPending) };
         let (sensitive, outcome) = match self.tools.get(&row.tool) {
             None => (false, Err(ToolError::UnknownTool(row.tool.clone()))),
-            Some(t) => (t.spec().sensitive_output, t.run(&row.args).await),
+            Some(t) => (t.spec().sensitive_output, t.run(masked.as_ref().unwrap_or(&row.args)).await),
         };
         self.finish_run(action_id, sensitive, outcome)
     }

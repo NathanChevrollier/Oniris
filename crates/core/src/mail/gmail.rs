@@ -67,7 +67,7 @@ pub struct HistoryDelta {
     pub new_history_id: String,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct AttachmentMeta {
     pub filename: String,
     pub mime_type: String,
@@ -228,6 +228,14 @@ impl Client {
             from_name,
             from_addr,
         })
+    }
+
+    /// Pour répondre : (fil, `Message-ID`, `References`) du mail d'origine.
+    pub async fn reply_headers(&self, token: &str, id: &str) -> Result<(String, Option<String>, Option<String>), GmailError> {
+        let q = [("format", "metadata"), ("metadataHeaders", "Message-ID"), ("metadataHeaders", "References")];
+        let m: RawMsg = self.get(token, &msg_path(id, "")?, &q).await?;
+        let h = |n: &str| header(&m.payload, n).map(str::to_string);
+        Ok((m.thread_id.clone(), h("Message-ID"), h("References")))
     }
 
     /// Métadonnées de plusieurs mails, `CONCURRENCY` requêtes à la fois ; résultats dans l'ordre des ids.

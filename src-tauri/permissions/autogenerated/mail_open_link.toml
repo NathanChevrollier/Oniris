@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-mail-open-link"
+description = "Enables the mail_open_link command without any pre-configured scope."
+commands.allow = ["mail_open_link"]
+
+[[permission]]
+identifier = "deny-mail-open-link"
+description = "Denies the mail_open_link command without any pre-configured scope."
+commands.deny = ["mail_open_link"]

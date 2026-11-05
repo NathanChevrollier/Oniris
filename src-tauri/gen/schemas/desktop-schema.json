@@ -345,6 +345,54 @@
           "markdownDescription": "Enables the journal_list command without any pre-configured scope."
         },
         {
+          "description": "Enables the mail_archive command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-mail-archive",
+          "markdownDescription": "Enables the mail_archive command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the mail_delete command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-mail-delete",
+          "markdownDescription": "Enables the mail_delete command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the mail_list command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-mail-list",
+          "markdownDescription": "Enables the mail_list command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the mail_open_link command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-mail-open-link",
+          "markdownDescription": "Enables the mail_open_link command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the mail_open_web command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-mail-open-web",
+          "markdownDescription": "Enables the mail_open_web command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the mail_read command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-mail-read",
+          "markdownDescription": "Enables the mail_read command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the mail_send command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-mail-send",
+          "markdownDescription": "Enables the mail_send command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the mail_set_read command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-mail-set-read",
+          "markdownDescription": "Enables the mail_set_read command without any pre-configured scope."
+        },
+        {
           "description": "Enables the notes_create command without any pre-configured scope.",
           "type": "string",
           "const": "allow-notes-create",
@@ -691,6 +739,54 @@
           "type": "string",
           "const": "deny-journal-list",
           "markdownDescription": "Denies the journal_list command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the mail_archive command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-mail-archive",
+          "markdownDescription": "Denies the mail_archive command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the mail_delete command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-mail-delete",
+          "markdownDescription": "Denies the mail_delete command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the mail_list command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-mail-list",
+          "markdownDescription": "Denies the mail_list command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the mail_open_link command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-mail-open-link",
+          "markdownDescription": "Denies the mail_open_link command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the mail_open_web command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-mail-open-web",
+          "markdownDescription": "Denies the mail_open_web command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the mail_read command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-mail-read",
+          "markdownDescription": "Denies the mail_read command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the mail_send command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-mail-send",
+          "markdownDescription": "Denies the mail_send command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the mail_set_read command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-mail-set-read",
+          "markdownDescription": "Denies the mail_set_read command without any pre-configured scope."
         },
         {
           "description": "Denies the notes_create command without any pre-configured scope.",

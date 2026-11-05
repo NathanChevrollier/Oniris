@@ -134,9 +134,107 @@ pub fn unescape_snippet(s: &str) -> String {
     s.replace("&#39;", "'").replace("&quot;", "\"").replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&")
 }
 
+/// En-tête encodé RFC 2047 (`=?UTF-8?B?…?=`, mots de 75 caractères au plus) s'il n'est pas en ASCII imprimable.
+pub fn encode_header(s: &str) -> String {
+    if s.bytes().all(|b| (0x20..0x7F).contains(&b)) && !s.contains("=?") {
+        return s.to_string();
+    }
+    let (mut words, mut chunk) = (Vec::new(), String::new());
+    for c in s.chars() {
+        // 45 octets -> 60 en base64, + 12 d'enrobage : 72.
+        if chunk.len() + c.len_utf8() > 45 {
+            words.push(std::mem::take(&mut chunk));
+        }
+        chunk.push(c);
+    }
+    words.push(chunk);
+    words.iter().map(|w| format!("=?UTF-8?B?{}?=", B64.encode(w))).collect::<Vec<_>>().join("\r\n ")
+}
+
+/// Ajoute `Re: ` sauf s'il y est déjà (sans casse).
+pub fn reply_subject(subject: &str) -> String {
+    let s = subject.trim();
+    if s.get(..3).is_some_and(|p| p.eq_ignore_ascii_case("re:")) { s.to_string() } else { format!("Re: {s}") }
+}
+
+/// Adresse seule de forme `local@domaine` : ASCII imprimable, sans blanc ni caractère spécial d'en-tête.
+pub fn valid_address(a: &str) -> bool {
+    let Some((local, domain)) = a.split_once('@') else { return false };
+    let ok = |p: &str| !p.is_empty() && p.bytes().all(|b| b.is_ascii_graphic() && !br#"<>()[],;:"\@"#.contains(&b));
+    a.len() <= 254 && ok(local) && ok(domain) && domain.contains('.') && !domain.starts_with('.') && !domain.ends_with('.')
+}
+
+#[derive(Debug, PartialEq, thiserror::Error)]
+pub enum MimeError {
+    #[error("destinataire invalide")]
+    BadRecipient,
+    #[error("sujet invalide (retour à la ligne)")]
+    BadSubject,
+}
+
+/// Message RFC 822 `text/plain; charset=utf-8` (base64), encodé base64url pour `messages.send`.
+/// `in_reply_to` présent : réponse (`Re: ` une seule fois, `In-Reply-To` et `References`).
+/// Retour à la ligne dans le sujet, destinataire autre qu'une adresse : refusé (injection d'en-tête).
+pub fn reply(from: &str, to: &str, subject: &str, body_text: &str, in_reply_to: Option<&str>, references: Option<&str>) -> Result<String, MimeError> {
+    if !valid_address(to) || !valid_address(from) {
+        return Err(MimeError::BadRecipient);
+    }
+    if subject.contains(['\r', '\n']) {
+        return Err(MimeError::BadSubject);
+    }
+    // Valeurs venues du serveur : dépliées, jamais de retour à la ligne brut.
+    let one_line = |v: &str| v.split_whitespace().collect::<Vec<_>>().join(" ");
+    let subject = if in_reply_to.is_some() { reply_subject(subject) } else { subject.trim().to_string() };
+    let mut m = format!("From: {from}\r\nTo: {to}\r\nSubject: {}\r\nMIME-Version: 1.0\r\n", encode_header(&subject));
+    if let Some(id) = in_reply_to.map(one_line).filter(|v| !v.is_empty()) {
+        let refs = references.map(one_line).filter(|v| !v.is_empty()).map_or(id.clone(), |r| format!("{r} {id}"));
+        m += &format!("In-Reply-To: {id}\r\nReferences: {refs}\r\n");
+    }
+    m += "Content-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: base64\r\n\r\n";
+    let body = body_text.replace("\r\n", "\n").replace('\n', "\r\n");
+    let b64 = B64.encode(body.as_bytes());
+    for line in b64.as_bytes().chunks(76) {
+        m += std::str::from_utf8(line).unwrap_or_default();
+        m += "\r\n";
+    }
+    Ok(base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(m))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn decoded(raw: &str) -> String { String::from_utf8(b64url(raw).unwrap()).unwrap() }
+
+    #[test] fn reponse() {
+        let m = decoded(&reply("moi@gmail.com", "j@x.fr", "Été à Noël", "Bonjour,\nà demain", Some("<a@x>"), Some("<z@x>")).unwrap());
+        let subject = m.lines().find(|l| l.starts_with("Subject: ")).unwrap();
+        assert!(subject.contains("=?UTF-8?B?"), "{subject}");
+        assert_eq!(decode_header(&subject["Subject: ".len()..]), "Re: Été à Noël");
+        assert!(m.contains("\r\nIn-Reply-To: <a@x>\r\nReferences: <z@x> <a@x>\r\n"), "{m}");
+        assert!(m.contains("Content-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: base64\r\n\r\n"));
+        let body = m.split("\r\n\r\n").nth(1).unwrap().replace("\r\n", "");
+        assert_eq!(B64.decode(body).unwrap(), "Bonjour,\r\nà demain".as_bytes());
+        let m = decoded(&reply("moi@gmail.com", "j@x.fr", "RE: Point", "x", Some("<a@x>"), None).unwrap());
+        assert!(m.contains("Subject: RE: Point\r\n") && m.contains("References: <a@x>\r\n"), "pas de Re: Re:");
+        let m = decoded(&reply("moi@gmail.com", "j@x.fr", "Point", "x", None, None).unwrap());
+        assert!(m.contains("Subject: Point\r\n") && !m.contains("In-Reply-To"), "nouveau mail : sujet tel quel");
+        let long = "é".repeat(100);
+        let enc = encode_header(&long);
+        assert!(enc.split("\r\n ").all(|w| w.len() <= 75));
+        assert_eq!(decode_header(&enc.replace("\r\n", "")), long);
+    }
+
+    #[test] fn injection_d_en_tete_refusee() {
+        let r = |to: &str, s: &str| reply("moi@gmail.com", to, s, "x", None, None);
+        assert_eq!(r("j@x.fr", "a\r\nBcc: z@y.fr"), Err(MimeError::BadSubject));
+        assert_eq!(r("j@x.fr", "a\nb"), Err(MimeError::BadSubject));
+        assert_eq!(r("j@x.fr\r\nBcc: z@y.fr", "a"), Err(MimeError::BadRecipient));
+        for bad in ["", "jx.fr", "j@x", "j@x.fr, k@y.fr", "Jean <j@x.fr>", "j k@x.fr", "j@@x.fr", "j@.fr", "é@x.fr"] {
+            assert!(!valid_address(bad), "{bad}");
+        }
+        assert!(valid_address("jean.dupont+oniris@sous.exemple.fr"));
+    }
 
     #[test] fn rfc_2047() {
         assert_eq!(decode_header("=?UTF-8?B?UsOpdW5pb24gZGVtYWluIMOgIDEwIGg=?="), "Réunion demain à 10 h");

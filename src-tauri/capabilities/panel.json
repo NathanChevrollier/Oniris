@@ -60,6 +60,14 @@
     "allow-accounts-set-color",
     "allow-accounts-intro-take",
     "allow-accounts-open-guide",
+    "allow-mail-list",
+    "allow-mail-read",
+    "allow-mail-set-read",
+    "allow-mail-archive",
+    "allow-mail-delete",
+    "allow-mail-send",
+    "allow-mail-open-web",
+    "allow-mail-open-link",
     "allow-perf-frame",
     "allow-perf-open-cycles"
   ]

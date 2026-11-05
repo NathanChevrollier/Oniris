@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-mail-set-read"
+description = "Enables the mail_set_read command without any pre-configured scope."
+commands.allow = ["mail_set_read"]
+
+[[permission]]
+identifier = "deny-mail-set-read"
+description = "Denies the mail_set_read command without any pre-configured scope."
+commands.deny = ["mail_set_read"]

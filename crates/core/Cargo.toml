@@ -25,6 +25,7 @@ image = { version = "0.25", default-features = false, features = ["png", "ico", 
 base64 = "0.23"
 tempfile = "3"
 getrandom = "0.3"
+ammonia = "4.2.4"
 
 [dev-dependencies]
 chrono-tz = "0.10"

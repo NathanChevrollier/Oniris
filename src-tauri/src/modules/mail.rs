@@ -3,7 +3,11 @@
 use crate::state::AppState;
 use oniris_core::accounts::{self, Status};
 use oniris_core::events::Topic;
+use crate::commands::dispatch_as_user;
 use oniris_core::mail::gmail;
+use oniris_core::mail::tools::{self as mail_tools, MailRow};
+use oniris_core::tools::ToolOutcome;
+use serde_json::json;
 use oniris_core::mail::sync::{self, SyncError, SyncReport};
 use oniris_core::oauth::Provider;
 use oniris_core::time_util::now_ms;
@@ -182,6 +186,49 @@ async fn run(app: AppHandle) {
             _ = WAKE.notified() => {}
         }
     }
+}
+
+// Commandes de la carte Mails. La liste lit le cache (base seule, sans journal) ; tout le reste passe par le courtier.
+
+#[tauri::command]
+pub async fn mail_list(state: tauri::State<'_, AppState>, account: Option<i64>, bucket: Option<String>, limit: Option<u32>) -> Result<Vec<MailRow>, String> {
+    mail_tools::list(&state.db.lock(), account, bucket.as_deref(), limit.unwrap_or(mail_tools::LIST_MAX)).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn mail_read(app: AppHandle, account: i64, id: String) -> ToolOutcome {
+    dispatch_as_user(&app, "mail.read", json!({ "account": account, "id": id })).await
+}
+
+#[tauri::command]
+pub async fn mail_set_read(app: AppHandle, account: i64, id: String, read: bool) -> ToolOutcome {
+    dispatch_as_user(&app, "mail.mark_read", json!({ "account": account, "id": id, "read": read })).await
+}
+
+#[tauri::command]
+pub async fn mail_archive(app: AppHandle, account: i64, id: String) -> ToolOutcome {
+    dispatch_as_user(&app, "mail.archive", json!({ "account": account, "id": id })).await
+}
+
+#[tauri::command]
+pub async fn mail_delete(app: AppHandle, account: i64, id: String) -> ToolOutcome {
+    dispatch_as_user(&app, "mail.delete", json!({ "account": account, "id": id })).await
+}
+
+#[tauri::command]
+pub async fn mail_send(app: AppHandle, account: i64, to: String, subject: String, body: String, reply_to_id: Option<String>) -> ToolOutcome {
+    dispatch_as_user(&app, "mail.send", json!({ "account": account, "to": to, "subject": subject, "body": body, "reply_to_id": reply_to_id })).await
+}
+
+#[tauri::command]
+pub async fn mail_open_web(app: AppHandle, account: i64, id: String) -> ToolOutcome {
+    dispatch_as_user(&app, "mail.open_web", json!({ "account": account, "id": id })).await
+}
+
+/// Lien cliqué par l'utilisateur dans un mail affiché.
+#[tauri::command]
+pub async fn mail_open_link(app: AppHandle, url: String) -> ToolOutcome {
+    dispatch_as_user(&app, "mail.open_link", json!({ "url": url })).await
 }
 
 #[cfg(test)]

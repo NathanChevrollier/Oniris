@@ -1,8 +1,10 @@
 //! Mails Gmail : client REST, synchronisation incrémentale et cache des en-têtes (migration 14).
 //! Le corps n'est jamais stocké en base. Journal : comptes, nombres et statuts seulement.
 pub mod gmail;
+pub mod html;
 pub mod mime;
 pub mod sync;
+pub mod tools;
 
 use serde::Serialize;
 

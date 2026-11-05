@@ -67,6 +67,10 @@ pub trait Tool: Send + Sync {
     fn describe(&self, args: &Value) -> ConfirmationText;
     async fn run(&self, args: &Value) -> Result<ToolResult, ToolError>;
     async fn undo(&self, _undo: &Value) -> Result<(), ToolError> { Err(ToolError::NotUndoable) }
+    /// Arguments écrits au journal (`actions.args`). Un outil qui reçoit un contenu à ne pas garder en base
+    /// (corps d'un mail) en rend une forme masquée ; le courtier garde alors les vrais arguments en mémoire
+    /// jusqu'à la décision. Le masque ne doit pas être exécutable (`run` le refuse).
+    fn journal_args(&self, args: &Value) -> Value { args.clone() }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

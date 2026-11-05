@@ -102,6 +102,8 @@ impl AppState {
         let account_http = oniris_core::accounts::client()?;
         let handle = app.clone();
         let accounts = Arc::new(TokenCache::new(db.clone(), secrets.clone(), events.clone(), account_http.clone(), Arc::new(move |p| provider_config(&handle, p))));
+        let gmail = oniris_core::mail::gmail::Client::new(account_http.clone());
+        tools.extend(oniris_core::mail::tools::all(&db, &events, &accounts, gmail, &opener));
         let broker = Arc::new(ToolBroker::new(db.clone(), clock, tools)?);
         broker.mark_interrupted();
         broker.expire_stale();

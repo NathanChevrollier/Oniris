@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-mail-open-web"
+description = "Enables the mail_open_web command without any pre-configured scope."
+commands.allow = ["mail_open_web"]
+
+[[permission]]
+identifier = "deny-mail-open-web"
+description = "Denies the mail_open_web command without any pre-configured scope."
+commands.deny = ["mail_open_web"]

@@ -6,6 +6,7 @@ pub mod clipboard;
 pub mod favicons;
 pub mod favorites;
 pub mod indexer;
+pub mod mail;
 pub mod projects;
 pub mod reminders;
 pub mod search;

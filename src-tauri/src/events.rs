@@ -20,6 +20,9 @@ pub struct TauriEvents(pub AppHandle);
 
 impl Events for TauriEvents {
     fn changed(&self, topic: Topic) {
+        if topic == Topic::Accounts {
+            crate::modules::mail::wake(); // compte ajouté, retiré ou reconnecté
+        }
         if topic == Topic::Favorites {
             crate::modules::favorites::refresh(&self.0);
             crate::modules::favicons::spawn(&self.0);
@@ -43,7 +46,7 @@ mod tests {
     #[test]
     fn la_pilule_n_ecoute_que_les_minuteurs() {
         assert_eq!(windows_for(Topic::Timers), ["panel", "pill"]);
-        for t in [Topic::Agenda, Topic::Reminders, Topic::Notes, Topic::Clipboard, Topic::Weather, Topic::Favorites, Topic::Projects, Topic::Accounts] {
+        for t in [Topic::Agenda, Topic::Reminders, Topic::Notes, Topic::Clipboard, Topic::Weather, Topic::Favorites, Topic::Projects, Topic::Accounts, Topic::Mail] {
             assert_eq!(windows_for(t), ["panel"], "{t:?}");
         }
     }

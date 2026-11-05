@@ -1,0 +1,39 @@
+{
+  "id": "18c1b",
+  "threadId": "18c0f",
+  "labelIds": [
+    "CATEGORY_PROMOTIONS",
+    "INBOX",
+    "UNREAD"
+  ],
+  "snippet": "Jusqu'à -50 % ce week-end",
+  "sizeEstimate": 4321,
+  "historyId": "1490",
+  "internalDate": "1762329600000",
+  "payload": {
+    "partId": "",
+    "mimeType": "multipart/alternative",
+    "filename": "",
+    "headers": [
+      {
+        "name": "From",
+        "value": "=?ISO-8859-1?Q?Boutique_=E9t=E9?= <promo@boutique.example>"
+      },
+      {
+        "name": "Subject",
+        "value": "Soldes d'hiver"
+      },
+      {
+        "name": "Date",
+        "value": "Wed, 5 Nov 2026 09:00:00 +0100"
+      },
+      {
+        "name": "List-Unsubscribe",
+        "value": "<https://boutique.example/unsub?u=1>, <mailto:unsub@boutique.example>"
+      }
+    ],
+    "body": {
+      "size": 0
+    }
+  }
+}

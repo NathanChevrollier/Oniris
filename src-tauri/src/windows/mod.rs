@@ -80,6 +80,7 @@ pub fn open_panel(app: &AppHandle) -> tauri::Result<()> {
     set_panel_state(app, true)?;
     crate::modules::system::set_sampling(app, true);
     crate::modules::weather::on_panel_open(app);
+    crate::modules::mail::on_panel_open(app);
     crate::modules::apps::on_panel_open(app);
     crate::modules::projects::on_panel_open(app);
     Ok(())

@@ -1,0 +1,35 @@
+{
+  "id": "18c2d",
+  "threadId": "18c2d",
+  "labelIds": [
+    "CATEGORY_UPDATES",
+    "INBOX",
+    "UNREAD"
+  ],
+  "snippet": "Votre colis arrive demain.",
+  "sizeEstimate": 4321,
+  "historyId": "1990",
+  "internalDate": "1762336800000",
+  "payload": {
+    "partId": "",
+    "mimeType": "multipart/alternative",
+    "filename": "",
+    "headers": [
+      {
+        "name": "From",
+        "value": "Transporteur <suivi@colis.example>"
+      },
+      {
+        "name": "Subject",
+        "value": "Votre colis"
+      },
+      {
+        "name": "Date",
+        "value": "Wed, 5 Nov 2026 11:00:00 +0100"
+      }
+    ],
+    "body": {
+      "size": 0
+    }
+  }
+}

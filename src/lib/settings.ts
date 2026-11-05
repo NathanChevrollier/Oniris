@@ -41,6 +41,8 @@ export type Settings = {
   /** Identifiants client OAuth (vide = non configuré) : 200 caractères au plus, sans espace. */
   google_client_id: string;
   spotify_client_id: string;
+  /** Intervalle de relève des mails, 2..=5 minutes. */
+  mail_poll_minutes: number;
 };
 
 const RESUME_NORMAL = "Reprends là où tu en étais sur ce projet. Appuie-toi sur le plan de développement et l'historique git. Commence par me dire où on en est.";
@@ -69,6 +71,7 @@ export const DEFAULT_SETTINGS: Settings = {
   resume_prompt_orchestrator: `${RESUME_NORMAL} Travaille en mode orchestrateur, comme décrit dans mon CLAUDE.md global : graphify pour t'orienter, sous-agents haiku/sonnet/opus selon la tâche, parallélisation des tâches indépendantes, et relecture avant intégration.`,
   google_client_id: "",
   spotify_client_id: "",
+  mail_poll_minutes: 3,
 };
 
 /** Paramètres courants : chargés au montage, puis suivis via `oniris://settings`. */

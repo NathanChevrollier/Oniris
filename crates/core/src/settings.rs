@@ -49,6 +49,8 @@ pub struct Settings {
     /// Identifiants client OAuth (vide = non configuré) : 200 caractères au plus, sans espace.
     pub google_client_id: String,
     pub spotify_client_id: String,
+    /// Intervalle de relève des mails, 2..=5 minutes.
+    pub mail_poll_minutes: u8,
 }
 
 impl Default for Settings {
@@ -76,6 +78,7 @@ impl Default for Settings {
             resume_prompt_orchestrator: format!("{RESUME_NORMAL} {RESUME_ORCHESTRATOR}"),
             google_client_id: String::new(),
             spotify_client_id: String::new(),
+            mail_poll_minutes: 3,
         }
     }
 }
@@ -195,6 +198,10 @@ impl Settings {
         if !(20..=1000).contains(&self.clipboard_max_items) {
             errs.push("taille de l'historique du presse-papiers hors de 20..=1000".into());
             self.clipboard_max_items = d.clipboard_max_items;
+        }
+        if !(2..=5).contains(&self.mail_poll_minutes) {
+            errs.push("relève des mails hors de 2..=5 min".into());
+            self.mail_poll_minutes = d.mail_poll_minutes;
         }
         self.weather_city = self.weather_city.trim().to_string();
         if self.weather_city.chars().count() > 80 {
@@ -327,6 +334,11 @@ mod tests {
         assert!(bad(|s| s.hold_threshold_ms = 1001));
         assert!(bad(|s| s.hover_delay_ms = 99));
         assert!(bad(|s| s.hover_delay_ms = 3001));
+        assert!(bad(|s| s.mail_poll_minutes = 1));
+        assert!(bad(|s| s.mail_poll_minutes = 6));
+        assert!(Settings { mail_poll_minutes: 2, ..Settings::default() }.validate().is_ok());
+        assert!(Settings { mail_poll_minutes: 5, ..Settings::default() }.validate().is_ok());
+        assert_eq!(Settings::default().mail_poll_minutes, 3);
         assert!(bad(|s| s.hotkey.key = "Enter".into()));
         assert!(bad(|s| s.focus_minutes = 4));
         assert!(bad(|s| s.focus_minutes = 121));

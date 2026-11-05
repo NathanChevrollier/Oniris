@@ -1,0 +1,92 @@
+{
+  "id": "18c1c",
+  "threadId": "18c1c",
+  "labelIds": [
+    "INBOX"
+  ],
+  "snippet": "Voici le compte rendu.",
+  "historyId": "1480",
+  "internalDate": "1762326000000",
+  "sizeEstimate": 24567,
+  "payload": {
+    "partId": "",
+    "mimeType": "multipart/mixed",
+    "filename": "",
+    "headers": [
+      {
+        "name": "Content-Type",
+        "value": "multipart/mixed; boundary=\"b1\""
+      }
+    ],
+    "body": {
+      "size": 0
+    },
+    "parts": [
+      {
+        "partId": "0",
+        "mimeType": "multipart/alternative",
+        "filename": "",
+        "headers": [
+          {
+            "name": "Content-Type",
+            "value": "multipart/alternative; boundary=\"b2\""
+          }
+        ],
+        "body": {
+          "size": 0
+        },
+        "parts": [
+          {
+            "partId": "0.0",
+            "mimeType": "text/plain",
+            "filename": "",
+            "headers": [
+              {
+                "name": "Content-Type",
+                "value": "text/plain; charset=\"UTF-8\""
+              }
+            ],
+            "body": {
+              "size": 33,
+              "data": "Qm9uam91ciwgdm9pY2kgbGUgY29tcHRlIHJlbmR1Lg0K"
+            }
+          },
+          {
+            "partId": "0.1",
+            "mimeType": "text/html",
+            "filename": "",
+            "headers": [
+              {
+                "name": "Content-Type",
+                "value": "text/html; charset=\"UTF-8\""
+              }
+            ],
+            "body": {
+              "size": 71,
+              "data": "PGh0bWw-PGJvZHk-PHA-Qm9uam91ciwgdm9pY2kgbGUgPGI-Y29tcHRlIHJlbmR1PC9iPi48L3A-PC9ib2R5PjwvaHRtbD4="
+            }
+          }
+        ]
+      },
+      {
+        "partId": "1",
+        "mimeType": "application/pdf",
+        "filename": "compte-rendu.pdf",
+        "headers": [
+          {
+            "name": "Content-Type",
+            "value": "application/pdf; name=\"compte-rendu.pdf\""
+          },
+          {
+            "name": "Content-Disposition",
+            "value": "attachment; filename=\"compte-rendu.pdf\""
+          }
+        ],
+        "body": {
+          "attachmentId": "ANGjdJ8abc",
+          "size": 20480
+        }
+      }
+    ]
+  }
+}

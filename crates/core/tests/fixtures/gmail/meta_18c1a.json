@@ -1,0 +1,36 @@
+{
+  "id": "18c1a",
+  "threadId": "18c1a",
+  "labelIds": [
+    "IMPORTANT",
+    "CATEGORY_PERSONAL",
+    "INBOX",
+    "UNREAD"
+  ],
+  "snippet": "On se retrouve à l&#39;accueil &amp; on monte ensemble.",
+  "sizeEstimate": 4321,
+  "historyId": "1500",
+  "internalDate": "1762333200000",
+  "payload": {
+    "partId": "",
+    "mimeType": "multipart/alternative",
+    "filename": "",
+    "headers": [
+      {
+        "name": "From",
+        "value": "\"Dupont, Jean\" <j@x.fr>"
+      },
+      {
+        "name": "Subject",
+        "value": "=?UTF-8?B?UsOpdW5pb24gZGVtYWluIMOgIDEwIGg=?="
+      },
+      {
+        "name": "Date",
+        "value": "Wed, 5 Nov 2026 10:00:00 +0100"
+      }
+    ],
+    "body": {
+      "size": 0
+    }
+  }
+}

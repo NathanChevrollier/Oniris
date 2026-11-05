@@ -1,0 +1,50 @@
+{
+  "history": [
+    {
+      "id": "1601",
+      "messages": [
+        {
+          "id": "18c1b",
+          "threadId": "18c0f"
+        }
+      ],
+      "labelsRemoved": [
+        {
+          "message": {
+            "id": "18c1b",
+            "threadId": "18c0f",
+            "labelIds": [
+              "CATEGORY_PROMOTIONS",
+              "UNREAD"
+            ]
+          },
+          "labelIds": [
+            "INBOX"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "1602",
+      "messages": [
+        {
+          "id": "18c1c",
+          "threadId": "18c1c"
+        }
+      ],
+      "messagesDeleted": [
+        {
+          "message": {
+            "id": "18c1c",
+            "threadId": "18c1c",
+            "labelIds": [
+              "CATEGORY_PERSONAL",
+              "INBOX"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "historyId": "2000"
+}

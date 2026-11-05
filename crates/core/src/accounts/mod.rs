@@ -88,10 +88,14 @@ pub fn set_status(c: &Connection, id: i64, status: Status) -> Result<(), CoreErr
     Ok(())
 }
 
-/// Supprime le compte et son jeton d'actualisation (le secret part même si la ligne manquait).
-/// Les tâches mails et agenda y ajoutent l'effacement de leurs lignes.
+/// Supprime le compte, ses mails en cache et son jeton d'actualisation (le secret part même si la ligne manquait).
+/// La tâche agenda y ajoute l'effacement de ses lignes.
 pub fn remove(c: &Connection, secrets: &dyn SecretStore, id: i64) -> Result<(), CoreError> {
-    let n = c.execute("DELETE FROM accounts WHERE id = ?1", [id])?;
+    let tx = c.unchecked_transaction()?;
+    tx.execute("DELETE FROM mails WHERE account_id = ?1", [id])?;
+    tx.execute("DELETE FROM mail_sync WHERE account_id = ?1", [id])?;
+    let n = tx.execute("DELETE FROM accounts WHERE id = ?1", [id])?;
+    tx.commit()?;
     secrets.delete(&account_key(id));
     if n == 0 {
         return Err(CoreError::NotFound("compte introuvable".into()));
@@ -318,7 +322,13 @@ mod tests {
         let id = add(&c, Provider::Spotify, "moi", 1).unwrap();
         s.set(&account_key(id), "ref").unwrap();
         s.set(&account_key(id + 1), "autre").unwrap();
+        for acc in [id, id + 1] {
+            c.execute("INSERT INTO mails VALUES (?1, 'm', 't', 'n', 'a', 's', '', 1, 0, '[]', 'read', 'heuristic', NULL, NULL)", [acc]).unwrap();
+            c.execute("INSERT INTO mail_sync(account_id, history_id) VALUES (?1, '1')", [acc]).unwrap();
+        }
         remove(&c, &s, id).unwrap();
+        let left = |t: &str| c.query_row(&format!("SELECT group_concat(account_id) FROM {t}"), [], |r| r.get::<_, Option<String>>(0)).unwrap();
+        assert_eq!((left("mails"), left("mail_sync")), (Some((id + 1).to_string()), Some((id + 1).to_string())), "mails du compte effacés, pas ceux des autres");
         assert_eq!(s.get(&account_key(id)), None);
         assert_eq!(s.get(&account_key(id + 1)).as_deref(), Some("autre"));
         assert!(list(&c).unwrap().is_empty());

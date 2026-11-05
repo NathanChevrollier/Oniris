@@ -1,0 +1,34 @@
+{
+  "id": "18c1c",
+  "threadId": "18c1c",
+  "labelIds": [
+    "CATEGORY_PERSONAL",
+    "INBOX"
+  ],
+  "snippet": "Voici le compte rendu.",
+  "sizeEstimate": 4321,
+  "historyId": "1480",
+  "internalDate": "1762326000000",
+  "payload": {
+    "partId": "",
+    "mimeType": "multipart/alternative",
+    "filename": "",
+    "headers": [
+      {
+        "name": "From",
+        "value": "marie@exemple.fr"
+      },
+      {
+        "name": "Subject",
+        "value": "Compte rendu"
+      },
+      {
+        "name": "Date",
+        "value": "Wed, 5 Nov 2026 08:00:00 +0100"
+      }
+    ],
+    "body": {
+      "size": 0
+    }
+  }
+}

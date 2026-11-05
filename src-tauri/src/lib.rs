@@ -117,6 +117,7 @@ pub fn run() {
             modules::timers::start(app.handle());
             modules::clipboard::start(app.handle());
             modules::weather::load(app.handle());
+            modules::mail::start(app.handle());
             modules::favicons::spawn(app.handle());
             modules::apps::start(app.handle());
             modules::projects::refresh(app.handle());
@@ -160,8 +161,9 @@ mod tests {
                 assert!(!(head.starts_with("pub fn") && touches_db(body)), "{file} : commande synchrone qui touche la base : {head}");
             }
         }
-        let weather = include_str!("modules/weather.rs");
-        let open = weather.split("pub fn on_panel_open").nth(1).expect("on_panel_open");
-        assert!(!touches_db(&open[..open.find("\n}").unwrap()]), "on_panel_open ne doit pas verrouiller la base");
+        for module in [include_str!("modules/weather.rs"), include_str!("modules/mail.rs")] {
+            let open = module.split("pub fn on_panel_open").nth(1).expect("on_panel_open");
+            assert!(!touches_db(&open[..open.find("\n}").unwrap()]), "on_panel_open ne doit pas verrouiller la base");
+        }
     }
 }

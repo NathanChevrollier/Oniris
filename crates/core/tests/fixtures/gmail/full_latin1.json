@@ -1,0 +1,25 @@
+{
+  "id": "18c1d",
+  "threadId": "18c1d",
+  "labelIds": [
+    "INBOX"
+  ],
+  "snippet": "Résumé",
+  "historyId": "1470",
+  "internalDate": "1762322400000",
+  "payload": {
+    "partId": "",
+    "mimeType": "text/plain",
+    "filename": "",
+    "headers": [
+      {
+        "name": "Content-Type",
+        "value": "text/plain; charset=ISO-8859-1"
+      }
+    ],
+    "body": {
+      "size": 23,
+      "data": "UulzdW3pIGVuIHBp6GNlIGpvaW50ZS4="
+    }
+  }
+}

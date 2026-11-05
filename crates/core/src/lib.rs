@@ -2,6 +2,7 @@ pub mod accounts;
 pub mod agenda;
 pub mod apps;
 pub mod launch;
+pub mod mail;
 pub mod clipboard;
 mod db;
 mod error;

@@ -169,6 +169,35 @@ Migration {
         created_ms INTEGER NOT NULL
     ) STRICT;
     CREATE UNIQUE INDEX accounts_provider_label ON accounts(provider, label);",
+},
+Migration {
+    version: 14,
+    // Cache des en-têtes de la boîte de réception (jamais le corps). labels : JSON ; bucket : todo | read | filtered ;
+    // bucket_src : heuristic | iris.
+    sql: "CREATE TABLE mails (
+        account_id INTEGER NOT NULL,
+        id TEXT NOT NULL,
+        thread_id TEXT NOT NULL,
+        from_name TEXT NOT NULL,
+        from_addr TEXT NOT NULL,
+        subject TEXT NOT NULL,
+        snippet TEXT NOT NULL,
+        date_ms INTEGER NOT NULL,
+        unread INTEGER NOT NULL,
+        labels TEXT NOT NULL,
+        bucket TEXT NOT NULL,
+        bucket_src TEXT NOT NULL,
+        summary TEXT,
+        tag TEXT,
+        PRIMARY KEY(account_id, id)
+    ) STRICT;
+    CREATE INDEX mails_date ON mails(date_ms);
+    CREATE TABLE mail_sync (
+        account_id INTEGER PRIMARY KEY,
+        history_id TEXT,
+        last_ok_ms INTEGER,
+        backoff_until_ms INTEGER
+    ) STRICT;",
 }];
 
 pub fn open_db(path: &Path) -> Result<Connection, CoreError> {

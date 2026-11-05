@@ -19,6 +19,12 @@ body.closed .card{animation:none}
 .ambient i:nth-child(1){width:42%;height:60%;left:2%;top:-10%;background:radial-gradient(closest-side,#ff6a3d77,transparent)}
 .ambient i:nth-child(2){width:38%;height:55%;left:55%;top:5%;background:radial-gradient(closest-side,#7b4dff66,transparent);animation-duration:22s}
 .ambient i:nth-child(3){width:30%;height:50%;left:28%;top:45%;background:radial-gradient(closest-side,#ff3d7f55,transparent);animation-duration:26s}
+.ambient-tint{position:absolute;inset:-20%;z-index:0;pointer-events:none;opacity:.55;animation:ambient-in 1.2s ease both;transition:opacity 1.2s ease;
+  background:radial-gradient(closest-side at 22% 24%,color-mix(in srgb,var(--ambient-1) 50%,transparent),transparent 75%) 0 0/62% 90% no-repeat,
+    radial-gradient(closest-side at 74% 32%,color-mix(in srgb,var(--ambient-2) 42%,transparent),transparent 75%) 100% 0/58% 85% no-repeat,
+    radial-gradient(closest-side at 50% 70%,color-mix(in srgb,var(--ambient-3) 36%,transparent),transparent 75%) 40% 100%/50% 80% no-repeat}
+.ambient-tint.out{opacity:0;animation:none}
+@keyframes ambient-in{from{opacity:0}}
 
 .inner{position:relative;z-index:1;padding:22px 26px 16px;display:flex;flex-direction:column;gap:12px;
   max-height:calc(100vh - 28px);overflow:auto;scrollbar-width:none}

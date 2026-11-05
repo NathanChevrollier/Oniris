@@ -14,6 +14,7 @@ import { ClipboardCard } from "../modules/clipboard/ClipboardCard";
 import { ProjectsCard } from "../modules/projects/ProjectsCard";
 import { FavoritesCard } from "../modules/favorites/FavoritesCard";
 import { MailCard } from "../modules/mail/MailCard";
+import { Ambient, MusicCard } from "../modules/music/MusicCard";
 import { useNow } from "../lib/time";
 import { agendaIpc, dayBounds, dayKey, type AgendaEvent } from "../modules/agenda/api";
 import { remindersIpc, type Reminder } from "../modules/reminders/api";
@@ -30,6 +31,7 @@ const logCommand = (text: string) => console.info("[oniris] commande :", text); 
 
 const NO_EVENTS: AgendaEvent[] = [];
 const NO_REMINDERS: Reminder[] = [];
+const NO_COLORS: string[] = [];
 
 export function Panel({ onCommand = logCommand }: { onCommand?: (text: string) => void }) {
   const open = usePanelStore((s) => s.open);
@@ -40,6 +42,7 @@ export function Panel({ onCommand = logCommand }: { onCommand?: (text: string) =
     // Le contenu derrière la feuille redevient actif au rendu suivant : on lui rend le focus après.
     setTimeout(() => document.querySelector<HTMLElement>(".hdr-btn")?.focus(), 0);
   }, []);
+  const [colors, setColors] = useState<string[]>(NO_COLORS);
   const settings = useSettings();
   const now = useNow(60_000, open);
   // La clé du jour recharge la frise après minuit (ou à la réouverture le lendemain).
@@ -69,7 +72,7 @@ export function Panel({ onCommand = logCommand }: { onCommand?: (text: string) =
     <>
       <div className="scrim" onClick={() => ipc.panelClose()} />
       <section className="panel" aria-label="Oniris">
-        <div className="ambient"><i /><i /><i /></div>
+        <Ambient colors={colors} />
         <div className="inner" inert={accountsOpen}>
           <Header name={settings.user_name} onAccounts={openAccounts} />
           <div className="brief">
@@ -78,7 +81,7 @@ export function Panel({ onCommand = logCommand }: { onCommand?: (text: string) =
           </div>
           <Timeline startHour={settings.timeline_start_hour} endHour={settings.timeline_end_hour} items={[...items, ...dots]} />
           <ConfirmQueue subscribe={onConfirm} resolve={toolIpc.resolve} />
-          <CardGrid slots={{ mails: <MailCard onAccounts={openAccounts} />, agenda: <AgendaCard />, projects: <ProjectsCard />, notes: <NotesCard />, clipboard: <ClipboardCard />, vps: <FavoritesCard />, pc: <PcCard />, timer: <TimerCard /> }} />
+          <CardGrid slots={{ music: <MusicCard onAccounts={openAccounts} onColors={setColors} />, mails: <MailCard onAccounts={openAccounts} />, agenda: <AgendaCard />, projects: <ProjectsCard />, notes: <NotesCard />, clipboard: <ClipboardCard />, vps: <FavoritesCard />, pc: <PcCard />, timer: <TimerCard /> }} />
           <CommandPalette onCommand={onCommand} />
           <div className="handle" />
         </div>

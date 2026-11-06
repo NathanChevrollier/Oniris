@@ -153,7 +153,7 @@ Chaque module occupe une carte du panneau, alimente le briefing quand c'est pert
   - la **Spotify Web API** (OAuth PKCE, compte Premium) pour lancer une playlist, chercher et lancer un titre, choisir l'appareil, gérer le volume et la file d'attente.
 - **À la voix** : « mets ma playlist Focus », « mets du Daft Punk », « suivant », « moins fort », « c'est quoi ce titre ? ».
 - La pochette fournit les couleurs de la lumière ambiante du panneau (couleurs dominantes extraites).
-- **Restrictions Spotify de février 2026 (mode développement)** : le propriétaire de l'application doit être Premium (c'est le cas) ; cinq utilisateurs au plus (largement suffisant) ; la recherche est limitée à `limit=10`. Restent disponibles : `/me/player/*`, `/me/playlists`, `/playlists/{id}/items` et `/search`. À ne **pas** utiliser : `/playlists/{id}/tracks`, les lots (`GET /tracks?ids=`), `/browse/*` et `/artists/{id}/top-tracks`.
+- **Restrictions Spotify de février 2026 (mode développement, décision du 2026-11-05)** : le propriétaire de l'application doit être Premium (c'est le cas) ; cinq utilisateurs au plus (largement suffisant) ; la recherche est limitée à `limit=10`. Restent disponibles : `/me/player/*`, `/me/playlists`, `/playlists/{id}/items` et `/search`. À ne **pas** utiliser : `/playlists/{id}/tracks`, les lots (`GET /tracks?ids=`), `/browse/*` et `/artists/{id}/top-tracks`.
 
 ### 6.5 Favoris
 

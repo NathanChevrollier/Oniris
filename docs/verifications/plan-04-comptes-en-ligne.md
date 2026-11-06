@@ -106,6 +106,7 @@ Pendant ces essais, garde sous la main : ton compte Google (Gmail et Agenda), to
 ## 10. Musique : lecture Windows (SMTC)
 
 - [ ] ⚠️ à vérifier en priorité : SMTC réel. Avec **Spotify** qui joue, ouvre le panneau : le titre, l'artiste et la pochette apparaissent dans « En lecture », avec trois couleurs de lumière ambiante.
+- [ ] Passe à un morceau d'un autre artiste, puis à un autre morceau du même artiste : la pochette est relue quand l'artiste change (elle peut mettre un instant), et ne reste pas celle du morceau précédent.
 - [ ] Change de morceau dans Spotify : le titre et la pochette se mettent à jour en moins d'une seconde. Pendant des changements rapides, aucune ancienne pochette ne reste affichée avec le nouveau titre.
 - [ ] Mets en pause : l'égaliseur se fige et l'icône passe sur « lecture ».
 - [ ] ⚠️ à vérifier en priorité : avec une **vidéo de navigateur** (Chrome ou Edge) **et** Spotify qui jouent en même temps, c'est la session Spotify qui est suivie.
@@ -189,4 +190,4 @@ Pendant ces essais, garde sous la main : ton compte Google (Gmail et Agenda), to
 
 ## Si quelque chose ne va pas
 
-Note le numéro de la case (par exemple 7.1) et ce que tu as vu, puis envoie-le-moi. Les points les plus incertains sont le vrai coffre Windows (1.1), la connexion Google en production (3.1 et 3.2), la réponse à toi-même (7.1 à 7.4), la lecture Windows réelle (10.1 et 10.4), la règle hors ligne (14.5), Zenytt réel (15.1 et 15.4) et la révocation d'un accès (16.1). Les cases sont numérotées par section, dans l'ordre.
+Note la section et le début de la case (par exemple « section 7, réponse à toi-même ») et ce que tu as vu, puis envoie-le-moi. Les points les plus incertains sont le vrai coffre Windows (section 1), la connexion Google en production (section 3), la réponse à toi-même (section 7), la lecture Windows réelle (section 10), la règle hors ligne (section 14), Zenytt réel (section 15) et la révocation d'un accès (section 16).

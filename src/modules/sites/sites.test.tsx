@@ -2,7 +2,7 @@ import { render, screen, cleanup, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { it, expect, vi, afterEach, beforeEach } from "vitest";
 import { SitesSection, addError } from "./SitesSection";
-import { sitesIpc, counter, type SiteView } from "./api";
+import { sitesIpc, vpsIpc, counter, type SiteView, type VpsStatus } from "./api";
 import { usePanelStore } from "../../panel/store";
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
@@ -64,4 +64,45 @@ it("affiche les problèmes d'abord, sans changer l'ordre enregistré", async () 
   await screen.findByText("Gamma");
   expect(screen.getAllByRole("listitem").map((li) => li.querySelector(".site-name")?.textContent)).toEqual(["Gamma", "Beta", "Delta", "Alpha"]);
   expect(stored.map((s) => s.name)).toEqual(["Alpha", "Beta", "Gamma", "Delta"]);
+});
+
+const vps = (over: Partial<VpsStatus> = {}): VpsStatus => ({ zenytt: true, view: { server: "vps-ovh", cpu_pct: 23.4, mem_pct: 61.2, disk_pct: 48.7, load1: 0.42, alerts: 0, at_ms: 1 }, error: null, ...over });
+
+it("ligne VPS : métriques arrondies, masquée sans Zenytt", async () => {
+  vi.spyOn(sitesIpc, "list").mockResolvedValue([]);
+  const status = vi.spyOn(vpsIpc, "status").mockResolvedValue(vps());
+  const { unmount } = render(<SitesSection />);
+  expect(await screen.findByText("vps-ovh")).toBeInTheDocument();
+  expect(screen.getByText("23 %")).toBeInTheDocument();
+  expect(screen.getByText("0.42")).toBeInTheDocument();
+  expect(screen.getByRole("img", { name: "VPS en ligne" })).toBeInTheDocument();
+  unmount();
+  status.mockResolvedValue({ zenytt: false, view: null, error: null });
+  render(<SitesSection />);
+  await screen.findByText("Aucun site surveillé");
+  expect(screen.queryByText(/CPU|VPS/)).toBeNull();
+  await userEvent.click(screen.getByRole("button", { name: "Modifier les sites" }));
+  expect(screen.queryByRole("button", { name: /Importer depuis Zenytt/ })).toBeNull();
+});
+
+it("VPS indisponible : raison courte, dernier relevé estompé", async () => {
+  vi.spyOn(sitesIpc, "list").mockResolvedValue([]);
+  vi.spyOn(vpsIpc, "status").mockResolvedValue(vps({ view: null, error: "clé du serveur jamais approuvée" }));
+  render(<SitesSection />);
+  expect(await screen.findByText("Indisponible : clé du serveur jamais approuvée")).toBeInTheDocument();
+  expect(screen.getByRole("img", { name: "VPS indisponible" })).toBeInTheDocument();
+});
+
+it("importe les sites depuis Zenytt puis recharge", async () => {
+  const list = vi.spyOn(sitesIpc, "list").mockResolvedValue([]);
+  vi.spyOn(vpsIpc, "status").mockResolvedValue(vps());
+  const imp = vi.spyOn(vpsIpc, "importSites").mockResolvedValue(2);
+  render(<SitesSection />);
+  await userEvent.click(await screen.findByRole("button", { name: "Modifier les sites" }));
+  await userEvent.click(await screen.findByRole("button", { name: /Importer depuis Zenytt/ }));
+  expect(imp).toHaveBeenCalled();
+  await waitFor(() => expect(list).toHaveBeenCalledTimes(2));
+  imp.mockResolvedValue(0);
+  await userEvent.click(screen.getByRole("button", { name: /Importer depuis Zenytt/ }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("Aucun nouveau site HTTPS");
 });

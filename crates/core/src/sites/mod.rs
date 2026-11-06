@@ -165,6 +165,27 @@ pub fn prune(c: &Connection, now_ms: i64) -> Result<usize, CoreError> {
     Ok(c.execute("DELETE FROM probes WHERE at_ms < ?1", [now_ms - KEEP_MS])?)
 }
 
+/// Charge du VPS lue par Zenytt (pourcentages 0..100, `load1` : charge moyenne sur 1 min).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct VpsView {
+    pub server: String,
+    pub cpu_pct: f64,
+    pub mem_pct: f64,
+    /// Disque le plus rempli (généralement `/`), hors montages en lecture seule ou écartés dans Zenytt.
+    pub disk_pct: f64,
+    pub load1: f64,
+    pub alerts: u32,
+    pub at_ms: i64,
+}
+
+/// `zenytt` : Zenytt trouvé sur ce PC (sinon la ligne VPS est masquée). `error` : raison courte, déjà nettoyée.
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+pub struct VpsStatus {
+    pub zenytt: bool,
+    pub view: Option<VpsView>,
+    pub error: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct SiteView {
     pub name: String,
@@ -273,6 +294,8 @@ mod tests {
         let s2 = sent.clone();
         std::thread::spawn(move || {
             let (mut sock, _) = l.accept().unwrap();
+            // Lire la requête d'abord : une réponse envoyée avant fait échouer hyper (UnexpectedMessage).
+            let _ = std::io::Read::read(&mut sock, &mut [0u8; 4096]);
             let _ = sock.write_all(b"HTTP/1.1 200 OK\r\ncontent-length: 50000000\r\n\r\n");
             let chunk = [b'x'; 16 * 1024];
             for _ in 0..3000 { // 48 Mo promis, jamais lus en entier

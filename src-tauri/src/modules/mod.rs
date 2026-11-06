@@ -17,3 +17,4 @@ pub mod notes;
 pub mod timers;
 pub mod system;
 pub mod weather;
+pub mod zenytt;

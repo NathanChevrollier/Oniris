@@ -1,10 +1,35 @@
 import { useState } from "react";
-import { Pencil, Plus, X } from "lucide-react";
+import { Download, Pencil, Plus, X } from "lucide-react";
 import { useTopic } from "../../lib/data";
-import { counter, sitesIpc, type SiteState, type SiteView } from "./api";
+import { counter, sitesIpc, vpsIpc, type SiteState, type SiteView, type VpsStatus } from "./api";
 import "./sites.css";
 
 const NONE: SiteView[] = [];
+const NO_VPS: VpsStatus = { zenytt: false, view: null, error: null };
+const pct = (n: number) => `${Math.round(n)} %`;
+
+/** Charge du VPS lue par Zenytt : masquée sans Zenytt ; le dernier relevé reste affiché, estompé, s'il est indisponible. */
+export function VpsLine({ vps }: { vps: VpsStatus }) {
+  if (!vps.zenytt) return null;
+  const v = vps.view;
+  const state = vps.error ? "down" : v ? (v.alerts > 0 ? "slow" : "up") : "unknown";
+  const label = vps.error ? "VPS indisponible" : v ? (v.alerts > 0 ? `${v.alerts} alerte${v.alerts > 1 ? "s" : ""}` : "VPS en ligne") : "lecture en cours";
+  return (
+    <div className={`vps${vps.error ? " stale" : ""}`}>
+      <span className={`site-dot ${state}`} role="img" aria-label={label} />
+      <span className="vps-name">{v?.server ?? "VPS"}</span>
+      {v
+        // Les mesures qui ne tiennent pas sur la ligne sont masquées entières (CSS) ; l'infobulle les donne toutes.
+        ? <span className="vps-metrics" title={vps.error ?? `CPU ${pct(v.cpu_pct)}, RAM ${pct(v.mem_pct)}, disque ${pct(v.disk_pct)}, charge ${v.load1.toFixed(2)}`}>
+            <span>CPU <b>{pct(v.cpu_pct)}</b></span>
+            <span>RAM <b>{pct(v.mem_pct)}</b></span>
+            <span>Disque <b>{pct(v.disk_pct)}</b></span>
+            <span>Charge <b>{v.load1.toFixed(2)}</b></span>
+          </span>
+        : <span className="vps-msg" title={vps.error ?? undefined}>{vps.error ? `Indisponible : ${vps.error}` : "Lecture…"}</span>}
+    </div>
+  );
+}
 /** Ordre d'affichage : les problèmes d'abord ; l'ordre enregistré ne change pas. */
 const SEVERITY: Record<SiteState, number> = { down: 0, slow: 1, unknown: 2, offline: 3, up: 3 };
 const LABEL: Record<SiteState, string> = { unknown: "pas encore sondé", up: "en ligne", slow: "lent", down: "en panne", offline: "hors ligne" };
@@ -34,6 +59,7 @@ export function Spark({ values }: { values: number[] }) {
 /** Surveillance des sites : compteur, pastille, temps de réponse et courbe ; la liste s'édite ici. */
 export function SitesSection() {
   const { data, reload } = useTopic<SiteView[]>("sites", sitesIpc.list, NONE);
+  const { data: vps } = useTopic<VpsStatus>("sites", vpsIpc.status, NO_VPS);
   const [editing, setEditing] = useState(false);
   const [url, setUrl] = useState("");
   const [name, setName] = useState("");
@@ -45,12 +71,20 @@ export function SitesSection() {
     if (!url.trim()) return;
     try { await sitesIpc.add(url, name); setUrl(""); setName(""); setError(null); reload(); } catch (e) { setError(addError(e)); }
   };
+  const importZenytt = async () => {
+    try {
+      const n = await vpsIpc.importSites();
+      setError(n === 0 ? "Aucun nouveau site HTTPS dans Zenytt." : null);
+      reload();
+    } catch (e) { setError(`Import impossible : ${String(e).slice(0, 90)}`); }
+  };
   const remove = async (s: SiteView) => {
     try { await sitesIpc.remove(s.url); setError(null); reload(); } catch { setError("Suppression impossible, réessaie."); }
   };
 
   return (
-    <section className="sites" aria-label="Sites surveillés">
+    <section className="sites" aria-label="VPS et sites surveillés">
+      <VpsLine vps={vps} />
       <div className="sites-head">
         <p className="sites-count" aria-live="polite">{data.length === 0 ? "Sites" : offline ? "Hors ligne" : total === 0 ? "En attente…" : `${online}/${total} en ligne`}</p>
         <button type="button" className="sites-edit" aria-label={editing ? "Terminer la modification des sites" : "Modifier les sites"} aria-pressed={editing} onClick={() => { setEditing(!editing); setError(null); }}>
@@ -78,7 +112,10 @@ export function SitesSection() {
         <form className="site-form" onSubmit={(e) => { e.preventDefault(); void add(); }}>
           <input aria-label="Adresse du site à surveiller" placeholder="https://…" value={url} onChange={(e) => setUrl(e.target.value)} spellCheck={false} />
           <input aria-label="Nom (facultatif)" placeholder="Nom (facultatif)" value={name} onChange={(e) => setName(e.target.value)} spellCheck={false} />
-          <button type="submit"><Plus size={12} aria-hidden /> Surveiller</button>
+          <span className="site-form-actions">
+            <button type="submit"><Plus size={12} aria-hidden /> Surveiller</button>
+            {vps.zenytt && <button type="button" onClick={() => void importZenytt()}><Download size={12} aria-hidden /> Importer depuis Zenytt</button>}
+          </span>
         </form>
       )}
       {error && <p className="err" role="alert">{error}</p>}

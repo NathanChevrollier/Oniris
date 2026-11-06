@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-sites-import-from-zenytt"
+description = "Enables the sites_import_from_zenytt command without any pre-configured scope."
+commands.allow = ["sites_import_from_zenytt"]
+
+[[permission]]
+identifier = "deny-sites-import-from-zenytt"
+description = "Denies the sites_import_from_zenytt command without any pre-configured scope."
+commands.deny = ["sites_import_from_zenytt"]

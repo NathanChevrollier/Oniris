@@ -5,7 +5,7 @@
 .card .sites-edit:hover,.card .sites-edit[aria-pressed="true"]{background:rgba(255,255,255,.1);color:var(--txt)}
 .card .sites-edit:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
 .sites-empty{margin:6px 0 0;font:12px var(--font);color:var(--txt2)}
-.site-list{list-style:none;margin:6px 0 0;padding:0;display:flex;flex-direction:column;gap:4px;max-height:68px;overflow-y:auto;scrollbar-width:thin}
+.site-list{list-style:none;margin:4px 0 0;padding:0;display:flex;flex-direction:column;gap:4px;max-height:68px;overflow-y:auto;scrollbar-width:thin}
 .site{display:flex;align-items:center;gap:8px;min-height:18px;font:12px var(--font);color:var(--txt)}
 .site-dot{flex:none;width:8px;height:8px;border-radius:50%;background:var(--txt3)}
 .site-dot.up{background:#30d158;box-shadow:0 0 6px rgba(48,209,88,.55)}
@@ -21,4 +21,11 @@
 .site-form{display:flex;flex-direction:column;gap:6px;margin-top:8px}
 .site-form input{padding:6px 10px;border-radius:12px;border:1px solid var(--line);background:rgba(255,255,255,.06);color:var(--txt);font:12.5px var(--font);outline:0}
 .site-form input:focus{border-color:rgba(255,140,100,.35)}
+.site-form-actions{display:flex;flex-wrap:wrap;gap:6px}
 .site-form button{align-self:flex-start;margin-top:0;display:inline-flex;align-items:center;gap:4px}
+.vps{display:flex;align-items:center;gap:8px;min-height:16px;margin-bottom:2px;font:12px var(--font);color:var(--txt)}
+.vps-name{flex:none;max-width:30%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+.vps-metrics{flex:1;min-width:0;height:15px;line-height:15px;display:flex;flex-wrap:wrap;justify-content:flex-end;column-gap:8px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-size:11px;color:var(--txt3)}
+.vps-metrics b{font-weight:500;font-variant-numeric:tabular-nums;color:var(--txt2)}
+.vps.stale .vps-metrics{opacity:.6}
+.vps-msg{flex:1;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;text-align:right;font-size:11px;color:var(--txt3)}

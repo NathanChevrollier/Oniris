@@ -50,6 +50,8 @@
     "allow-weather-get",
     "allow-sites-list",
     "allow-sites-set",
+    "allow-vps-status",
+    "allow-sites-import-from-zenytt",
     "allow-index-status",
     "allow-search-query",
     "allow-search-open",

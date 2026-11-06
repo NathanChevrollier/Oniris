@@ -621,6 +621,12 @@
           "markdownDescription": "Enables the settings_save command without any pre-configured scope."
         },
         {
+          "description": "Enables the sites_import_from_zenytt command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-sites-import-from-zenytt",
+          "markdownDescription": "Enables the sites_import_from_zenytt command without any pre-configured scope."
+        },
+        {
           "description": "Enables the sites_list command without any pre-configured scope.",
           "type": "string",
           "const": "allow-sites-list",
@@ -661,6 +667,12 @@
           "type": "string",
           "const": "allow-tool-undo",
           "markdownDescription": "Enables the tool_undo command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the vps_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-vps-status",
+          "markdownDescription": "Enables the vps_status command without any pre-configured scope."
         },
         {
           "description": "Enables the weather_get command without any pre-configured scope.",
@@ -1113,6 +1125,12 @@
           "markdownDescription": "Denies the settings_save command without any pre-configured scope."
         },
         {
+          "description": "Denies the sites_import_from_zenytt command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-sites-import-from-zenytt",
+          "markdownDescription": "Denies the sites_import_from_zenytt command without any pre-configured scope."
+        },
+        {
           "description": "Denies the sites_list command without any pre-configured scope.",
           "type": "string",
           "const": "deny-sites-list",
@@ -1153,6 +1171,12 @@
           "type": "string",
           "const": "deny-tool-undo",
           "markdownDescription": "Denies the tool_undo command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the vps_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-vps-status",
+          "markdownDescription": "Denies the vps_status command without any pre-configured scope."
         },
         {
           "description": "Denies the weather_get command without any pre-configured scope.",

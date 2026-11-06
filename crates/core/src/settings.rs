@@ -67,6 +67,32 @@ fn check_sites(sites: &mut [Site]) -> Result<(), String> {
     Ok(())
 }
 
+/// Ajoute `https://<domaine>` pour chaque domaine absent, par la même validation que les réglages
+/// (doublons via `same_site`, plafond de 30). Renvoie le nombre de sites ajoutés.
+pub fn merge_domains(sites: &mut Vec<Site>, domains: &[String]) -> usize {
+    let before = sites.len();
+    for d in domains {
+        if sites.len() >= MAX_SITES {
+            break;
+        }
+        let name: String = d.chars().take(40).collect();
+        sites.push(Site { name, url: format!("https://{d}"), slow_ms: default_slow_ms() });
+        if check_sites(sites).is_err() {
+            sites.pop();
+        }
+    }
+    sites.len() - before
+}
+
+/// Chemin de Zenytt.exe : vide (détection automatique) ou absolu, en `.exe`, 260 caractères au plus.
+fn check_exe_path(p: &str) -> Result<(), String> {
+    if p.is_empty() || (p.chars().count() <= 260 && std::path::Path::new(p).is_absolute() && p.to_ascii_lowercase().ends_with(".exe")) {
+        Ok(())
+    } else {
+        Err("chemin de Zenytt : absolu, en .exe, 260 caractères au plus".into())
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
@@ -101,6 +127,8 @@ pub struct Settings {
     pub mail_poll_minutes: u8,
     /// Sites surveillés par sondes toutes les 60 s (30 au plus).
     pub sites: Vec<Site>,
+    /// Chemin de Zenytt.exe (serveur MCP de la charge du VPS) : vide = détection automatique.
+    pub zenytt_path: String,
 }
 
 impl Default for Settings {
@@ -130,6 +158,7 @@ impl Default for Settings {
             spotify_client_id: String::new(),
             mail_poll_minutes: 3,
             sites: Vec::new(),
+            zenytt_path: String::new(),
         }
     }
 }
@@ -291,6 +320,11 @@ impl Settings {
             errs.push(e);
             self.sites = d.sites.clone();
         }
+        self.zenytt_path = self.zenytt_path.trim().to_string();
+        if let Err(e) = check_exe_path(&self.zenytt_path) {
+            errs.push(e);
+            self.zenytt_path = d.zenytt_path.clone();
+        }
         if let Err(e) = check_hotkey(&self.hotkey) {
             errs.push(e);
             self.hotkey = d.hotkey;
@@ -449,6 +483,29 @@ mod tests {
         assert_eq!(s.spotify_client_id, "abc");
         let d = Settings::default();
         assert_eq!((d.google_client_id.as_str(), d.spotify_client_id.as_str()), ("", ""));
+    }
+    #[test] fn chemin_de_zenytt() {
+        let with = |p: &str| Settings { zenytt_path: p.into(), ..Settings::default() }.validate();
+        assert!(with("").is_ok());
+        assert!(with(r"C:\Users\x\AppData\Local\Zenytt\Zenytt.EXE").is_ok());
+        assert!(with("Zenytt.exe").is_err());
+        assert!(with(r"C:\Zenytt\Zenytt.bat").is_err());
+        assert!(with(&format!(r"C:\{}.exe", "a".repeat(260))).is_err());
+        let mut s = Settings { zenytt_path: r"  C:\Z\Zenytt.exe ".into(), ..Settings::default() };
+        assert!(s.fix().is_empty());
+        assert_eq!(s.zenytt_path, r"C:\Z\Zenytt.exe");
+        assert_eq!(Settings::default().zenytt_path, "");
+    }
+    #[test] fn import_de_domaines_sans_doublon_ni_depassement() {
+        let site = |u: &str| Site { name: "x".into(), url: u.into(), slow_ms: 1500 };
+        let mut v = vec![site("https://A.example.com/")];
+        let n = merge_domains(&mut v, &["a.example.com".into(), "b.example.com".into(), "b.example.com".into(), "bad host".into(), "u:p@c.example.com".into()]);
+        assert_eq!(n, 1);
+        assert_eq!(v[1].url, "https://b.example.com");
+        assert!(Settings { sites: v.clone(), ..Settings::default() }.validate().is_ok());
+        let many: Vec<String> = (0..40).map(|i| format!("s{i}.example.com")).collect();
+        assert_eq!(merge_domains(&mut v, &many), 28);
+        assert_eq!(v.len(), 30);
     }
     #[test] fn sites_http_seulement_et_30_au_plus() {
         let site = |n: &str, u: &str| Site { name: n.into(), url: u.into(), slow_ms: 1500 };

@@ -48,6 +48,8 @@ fn main() {
         "weather_get",
         "sites_list",
         "sites_set",
+        "vps_status",
+        "sites_import_from_zenytt",
         "index_status",
         "search_query",
         "search_open",

@@ -85,6 +85,7 @@ pub fn open_panel(app: &AppHandle) -> tauri::Result<()> {
     crate::modules::apps::on_panel_open(app);
     crate::modules::projects::on_panel_open(app);
     crate::modules::smtc::set_listening(app, true);
+    crate::modules::zenytt::on_panel_open(app);
     Ok(())
 }
 
@@ -93,7 +94,9 @@ pub fn close_panel(app: &AppHandle) -> tauri::Result<()> {
     crate::modules::smtc::set_listening(app, false);
     window(app, "panel")?.hide()?;
     LAST_CLOSE_MS.store(now_ms() as u64, Ordering::SeqCst);
-    set_panel_state(app, false)
+    let r = set_panel_state(app, false);
+    crate::modules::zenytt::on_panel_close(); // après l'état « fermé » : le compte des 10 min démarre
+    r
 }
 
 fn toggle_reopens(now: u64, last_close: u64) -> bool {

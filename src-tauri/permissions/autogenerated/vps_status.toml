@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-vps-status"
+description = "Enables the vps_status command without any pre-configured scope."
+commands.allow = ["vps_status"]
+
+[[permission]]
+identifier = "deny-vps-status"
+description = "Denies the vps_status command without any pre-configured scope."
+commands.deny = ["vps_status"]

@@ -113,6 +113,8 @@ impl AppState {
         let handle = app.clone();
         let sites: oniris_core::sites::tools::Source = Arc::new(move || crate::modules::sites::list(&handle.state::<AppState>()));
         tools.push(Arc::new(oniris_core::sites::tools::Status { source: sites }));
+        let handle = app.clone();
+        tools.push(Arc::new(oniris_core::sites::tools::Vps { source: Arc::new(move || crate::modules::zenytt::status(&handle)) }));
         let broker = Arc::new(ToolBroker::new(db.clone(), clock, tools)?);
         broker.mark_interrupted();
         broker.expire_stale();

@@ -28,7 +28,7 @@ pub mod when;
 
 pub use db::{migrate, open_db, Migration, CORE_MIGRATIONS};
 pub use error::CoreError;
-pub use settings::{key_to_vk, load_settings, save_settings, HotkeySetting, Settings, Site};
+pub use settings::{key_to_vk, load_settings, merge_domains, save_settings, HotkeySetting, Settings, Site};
 
 /// La connexion unique du processus, partagée par le courtier et les outils.
 pub type Db = std::sync::Arc<parking_lot::Mutex<rusqlite::Connection>>;

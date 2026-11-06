@@ -36,6 +36,18 @@ export const sitesIpc = {
   },
 };
 
+/** Miroir de `oniris_core::sites::VpsStatus` : `zenytt` faux = Zenytt absent, ligne VPS masquée. */
+export type VpsView = { server: string; cpu_pct: number; mem_pct: number; disk_pct: number; load1: number; alerts: number; at_ms: number };
+export type VpsStatus = { zenytt: boolean; view: VpsView | null; error: string | null };
+
+const fakeVps: VpsStatus = { zenytt: true, view: { server: "vps-ovh", cpu_pct: 23.4, mem_pct: 61.2, disk_pct: 48.7, load1: 0.42, alerts: 0, at_ms: Date.now() }, error: null };
+
+export const vpsIpc = {
+  status: (): Promise<VpsStatus> => isTauri ? invoke("vps_status") : Promise.resolve(fakeVps),
+  /** Ajoute les domaines HTTPS que Zenytt connaît ; renvoie le nombre de sites ajoutés. */
+  importSites: (): Promise<number> => isTauri ? invoke("sites_import_from_zenytt") : Promise.resolve(0),
+};
+
 /** « 5/6 en ligne » : lent compte comme en ligne, un site pas encore sondé n'entre pas dans le total. */
 export function counter(sites: SiteView[]): { online: number; total: number } {
   const known = sites.filter((s) => s.state !== "unknown");

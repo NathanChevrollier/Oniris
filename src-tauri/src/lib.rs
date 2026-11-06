@@ -80,6 +80,8 @@ pub fn run() {
             modules::weather::weather_get,
             modules::sites::sites_list,
             modules::sites::sites_set,
+            modules::zenytt::vps_status,
+            modules::zenytt::sites_import_from_zenytt,
             modules::accounts::accounts_list,
             modules::accounts::accounts_set_google_app,
             modules::accounts::accounts_set_spotify_app,
@@ -154,8 +156,13 @@ pub fn run() {
             fullscreen::start_watcher(app.handle().clone());
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("erreur au lancement d'Oniris");
+        .build(tauri::generate_context!())
+        .expect("erreur au lancement d'Oniris")
+        .run(|_, event| {
+            if let tauri::RunEvent::Exit = event {
+                modules::zenytt::shutdown(); // Zenytt ne survit pas à Oniris
+            }
+        });
 }
 
 #[cfg(test)]
@@ -181,6 +188,7 @@ mod tests {
             ("system.rs", include_str!("modules/system.rs")),
             ("timers.rs", include_str!("modules/timers.rs")),
             ("weather.rs", include_str!("modules/weather.rs")),
+            ("zenytt.rs", include_str!("modules/zenytt.rs")),
         ];
         let touches_db = |body: &str| body.contains("db.lock") || body.contains(".journal(");
         for (file, src) in sources {

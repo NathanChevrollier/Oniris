@@ -48,6 +48,8 @@ export type Settings = {
   mail_poll_minutes: number;
   /** Sites surveillés (sondes toutes les 60 s), 30 au plus. */
   sites: Site[];
+  /** Chemin de Zenytt.exe (charge du VPS) : vide = détection automatique ; absolu, en .exe, 260 caractères au plus. */
+  zenytt_path: string;
 };
 
 const RESUME_NORMAL = "Reprends là où tu en étais sur ce projet. Appuie-toi sur le plan de développement et l'historique git. Commence par me dire où on en est.";
@@ -78,6 +80,7 @@ export const DEFAULT_SETTINGS: Settings = {
   spotify_client_id: "",
   mail_poll_minutes: 3,
   sites: [],
+  zenytt_path: "",
 };
 
 /** Paramètres courants : chargés au montage, puis suivis via `oniris://settings`. */

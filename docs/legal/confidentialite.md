@@ -91,6 +91,16 @@ Si tu ajoutes des sites dans la carte « VPS et favoris », Oniris envoie **chaq
 - les journaux techniques ne contiennent ni adresse ni nom de site ;
 - sans site dans la liste, Oniris n'envoie aucune requête de ce genre.
 
+## Charge du VPS (Zenytt)
+
+Si Zenytt est installé sur ce PC, Oniris lance son serveur en lecture seule (`Zenytt --mcp`) sur ton PC, quand le panneau est ouvert, et l'arrête 10 minutes après sa fermeture :
+
+- c'est Zenytt qui se connecte au VPS avec ses propres réglages ; Oniris ne voit, ne stocke ni ne gère **aucun** identifiant SSH ;
+- seules des mesures agrégées sont lues et affichées : CPU, mémoire, disque, charge et nombre d'alertes, toutes les 30 secondes panneau ouvert, jamais en jeu plein écran ; rien n'est écrit en base ;
+- « Importer depuis Zenytt » lit la liste des domaines HTTPS de tes sites nginx et ajoute ceux qui manquent aux sites surveillés ;
+- les journaux techniques ne contiennent que le genre d'une erreur, jamais de nom de serveur ni d'hôte ;
+- sans Zenytt, rien de tout cela ne se produit.
+
 ## À venir
 
 Ces fonctions n'existent pas encore. Chacune ajoutera sa propre section ici avant d'être disponible :

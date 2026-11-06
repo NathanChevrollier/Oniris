@@ -1,4 +1,4 @@
-.rems{margin-top:8px;border-top:1px solid var(--line);padding-top:8px;display:flex;flex-direction:column;gap:5px}
+.rems{margin-top:6px;border-top:1px solid var(--line);padding-top:6px;display:flex;flex-direction:column;gap:3px}
 .rems .rem{display:flex;align-items:center;gap:10px;font-size:13px}
 .rems .rem span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .card .rems .ck{flex:none;width:18px;height:18px;padding:0;margin:0;border-radius:50%;border:1.5px solid var(--line2);background:none;display:grid;place-items:center;color:transparent;cursor:pointer;transition:.25s var(--ease)}

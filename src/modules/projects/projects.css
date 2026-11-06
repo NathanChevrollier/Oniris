@@ -1,7 +1,7 @@
 .proj-all{height:auto;margin:0;padding:0;border:0;background:none;color:var(--txt3);font:inherit;cursor:pointer}
 .proj-all:hover,.proj-all:focus-visible{color:var(--txt);outline:0;text-decoration:underline}
 .projs{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
-.proj{position:relative;min-width:0;border-radius:18px;padding:12px;background:rgba(255,255,255,.045);border:1px solid var(--line);display:flex;flex-direction:column;gap:8px;transition:.3s var(--ease)}
+.proj{position:relative;min-width:0;border-radius:18px;padding:10px 12px;background:rgba(255,255,255,.045);border:1px solid var(--line);display:flex;flex-direction:column;gap:6px;transition:.3s var(--ease)}
 .proj:hover{background:rgba(255,255,255,.08);transform:translateY(-2px)}
 .proj-h{display:flex;align-items:center;gap:8px}
 .proj-ico{flex:none;width:34px;height:34px;border-radius:10px;display:grid;place-items:center;font:700 14px var(--font);color:#fff;background:linear-gradient(135deg,var(--g1),var(--g2));box-shadow:inset 0 0 0 1px rgba(255,255,255,.14)}

@@ -26,7 +26,7 @@ body.closed .card{animation:none}
 .ambient-tint.out{opacity:0;animation:none}
 @keyframes ambient-in{from{opacity:0}}
 
-.inner{position:relative;z-index:1;padding:22px 26px 16px;display:flex;flex-direction:column;gap:12px;
+.inner{position:relative;z-index:1;padding:18px 26px 14px;display:flex;flex-direction:column;gap:10px;
   max-height:calc(100vh - 28px);overflow:auto;scrollbar-width:none}
 .inner>*{flex-shrink:0}
 /* Écran trop court : seule la grille défile, en-tête, frise et barre de commande restent visibles. */
@@ -47,16 +47,16 @@ body.closed .card{animation:none}
 .clock .t span{color:var(--txt3);font-weight:400}
 
 /* briefing */
-.brief{display:flex;gap:16px;align-items:center;padding:13px 18px;border-radius:22px;
+.brief{display:flex;gap:16px;align-items:center;padding:10px 18px;border-radius:22px;
   background:linear-gradient(120deg,rgba(255,116,72,.14),rgba(191,90,242,.08) 60%,rgba(255,255,255,.03));border:1px solid rgba(255,140,100,.22)}
 .brief .spark{flex:none;width:30px;height:30px;border-radius:10px;display:grid;place-items:center;background:rgba(255,116,72,.2);color:var(--acc)}
 .brief p{font-size:15.5px;line-height:1.55;color:rgba(245,245,247,.9)}
 
 /* frise */
-.tl{position:relative;height:66px;border-radius:18px;background:var(--card);border:1px solid var(--line);overflow:hidden}
+.tl{position:relative;height:60px;border-radius:18px;background:var(--card);border:1px solid var(--line);overflow:hidden}
 .tl .hours{position:absolute;inset:0;display:flex}
 .tl .hours div{flex:1;border-left:1px solid rgba(255,255,255,.05);font-size:10.5px;color:var(--txt3);padding:6px 0 0 6px}
-.tl .ev{position:absolute;top:26px;height:30px;border-radius:9px;padding:0 10px;display:flex;align-items:center;gap:6px;font-size:12px;font-weight:500;
+.tl .ev{position:absolute;top:24px;height:30px;border-radius:9px;padding:0 10px;display:flex;align-items:center;gap:6px;font-size:12px;font-weight:500;
   white-space:nowrap;overflow:hidden;transition:transform .2s var(--ease);
   background:color-mix(in srgb,var(--c) 28%,transparent);color:color-mix(in srgb,var(--c) 30%,#fff)}
 .tl .ev:hover{transform:translateY(-2px)}

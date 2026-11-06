@@ -7,7 +7,7 @@
 .ninput::placeholder{color:var(--txt3)}
 .card .err{margin-top:6px;font-size:11.5px;line-height:1.35;color:#ff9f8a}
 .notes{list-style:none;margin:10px 0 0;padding:0;display:flex;flex-direction:column;gap:2px}
-.notes li{position:relative;display:grid;grid-template-columns:1fr auto;column-gap:10px;align-items:start;padding:6px 4px;border-radius:10px;font-size:12.5px}
+.notes li{position:relative;display:grid;grid-template-columns:1fr auto;column-gap:10px;align-items:start;padding:4px;border-radius:10px;font-size:12.5px}
 .notes li:hover{background:rgba(255,255,255,.05)}
 .notes p{margin:0;grid-column:1;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.4}
 .notes time{grid-column:2;grid-row:1;justify-self:end;color:var(--txt3);font-size:11px;white-space:nowrap}

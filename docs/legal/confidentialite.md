@@ -1,25 +1,25 @@
 # Confidentialité d'Oniris
 
-Version 3 — 5 novembre 2026. Ce document décrit simplement ce qu'Oniris fait de tes données. Il est mis à jour à chaque nouveauté qui touche à ta vie privée.
+Version 4 — 6 novembre 2026. Ce document décrit simplement ce qu'Oniris fait de tes données. Il est mis à jour à chaque nouveauté qui touche à ta vie privée.
 
 ## En bref
 
-Oniris range tout chez toi, sur ton PC. Il n'envoie aucune statistique d'usage, et il n'y a aucun compte à créer pour l'utiliser. Oniris ne contacte Internet que pour deux choses : la météo, seulement si tu as choisi une ville, et les icônes de tes favoris (voir plus bas).
+Oniris range tout chez toi, sur ton PC. Il n'envoie aucune statistique d'usage, et il n'y a aucun compte à créer pour l'utiliser. Oniris ne contacte Internet que pour ce que tu as choisi d'activer : la météo (si tu as choisi une ville), les icônes de tes favoris, les sondes de tes sites et, si tu connectes tes comptes, Google (Gmail et Agenda) et Spotify. Les comptes ne sont jamais obligatoires : sans eux, rien de tout cela n'est contacté.
 
 ## Où sont tes données
 
 Tout est stocké en local, dans le dossier `%APPDATA%\Oniris` :
 
-- la base de données `oniris.db` : réglages, agenda, rappels, notes, minuteurs, historique du presse-papiers, journal des actions, favoris, statistiques d'usage de la recherche, préférences de projets ;
+- la base de données `oniris.db` : réglages, agenda, rappels, notes, minuteurs, historique du presse-papiers, journal des actions, favoris, statistiques d'usage de la recherche, préférences de projets, liste de tes comptes (adresse et couleur, jamais les jetons), cache des en-têtes de mails, cache des événements Google et mesures des sondes ;
 - l'instantané de l'index de recherche `index.bin` : la liste des **chemins complets** de tous les fichiers et dossiers indexés (voir « Recherche de fichiers ») ;
-- les journaux techniques (`logs`) : ils ne contiennent ni le texte de tes notes, ni celui de tes rappels, ni celui de ton presse-papiers. Seulement des identifiants, des tailles et des messages d'erreur.
+- les journaux techniques (`logs`) : ils ne contiennent ni le texte de tes notes, ni celui de tes rappels, ni celui de ton presse-papiers, ni adresse mail, sujet, titre d'événement ou de morceau, ni jeton. Seulement des identifiants, des compteurs, des codes de réponse et des messages d'erreur.
 
 Supprimer ce dossier efface tout ce qu'Oniris sait de toi.
 
 ## Ce que garde la base
 
 - **Suppression d'une note, d'un rappel ou d'un événement** : pour l'instant, Oniris ne fait que le masquer. Le texte reste dans `oniris.db` jusqu'à une purge, prévue dans une version ultérieure. Seul le fait de supprimer le dossier `%APPDATA%\Oniris` l'efface aujourd'hui à coup sûr.
-- **Journal des actions** : chaque action (créer une note, cocher un rappel, lancer un minuteur…) y est enregistrée avec ses arguments, y compris le texte d'une note, d'un rappel ou d'un événement. Ce journal n'est pas encore purgé automatiquement.
+- **Journal des actions** : chaque action (créer une note, cocher un rappel, lancer un minuteur…) y est enregistrée avec ses arguments, y compris le texte d'une note, d'un rappel ou d'un événement que tu crées toi-même. Ce journal n'est pas encore purgé automatiquement. Deux exceptions : le sujet et le texte d'un mail à envoyer n'y figurent jamais (seulement le nombre de caractères), et le résultat d'une lecture de mails ou d'événements (par exemple les titres des événements d'un agenda Google) n'y est pas gardé, seulement le nombre d'éléments.
 - **Recherche dans le presse-papiers** : le journal garde les mots cherchés et le nombre de résultats, jamais les éléments trouvés.
 
 ## Notifications
@@ -81,6 +81,50 @@ L'historique reste sur ton PC ; il n'est envoyé nulle part. Ses limites :
 - tu peux désactiver l'historique à tout moment : clic droit sur l'icône d'Oniris dans la zone de notification, puis décoche « Historique du presse-papiers ». Plus rien n'est lu ni enregistré ensuite. Les éléments déjà gardés restent jusqu'à ce que tu les supprimes ou que la purge les retire ;
 - il est purgé automatiquement, au démarrage d'Oniris et après chaque copie : les éléments plus vieux que la durée choisie (7 jours par défaut) et ceux au-delà du nombre maximal (200 par défaut) sont supprimés, sauf ceux que tu as épinglés. Ici, la suppression est réelle : l'élément est effacé de la base.
 
+## Comptes et jetons
+
+Connecter un compte est un choix : rien n'est contacté tant que tu n'as pas cliqué sur « Connecter » dans la feuille « Comptes ».
+
+- **Tes propres applications** : tu crées toi-même, une fois, ton application Google (Google Cloud) et ton application Spotify (Spotify for Developers), en suivant le guide d'Oniris. Aucun identifiant n'est écrit dans le programme. L'identifiant client est gardé dans les réglages ; le secret client Google, lui, est dans le coffre Windows.
+- **Connexion** : elle se fait dans ton navigateur, sur le site de Google ou de Spotify. Oniris n'a **jamais ton mot de passe**. Il écoute un instant sur ton propre PC (adresse `127.0.0.1`, un port libre) pour recevoir la réponse, puis échange un code contre des jetons.
+- **Où sont les jetons** : dans le **gestionnaire d'identifiants Windows** (identifiants génériques nommés `Oniris/…`, conservés sur cette machine seulement). Ils ne sont **jamais** écrits dans `oniris.db`, dans un fichier, ni dans les journaux. La base ne garde que l'adresse du compte, sa couleur et son état (« ok » ou « à reconnecter »).
+- **Autorisations demandées** : pour Google, ton adresse mail, Gmail en lecture et modification (lire, archiver, mettre à la corbeille, marquer comme lu, envoyer) et Agenda en lecture seule ; pour Spotify, l'état de la lecture, son pilotage et tes playlists (en lecture seule).
+- **Si l'accès est retiré** : Oniris affiche « À reconnecter » ; il ne réessaie pas en boucle.
+- **Supprimer un compte** dans la feuille « Comptes » efface ses jetons du coffre et ses données en cache (mails et événements).
+
+### Tout révoquer
+
+Pour couper l'accès d'Oniris à tes comptes, depuis le site du fournisseur (cela marche même si Oniris n'est plus installé) :
+
+- Google : [myaccount.google.com/permissions](https://myaccount.google.com/permissions), puis ton application, puis « Supprimer l'accès » ;
+- Spotify : [spotify.com/account/apps](https://www.spotify.com/account/apps), puis « Retirer l'accès » en face de ton application.
+
+Tu peux aussi supprimer les identifiants `Oniris/…` dans le gestionnaire d'identifiants Windows.
+
+## Mails (Gmail)
+
+Les échanges se font directement entre ton PC et Google, par l'API officielle de Gmail. Rien ne passe par un serveur d'Oniris (il n'y en a pas).
+
+- **Relève** : environ toutes les 3 minutes (réglable de 2 à 5), même panneau fermé, sur la boîte de réception seulement, de façon incrémentale.
+- **Ce qui est gardé en local** (`oniris.db`) : pour chaque mail de la boîte de réception, l'expéditeur (nom et adresse), le **sujet**, l'**extrait** fourni par Gmail (les premiers mots), la date, les libellés, l'état lu / non lu et l'onglet (« À traiter », « À lire » ou « Filtrés »). Retirer un compte efface ces lignes.
+- **Ce qui n'est jamais gardé** : le **corps** des mails et les pièces jointes. Un mail n'est téléchargé en entier que quand tu l'ouvres ; il reste alors **en mémoire seulement** (les 20 derniers ouverts) et disparaît à la fermeture d'Oniris. Il n'est écrit ni dans la base, ni dans un fichier, ni dans les journaux.
+- **Lecture** : le mail s'affiche dans un cadre isolé, sans script. Les **images distantes sont bloquées** tant que tu ne cliques pas sur « Afficher les images » (pour ce mail seulement) : sinon, elles préviendraient l'expéditeur que tu as ouvert son message. Les liens ne s'ouvrent que quand tu les choisis.
+- **Actions** : archiver, mettre à la corbeille (avec confirmation) et marquer comme lu modifient ton compte Gmail. Un mail n'est **envoyé qu'après une carte de confirmation** que tu valides ; il part de ton propre compte vers le destinataire que tu as écrit.
+- **Journal** : le sujet et le texte d'un mail envoyé n'y figurent jamais, seulement leur taille.
+
+## Agenda Google
+
+Si tu as autorisé l'agenda, Oniris lit tes agendas Google **en lecture seule** (il ne crée, ne modifie et ne supprime rien chez Google), à chaque relève des mails.
+
+- Gardés en local, dans `oniris.db` : le **titre**, les horaires, le lieu éventuel et l'agenda d'origine de chaque événement proche. Les invités, les descriptions et les pièces jointes ne sont pas gardés.
+- Ils s'affichent dans la frise et dans la carte Agenda. Retirer le compte efface ces lignes.
+- Les titres d'événements Google ne sont pas gardés dans le journal des actions (seulement le nombre d'événements lus).
+
+## Musique : lecture Windows et Spotify
+
+- **Lecture Windows (SMTC)** : pour afficher le titre, l'artiste et la pochette, Oniris lit ce que Windows sait des médias en cours (Spotify, navigateur, lecteur de musique), **uniquement sur ton PC et seulement quand le panneau est ouvert**. Rien n'est envoyé sur Internet pour cela. Le titre, l'artiste et la pochette restent en mémoire : ils ne sont écrits ni sur le disque ni dans les journaux. Les couleurs de la lumière ambiante sont calculées en local à partir de la pochette.
+- **Spotify (Web API)** : si tu connectes ton compte Spotify, Oniris envoie à Spotify les commandes que tu donnes (lancer une playlist, changer d'appareil, volume, saut dans le morceau) et lui demande la liste de tes appareils et de tes playlists, **seulement quand le panneau est ouvert**. Les playlists restent en mémoire une dizaine de minutes ; la base ne garde que les identifiants des playlists que tu as choisies comme favorites. Spotify voit, comme tout service, l'adresse IP de ta connexion. Aucune requête Spotify n'est faite panneau fermé.
+
 ## Sondes des sites
 
 Si tu ajoutes des sites dans la carte « VPS et favoris », Oniris envoie **chaque minute** une requête `GET` simple à chacun de ces sites, et seulement à eux, pour savoir s'ils répondent et en combien de temps :
@@ -103,7 +147,6 @@ Si Zenytt est installé sur ce PC, Oniris lance son serveur en lecture seule (`Z
 
 ## À venir
 
-Ces fonctions n'existent pas encore. Chacune ajoutera sa propre section ici avant d'être disponible :
+Ces fonctions n'existent pas encore. Chacune ajoutera sa propre section ici avant d'être disponible. Outlook n'est pas prévu : seul Gmail est géré.
 
-- comptes Google, Microsoft et Spotify : à venir ;
-- Claude, via Claude Code : à venir.
+- Claude, via Claude Code : à venir. Il faudra alors indiquer clairement que le contenu d'une demande, et d'un mail concerné, est transmis à Anthropic via Claude Code.

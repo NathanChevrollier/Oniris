@@ -13,7 +13,7 @@ Les passages marqués **[choix de conception]** sont des décisions prises par l
 Aujourd'hui, l'utilisateur :
 
 - passe par un dashboard web (son projet `Projets/Nexus_Dashboard`, Next.js auto-hébergé) surtout pour ses favoris et raccourcis web ; il ne lui convient plus ;
-- lit chaque jour ses mails sur plusieurs adresses (Gmail et Outlook), boîte par boîte, et y perd du temps ;
+- lit chaque jour ses mails sur plusieurs adresses Gmail, boîte par boîte, et y perd du temps ;
 - fait des alt-tab pour changer de musique dans Spotify ;
 - cherche ses fichiers et projets à la main ;
 - reprend ses projets de dev ainsi : ouvrir le projet dans VS Code, relire le plan de développement, demander à Claude (extension VS Code) de « continuer ce sur quoi il travaillait », soit en mode normal, soit en mode orchestrateur multi-agents pour les projets poussés.
@@ -56,7 +56,7 @@ Aujourd'hui, l'utilisateur :
 - **Plateforme** : Windows 11 Pro uniquement.
 - **Machine cible** : AMD Ryzen 9 7900X (12 cœurs), **AMD Radeon RX 7800 XT 16 Go** (pas de NVIDIA, donc pas de CUDA : l'accélération GPU passe par ROCm/HIP ou Vulkan), 32 Go de RAM. Claude Code 2.x est installé.
 - **Coût** : zéro euro supplémentaire par mois. Services gratuits uniquement. Claude passe par l'abonnement existant de l'utilisateur, via Claude Code.
-- **Comptes** : mails sur **Gmail et Outlook** (plusieurs adresses, nombre non figé), **Spotify Premium**.
+- **Comptes** : mails sur **Gmail seulement** (plusieurs comptes Gmail, nombre non figé), **Spotify Premium**. *Décision du 2026-11-05 : Outlook est abandonné, l'utilisateur n'a pas d'adresse Outlook ; son adresse Orange est transférée vers Gmail.*
 - **Langue** : interface et voix en français.
 - **Nom** : l'app s'appelle **Oniris**, l'assistante s'appelle **IRIS** (« Intelligent Responsive Interface System »). Oniris n'a été vérifié que par une recherche web : aucun logiciel homonyme, mais le nom est porté par l'école vétérinaire de Nantes et par une petite marque française de produits pour le sommeil. Si l'app est publiée un jour, il faudra vérifier les marques déposées INPI/EUIPO (classes 9 et 42).
 - **Publication possible un jour** : rien n'est prévu pour l'instant, mais il ne faut pas fermer la porte. Concrètement : aucun identifiant ni secret personnel dans le code, documents juridiques (confidentialité) tenus à jour dès qu'une fonctionnalité transmet des données à un tiers (habitude de l'utilisateur sur ses autres projets).
@@ -121,12 +121,12 @@ Chaque module occupe une carte du panneau, alimente le briefing quand c'est pert
 - **Frise horizontale** de 8 h à 23 h (bornes réglables) : événements en blocs colorés, rappels en points, repère « maintenant » qui avance.
 - **Mini-calendrier mensuel** avec des points sous les jours qui ont des événements. Un clic sur un jour affiche ses événements.
 - **Rappels** : liste avec cases à cocher, échéance, **notification Windows** à l'heure dite, même panneau fermé. Ils se créent à la voix ou à l'écrit en langage naturel (« rappelle-moi d'appeler la banque demain à 10 h », « dans 40 minutes »).
-- **Source des événements** : l'utilisateur n'utilise pas d'agenda aujourd'hui. Les événements et rappels sont donc **stockés localement** dans Oniris. **[choix de conception]** Les agendas Google et Outlook des comptes mail déjà connectés peuvent s'afficher en plus (lecture seule au départ). Les comptes étant déjà autorisés pour les mails, l'autorisation agenda se demande au même moment.
+- **Source des événements** : l'utilisateur n'utilise pas d'agenda aujourd'hui. Les événements et rappels sont donc **stockés localement** dans Oniris. **[choix de conception]** Les agendas Google des comptes mail déjà connectés peuvent s'afficher en plus (lecture seule ; Outlook abandonné le 2026-11-05). Les comptes étant déjà autorisés pour les mails, l'autorisation agenda se demande au même moment.
 
 ### 6.3 Mails unifiés
 
-- **Comptes** : Gmail et Outlook (comptes Microsoft personnels, Outlook.com/Hotmail), en nombre quelconque. Chaque compte a sa couleur, qui apparaît en pastille sur l'avatar de l'expéditeur.
-- **[choix de conception]** Accès par les API officielles, **Gmail API** et **Microsoft Graph**, avec OAuth. Microsoft a coupé l'authentification IMAP par mot de passe pour Outlook.com, et les API permettent la synchronisation incrémentale (historyId / delta). Les jetons sont stockés dans le gestionnaire d'identifiants Windows.
+- **Comptes** : Gmail seulement, en nombre quelconque (Outlook abandonné le 2026-11-05 ; l'adresse Orange passe par un transfert vers Gmail). Chaque compte a sa couleur, qui apparaît en pastille sur l'avatar de l'expéditeur.
+- **[choix de conception]** Accès par l'API officielle, la **Gmail API**, avec OAuth (synchronisation incrémentale par historyId). Microsoft Graph n'est plus prévu depuis le 2026-11-05. Les jetons sont stockés dans le gestionnaire d'identifiants Windows.
 - **Tri par IRIS** en trois onglets :
   - **À traiter** : demande une action ou une réponse de l'utilisateur ;
   - **À lire** : informatif et personnel ;
@@ -142,7 +142,7 @@ Chaque module occupe une carte du panneau, alimente le briefing quand c'est pert
   - marquer comme lu ;
   - ouvrir dans le webmail.
 - **Relève** : par synchronisation incrémentale toutes les 2 à 5 minutes, sans tenir de connexion permanente.
-- **Applications OAuth [choix de conception]** : usage personnel, donc l'utilisateur enregistre lui-même, une fois, ses propres applications développeur (Google Cloud, Microsoft Entra, Spotify for Developers). Oniris le guide pas à pas au premier lancement et stocke les identifiants client localement, jamais dans le code. L'application Google est passée au statut **« En production » sans vérification** : un écran « application non validée » est à accepter une fois par compte, mais **les jetons n'expirent pas chaque semaine** (cette expiration ne concerne que le statut « Test »). La vérification Google, payante pour les scopes Gmail restreints, n'est à envisager qu'en cas de publication ; il faudrait alors prévoir IMAP + mot de passe d'application pour Gmail. Côté Microsoft, vérifier au début du chantier qu'un compte personnel peut enregistrer l'application sans carte bancaire ; si ce n'est pas le cas, le signaler à l'utilisateur avant de chercher une alternative.
+- **Applications OAuth [choix de conception]** : usage personnel, donc l'utilisateur enregistre lui-même, une fois, ses propres applications développeur (Google Cloud, Spotify for Developers). Oniris le guide pas à pas au premier lancement et stocke les identifiants client localement, jamais dans le code. L'application Google est passée au statut **« En production » sans vérification** : un écran « application non validée » est à accepter une fois par compte, mais **les jetons n'expirent pas chaque semaine** (cette expiration ne concerne que le statut « Test »). La vérification Google, payante pour les scopes Gmail restreints, n'est à envisager qu'en cas de publication ; il faudrait alors prévoir IMAP + mot de passe d'application pour Gmail.
 - **[choix de conception]** Le tri est fait par le **cerveau local**, parce que c'est rapide et que le contenu des mails ne quitte pas le PC. Seuls les gestes qui demandent de la rédaction ou un vrai raisonnement passent par Claude (réponse, « résume-moi tout en détail »). Il faut l'indiquer clairement, car le contenu du mail est alors transmis à Anthropic via Claude Code.
 
 ### 6.4 Musique (Spotify Premium)
@@ -153,6 +153,7 @@ Chaque module occupe une carte du panneau, alimente le briefing quand c'est pert
   - la **Spotify Web API** (OAuth PKCE, compte Premium) pour lancer une playlist, chercher et lancer un titre, choisir l'appareil, gérer le volume et la file d'attente.
 - **À la voix** : « mets ma playlist Focus », « mets du Daft Punk », « suivant », « moins fort », « c'est quoi ce titre ? ».
 - La pochette fournit les couleurs de la lumière ambiante du panneau (couleurs dominantes extraites).
+- **Restrictions Spotify de février 2026 (mode développement)** : le propriétaire de l'application doit être Premium (c'est le cas) ; cinq utilisateurs au plus (largement suffisant) ; la recherche est limitée à `limit=10`. Restent disponibles : `/me/player/*`, `/me/playlists`, `/playlists/{id}/items` et `/search`. À ne **pas** utiliser : `/playlists/{id}/tracks`, les lots (`GET /tracks?ids=`), `/browse/*` et `/artists/{id}/top-tracks`.
 
 ### 6.5 Favoris
 
@@ -186,6 +187,7 @@ Chaque module occupe une carte du panneau, alimente le briefing quand c'est pert
 
 - Liste des sites avec pastille d'état (en ligne / lent / hors ligne), temps de réponse et petite courbe des dernières mesures. Le titre de la carte affiche le compte (« 6/6 en ligne »).
 - **[choix de conception]** **Sondes HTTP(S)** vers les URL configurées, toutes les minutes, **même panneau fermé**, pour pouvoir notifier une panne. Une notification Windows part si un site tombe ou dépasse un seuil de latence.
+- **Règle hors ligne (2026-11-05)** : « hors ligne » = toutes les sondes échouent sans aucune réponse HTTP **et** Windows (Network List Manager) indique qu'il n'y a pas d'Internet. Le tour est alors ignoré : pas de panne, pas de notification, pas de point dans l'historique. Sinon, un tour où tout échoue est une vraie panne (les sites étant des sous-domaines d'un même VPS, la panne du VPS les fait tous tomber).
 - **En option** : charge CPU/RAM du VPS via le **serveur MCP en lecture seule de Zenytt** (`Zenytt.exe --mcp`), qui détient déjà la connexion et les secrets SSH. Oniris ne doit **pas** gérer lui-même d'identifiants SSH.
 - Strictement en lecture seule. Toute action sur le VPS reste dans Zenytt. IRIS peut ouvrir Zenytt.
 
@@ -347,13 +349,13 @@ Principes :
 ## 10. Confidentialité et données
 
 - **Local d'abord** : tout est stocké sur le PC. Pas de télémétrie.
-- **Données qui sortent du PC**, et seulement dans ces cas : appels aux API Google, Microsoft et Spotify (comptes de l'utilisateur), Open-Meteo (ville), sondes HTTP vers ses propres sites, et **Claude via Claude Code** quand ce cerveau est utilisé (contenu de la demande, et des mails concernés le cas échéant).
+- **Données qui sortent du PC**, et seulement dans ces cas : appels aux API Google (Gmail et Agenda) et Spotify (comptes de l'utilisateur), Open-Meteo (ville), sondes HTTP vers ses propres sites, et **Claude via Claude Code** quand ce cerveau est utilisé (contenu de la demande, et des mails concernés le cas échéant).
 - Un fichier `docs/legal/confidentialite.md` décrit ces flux dès le départ et suit les ajouts. C'est une habitude de l'utilisateur, utile en cas de publication.
 
 ## 11. Qualité et tests
 
 - Tests unitaires Rust par module, tests de l'interface (Vitest), et un parcours de bout en bout piloté par le protocole de débogage de WebView2. L'utilisateur a déjà cet outillage sur ses autres projets Tauri.
-- Les intégrations externes (Gmail, Graph, Spotify, Claude Code, Ollama) passent par des interfaces simulables dans les tests.
+- Les intégrations externes (Gmail, Spotify, Claude Code, Ollama) passent par des interfaces simulables dans les tests.
 - Les budgets du §9 font partie des critères de fin.
 - **Aucun test ne doit envoyer de vrai mail, supprimer de vraies données ni agir sur le vrai VPS.**
 

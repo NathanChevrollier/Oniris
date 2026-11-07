@@ -103,6 +103,8 @@ pub fn run() {
             modules::mail::mail_archive,
             modules::mail::mail_delete,
             modules::mail::mail_send,
+            modules::iris_briefing::iris_briefing,
+            modules::iris_briefing::iris_briefing_act,
             modules::iris::iris_status,
             modules::iris::iris_draft_reply,
             modules::iris::iris_draft_reply_local,
@@ -160,6 +162,7 @@ pub fn run() {
             modules::timers::start(app.handle());
             modules::clipboard::start(app.handle());
             modules::weather::load(app.handle());
+            modules::iris_briefing::load(app.handle());
             modules::mail::start(app.handle());
             modules::sites::start(app.handle());
             modules::favicons::spawn(app.handle());
@@ -195,6 +198,7 @@ mod tests {
             ("clipboard.rs", include_str!("modules/clipboard.rs")),
             ("favorites.rs", include_str!("modules/favorites.rs")),
             ("iris.rs", include_str!("modules/iris.rs")),
+            ("iris_briefing.rs", include_str!("modules/iris_briefing.rs")),
             ("mail.rs", include_str!("modules/mail.rs")),
             ("music.rs", include_str!("modules/music.rs")),
             ("notes.rs", include_str!("modules/notes.rs")),
@@ -216,7 +220,7 @@ mod tests {
                 assert!(!(head.starts_with("pub fn") && touches_db(body)), "{file} : commande synchrone qui touche la base : {head}");
             }
         }
-        for module in [include_str!("modules/weather.rs"), include_str!("modules/mail.rs"), include_str!("modules/music.rs")] {
+        for module in [include_str!("modules/weather.rs"), include_str!("modules/mail.rs"), include_str!("modules/music.rs"), include_str!("modules/iris_briefing.rs")] {
             let open = module.split("pub fn on_panel_open").nth(1).expect("on_panel_open");
             assert!(!touches_db(&open[..open.find("\n}").unwrap()]), "on_panel_open ne doit pas verrouiller la base");
         }

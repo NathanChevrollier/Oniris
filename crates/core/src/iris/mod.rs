@@ -1,6 +1,7 @@
 //! IRIS : le planificateur ne voit jamais une chaîne d'un tiers (CaMeL simplifié). Les sorties non fiables sont
 //! rangées dans un coffre et remplacées par des références `{{uN}}`, résolues seulement à l'exécution.
 pub mod agent;
+pub mod briefing;
 pub mod claude;
 pub mod exec;
 pub mod fastpath;

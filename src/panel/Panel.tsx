@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Sparkles } from "lucide-react";
 import { ipc, onConfirm, onPanelState, toolIpc } from "../lib/ipc";
 import { useSettings } from "../lib/settings";
 import { usePanelStore } from "./store";
@@ -13,6 +12,7 @@ import { PcCard } from "../modules/system/PcCard";
 import { ClipboardCard } from "../modules/clipboard/ClipboardCard";
 import { ProjectsCard } from "../modules/projects/ProjectsCard";
 import { FavoritesCard } from "../modules/favorites/FavoritesCard";
+import { Briefing } from "../modules/iris/Briefing";
 import { MailCard } from "../modules/mail/MailCard";
 import { Ambient, MusicCard } from "../modules/music/MusicCard";
 import { useNow } from "../lib/time";
@@ -75,10 +75,7 @@ export function Panel({ onCommand = logCommand }: { onCommand?: (text: string) =
         <Ambient colors={colors} />
         <div className="inner" inert={accountsOpen}>
           <Header name={settings.user_name} onAccounts={openAccounts} />
-          <div className="brief">
-            <div className="spark"><Sparkles size={15} /></div>
-            <p>IRIS arrive bientôt.</p>
-          </div>
+          <Briefing />
           <Timeline startHour={settings.timeline_start_hour} endHour={settings.timeline_end_hour} items={[...items, ...dots]} />
           <ConfirmQueue subscribe={onConfirm} resolve={toolIpc.resolve} />
           <CardGrid slots={{ music: <MusicCard onAccounts={openAccounts} onColors={setColors} />, mails: <MailCard onAccounts={openAccounts} />, agenda: <AgendaCard />, projects: <ProjectsCard />, notes: <NotesCard />, clipboard: <ClipboardCard />, vps: <FavoritesCard />, pc: <PcCard />, timer: <TimerCard /> }} />

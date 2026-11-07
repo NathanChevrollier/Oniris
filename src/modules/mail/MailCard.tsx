@@ -1,9 +1,9 @@
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { Archive, MailCheck, MailPlus, Trash2, WifiOff } from "lucide-react";
 import { Card } from "../../ui/Card";
 import { Empty } from "../../ui/Empty";
 import { useTopic } from "../../lib/data";
-import type { ToolOutcome } from "../../lib/ipc";
+import { listen, type ToolOutcome } from "../../lib/ipc";
 import { useToolAction } from "../../lib/toolAction";
 import { accountsIpc, type AccountView } from "../accounts/api";
 import { mailIpc, type Bucket, type MailRow, type MailStatus } from "./api";
@@ -57,6 +57,22 @@ export function MailCard({ onAccounts }: { onAccounts?: () => void }) {
   const rows = mails.data.filter((m) => m.bucket === tab);
   const key = opened ? `${opened.account_id}:${opened.id}` : "";
 
+  // « Préparer la réponse » du briefing d'IRIS : la carte vient au premier plan, ouvre le mail et lance le brouillon.
+  const [autoDraft, setAutoDraft] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const rowsRef = useRef(mails.data);
+  rowsRef.current = mails.data;
+  useEffect(() => {
+    const un = listen<{ account: number | null; id: string | null; draft: boolean }>("oniris://iris-open-mail", (e) => {
+      const { account, id, draft } = e.payload;
+      setTab("todo");
+      const row = id == null ? undefined : rowsRef.current.find((m) => m.account_id === account && m.id === id);
+      if (row) { setOpened(row); setAutoDraft(draft); } else setOpened(null);
+      rootRef.current?.scrollIntoView?.({ block: "nearest" });
+    });
+    return () => { un.then((u) => u()); };
+  }, []);
+
   const act = (call: Promise<ToolOutcome>) => void run(call);
 
   if (accounts.data !== NONE_ACCOUNTS && gmail.length === 0) {
@@ -75,9 +91,9 @@ export function MailCard({ onAccounts }: { onAccounts?: () => void }) {
       {reauth.length > 0 && (
         <button type="button" className="mail-reauth" onClick={onAccounts}>Reconnecte {reauth.map((a) => a.label).join(", ")} pour relever ses mails</button>
       )}
-      <div className="mail-view">
+      <div className="mail-view" ref={rootRef}>
       {opened ? (
-        <MailReader key={key} mail={opened} draft={drafts[key] ?? null} onClose={() => setOpened(null)}
+        <MailReader key={key} mail={opened} draft={drafts[key] ?? null} autoDraft={autoDraft} onAutoDraft={() => setAutoDraft(false)} onClose={() => setOpened(null)}
           onDraft={(d) => setDrafts((all) => { const n = { ...all }; if (d) n[key] = d; else delete n[key]; return n; })} />
       ) : (
         <>

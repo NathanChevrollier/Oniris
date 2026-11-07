@@ -68,6 +68,8 @@ fn main() {
         "mail_archive",
         "mail_delete",
         "mail_send",
+        "iris_briefing",
+        "iris_briefing_act",
         "iris_status",
         "iris_draft_reply",
         "iris_draft_reply_local",

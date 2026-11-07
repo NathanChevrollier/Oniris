@@ -345,6 +345,18 @@
           "markdownDescription": "Enables the iris_ask command without any pre-configured scope."
         },
         {
+          "description": "Enables the iris_briefing command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-iris-briefing",
+          "markdownDescription": "Enables the iris_briefing command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the iris_briefing_act command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-iris-briefing-act",
+          "markdownDescription": "Enables the iris_briefing_act command without any pre-configured scope."
+        },
+        {
           "description": "Enables the iris_cancel command without any pre-configured scope.",
           "type": "string",
           "const": "allow-iris-cancel",
@@ -913,6 +925,18 @@
           "type": "string",
           "const": "deny-iris-ask",
           "markdownDescription": "Denies the iris_ask command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the iris_briefing command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-iris-briefing",
+          "markdownDescription": "Denies the iris_briefing command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the iris_briefing_act command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-iris-briefing-act",
+          "markdownDescription": "Denies the iris_briefing_act command without any pre-configured scope."
         },
         {
           "description": "Denies the iris_cancel command without any pre-configured scope.",

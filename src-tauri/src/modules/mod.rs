@@ -8,6 +8,7 @@ pub mod favorites;
 pub mod general;
 pub mod indexer;
 pub mod iris;
+pub mod iris_briefing;
 pub mod iris_mcp;
 pub mod mail;
 pub mod music;

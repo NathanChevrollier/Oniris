@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-iris-briefing-act"
+description = "Enables the iris_briefing_act command without any pre-configured scope."
+commands.allow = ["iris_briefing_act"]
+
+[[permission]]
+identifier = "deny-iris-briefing-act"
+description = "Denies the iris_briefing_act command without any pre-configured scope."
+commands.deny = ["iris_briefing_act"]

@@ -14,7 +14,11 @@ const doc = (html: string, images: boolean) =>
 const size = (n: number) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)} Mo` : `${Math.max(1, Math.round(n / 1e3))} Ko`);
 
 /** Lecteur en volet. Utiliser `key={mail.id}` : « Afficher les images » repart de zéro à chaque mail. */
-export function MailReader({ mail, draft, onDraft, onClose }: { mail: MailRow; draft: Draft | null; onDraft: (d: Draft | null) => void; onClose: () => void }) {
+export function MailReader({ mail, draft, onDraft, onClose, autoDraft = false, onAutoDraft }: {
+  mail: MailRow; draft: Draft | null; onDraft: (d: Draft | null) => void; onClose: () => void;
+  /** Lance « Répondre avec IRIS » dès l'ouverture (action du briefing) ; `onAutoDraft` acquitte la demande. */
+  autoDraft?: boolean; onAutoDraft?: () => void;
+}) {
   const [body, setBody] = useState<MailBody | null>(null);
   const [failed, setFailed] = useState(false);
   const [images, setImages] = useState(false);
@@ -50,6 +54,12 @@ export function MailReader({ mail, draft, onDraft, onClose }: { mail: MailRow; d
       setDrafting(false);
     }
   };
+  useEffect(() => {
+    if (!autoDraft) return;
+    onAutoDraft?.();
+    void iris(mailIpc.draftReply(mail.account_id, mail.id));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoDraft]);
   const gone = async (call: Promise<ToolOutcome>) => { if (await run(call)) onClose(); };
 
   return (

@@ -37,7 +37,7 @@ it("Échap ferme le panneau", async () => {
 it("clic sur le voile ferme, clic dans le panneau non", async () => {
   const user = userEvent.setup();
   const { container } = render(<Panel />);
-  await user.click(screen.getByText("IRIS arrive bientôt."));
+  await user.click(screen.getByText("IRIS prépare ton briefing…"));
   await user.click(container.querySelector(".panel")!);
   expect(panelClose).not.toHaveBeenCalled();
   await user.click(container.querySelector(".scrim")!);

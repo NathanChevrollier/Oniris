@@ -70,6 +70,8 @@
     "allow-mail-archive",
     "allow-mail-delete",
     "allow-mail-send",
+    "allow-iris-briefing",
+    "allow-iris-briefing-act",
     "allow-iris-status",
     "allow-iris-draft-reply",
     "allow-iris-draft-reply-local",

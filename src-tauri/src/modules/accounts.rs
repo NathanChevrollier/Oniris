@@ -162,7 +162,10 @@ pub async fn accounts_intro_take(state: State<'_, AppState>) -> Result<bool, Str
 fn guide_url(u: &str) -> Option<String> {
     let url = oniris_core::launch::safe_url(u)?;
     let p = url::Url::parse(&url).ok()?;
-    (p.scheme() == "https" && matches!(p.host_str(), Some("console.cloud.google.com" | "developer.spotify.com" | "mail.google.com"))).then_some(url)
+    let host_ok = matches!(p.host_str(), Some("console.cloud.google.com" | "developer.spotify.com" | "mail.google.com"));
+    // Ollama : la seule page de téléchargement.
+    let ollama = p.host_str() == Some("ollama.com") && p.path() == "/download";
+    (p.scheme() == "https" && (host_ok || ollama)).then_some(url)
 }
 
 #[tauri::command]
@@ -180,6 +183,8 @@ mod tests {
     fn seules_les_pages_des_guides_s_ouvrent() {
         assert!(guide_url("https://console.cloud.google.com/projectcreate").is_some());
         assert!(guide_url("https://developer.spotify.com/dashboard").is_some());
+        assert!(guide_url("https://ollama.com/download").is_some());
+        assert!(guide_url("https://ollama.com/library").is_none());
         assert!(guide_url("http://console.cloud.google.com/").is_none());
         assert!(guide_url("https://console.cloud.google.com.evil.com/").is_none());
         assert!(guide_url("https://example.com/").is_none());

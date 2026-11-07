@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ipc, onConfirm, onPanelState, toolIpc } from "../lib/ipc";
 import { useSettings } from "../lib/settings";
 import { usePanelStore } from "./store";
-import { Header } from "./Header";
+import { focusHeaderButton, Header } from "./Header";
 import { Timeline, type TimelineItem } from "./Timeline";
 import { useTopic } from "../lib/data";
 import { AgendaCard } from "../modules/agenda/AgendaCard";
@@ -18,6 +18,8 @@ import { Ambient, MusicCard } from "../modules/music/MusicCard";
 import { useNow } from "../lib/time";
 import { agendaIpc, dayBounds, dayKey, type AgendaEvent } from "../modules/agenda/api";
 import { remindersIpc, type Reminder } from "../modules/reminders/api";
+import { IrisSheet } from "../modules/iris/IrisSheet";
+import { JournalSheet } from "../modules/iris/JournalSheet";
 import { AccountsSheet } from "../modules/accounts/AccountsSheet";
 import { CardGrid } from "./CardGrid";
 import { CommandPalette } from "./CommandPalette";
@@ -37,9 +39,14 @@ export function Panel() {
   const openAccounts = useCallback(() => setAccountsOpen(true), []);
   const closeAccounts = useCallback(() => {
     setAccountsOpen(false);
-    // Le contenu derrière la feuille redevient actif au rendu suivant : on lui rend le focus après.
-    setTimeout(() => document.querySelector<HTMLElement>(".hdr-btn")?.focus(), 0);
+    focusHeaderButton("accounts");
   }, []);
+  const [irisOpen, setIrisOpen] = useState(false);
+  const openIris = useCallback(() => setIrisOpen(true), []);
+  const closeIris = useCallback(() => { setIrisOpen(false); focusHeaderButton("iris"); }, []);
+  const [journalOpen, setJournalOpen] = useState(false);
+  const openJournal = useCallback(() => setJournalOpen(true), []);
+  const closeJournal = useCallback(() => { setJournalOpen(false); focusHeaderButton("journal"); }, []);
   const [colors, setColors] = useState<string[]>(NO_COLORS);
   const settings = useSettings();
   const now = useNow(60_000, open);
@@ -71,8 +78,8 @@ export function Panel() {
       <div className="scrim" onClick={() => ipc.panelClose()} />
       <section className="panel" aria-label="Oniris">
         <Ambient colors={colors} />
-        <div className="inner" inert={accountsOpen}>
-          <Header name={settings.user_name} onAccounts={openAccounts} />
+        <div className="inner" inert={accountsOpen || irisOpen || journalOpen}>
+          <Header name={settings.user_name} onAccounts={openAccounts} onIris={openIris} onJournal={openJournal} />
           <IrisReply />
           <Timeline startHour={settings.timeline_start_hour} endHour={settings.timeline_end_hour} items={[...items, ...dots]} />
           <ConfirmQueue subscribe={onConfirm} resolve={toolIpc.resolve} />
@@ -81,6 +88,8 @@ export function Panel() {
           <div className="handle" />
         </div>
         <AccountsSheet open={accountsOpen} onClose={closeAccounts} onAutoOpen={openAccounts} />
+        <IrisSheet open={irisOpen} onClose={closeIris} />
+        <JournalSheet open={journalOpen} onClose={closeJournal} />
       </section>
     </>
   );

@@ -58,3 +58,7 @@ export const irisIpc = {
 };
 
 export const onIris = (cb: (e: IrisEvent) => void): Promise<UnlistenFn> => listen<IrisEvent>("oniris://iris", (e) => cb(e.payload));
+
+/** Progression de `iris_pull_model` sur `oniris://iris-pull` : octets, ou une erreur. */
+export type PullEvent = { done: number | null; total: number | null; error: string | null };
+export const onIrisPull = (cb: (e: PullEvent) => void): Promise<UnlistenFn> => listen<PullEvent>("oniris://iris-pull", (e) => cb(e.payload));

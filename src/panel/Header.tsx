@@ -1,4 +1,4 @@
-import { UserRound } from "lucide-react";
+import { BookText, Sparkles, UserRound } from "lucide-react";
 import { IrisOrb, IrisStatusLine } from "../modules/iris/IrisReply";
 import { formatLongDate, greeting, hhmm, ss, useNow } from "../lib/time";
 import { usePanelStore } from "./store";
@@ -13,7 +13,10 @@ function Clock() {
   );
 }
 
-export function Header({ name, onAccounts }: { name: string; onAccounts?: () => void }) {
+/** Rend le focus au bouton d'en-tête qui a ouvert la feuille (après le rendu où le fond redevient actif). */
+export const focusHeaderButton = (sheet: string) => setTimeout(() => document.querySelector<HTMLElement>(`.hdr-btn[data-sheet="${sheet}"]`)?.focus(), 0);
+
+export function Header({ name, onAccounts, onIris, onJournal }: { name: string; onAccounts?: () => void; onIris?: () => void; onJournal?: () => void }) {
   const open = usePanelStore((s) => s.open);
   const now = useNow(60_000, open);
   return (
@@ -21,7 +24,9 @@ export function Header({ name, onAccounts }: { name: string; onAccounts?: () => 
       <div className="hello">
         <span>{formatLongDate(now)}</span>
         <h1>{greeting(now, name)}</h1>
-        {onAccounts && <button type="button" className="hdr-btn" onClick={onAccounts}><UserRound size={13} />Comptes</button>}
+        {onAccounts && <button type="button" className="hdr-btn" data-sheet="accounts" onClick={onAccounts}><UserRound size={13} />Comptes</button>}
+        {onIris && <button type="button" className="hdr-btn" data-sheet="iris" onClick={onIris}><Sparkles size={13} />IRIS</button>}
+        {onJournal && <button type="button" className="hdr-btn" data-sheet="journal" onClick={onJournal}><BookText size={13} />Journal</button>}
       </div>
       <div className="orb-wrap">
         <IrisOrb size={58} />

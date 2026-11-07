@@ -10,6 +10,7 @@ mod db;
 mod error;
 pub mod events;
 pub mod favorites;
+pub mod iris;
 pub mod kv;
 pub mod notes;
 pub mod oauth;

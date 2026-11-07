@@ -132,7 +132,7 @@ pub struct Settings {
     pub zenytt_path: String,
     /// Chemin de claude.exe : vide = détection automatique.
     pub claude_path: String,
-    /// Modèle de Claude Code (`--model`) : vide = celui par défaut ; 100 caractères au plus parmi `[A-Za-z0-9._:/-]` et crochets.
+    /// Modèle de Claude Code (`--model`) : vide = celui par défaut ; commence par un alphanumérique ; 100 caractères au plus parmi `[A-Za-z0-9._:/-]` et crochets.
     pub iris_claude_model: String,
     /// Commandes PowerShell d'IRIS exécutées sans carte (préfixes de jetons) : 50 au plus, ASCII, 100 caractères.
     pub iris_shell_allowlist: Vec<String>,
@@ -364,7 +364,7 @@ impl Settings {
             self.claude_path = d.claude_path.clone();
         }
         self.iris_claude_model = self.iris_claude_model.trim().to_string();
-        if self.iris_claude_model.len() > 100 || !self.iris_claude_model.bytes().all(|b| b.is_ascii_alphanumeric() || b".:_/-[]".contains(&b)) {
+        if self.iris_claude_model.len() > 100 || self.iris_claude_model.starts_with(|c: char| !c.is_ascii_alphanumeric()) || !self.iris_claude_model.bytes().all(|b| b.is_ascii_alphanumeric() || b".:_/-[]".contains(&b)) {
             errs.push("modèle Claude : 100 caractères au plus parmi A-Z a-z 0-9 . _ : / - [ ]".into());
             self.iris_claude_model = d.iris_claude_model.clone();
         }
@@ -601,6 +601,8 @@ mod tests {
         assert!(with(r"\\srv\claude.exe", "").is_err());
         assert!(with(r"C:\c\claude.cmd", "").is_err());
         assert!(with("", "a b").is_err());
+        assert!(with("", "--dangerously-skip-permissions").is_err());
+        assert!(with("", "[1m]").is_err());
         assert!(with("", &"a".repeat(101)).is_err());
         assert_eq!((Settings::default().claude_path.as_str(), Settings::default().iris_claude_model.as_str()), ("", ""));
     }

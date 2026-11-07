@@ -43,18 +43,24 @@ impl RealClaude {
             _ => ClaudeError::Failed("lancement impossible".into()),
         })?;
         let mut stdin = child.stdin.take().ok_or_else(|| ClaudeError::Failed("entrée indisponible".into()))?;
-        // Si le processus meurt avant d'avoir tout lu, l'erreur d'écriture est sans importance : la sortie le dira.
-        let _ = stdin.write_all(inv.stdin.as_bytes()).await;
-        drop(stdin);
         let mut err = child.stderr.take().ok_or_else(|| ClaudeError::Failed("erreur indisponible".into()))?;
         let stderr = tokio::spawn(async move { let mut s = String::new(); let _ = err.read_to_string(&mut s).await; s });
         let mut lines = BufReader::new(child.stdout.take().ok_or_else(|| ClaudeError::Failed("sortie indisponible".into()))?).lines();
 
         let read = async {
-            let (mut result, mut text) = (None, String::new());
+            // Si le processus meurt avant d'avoir tout lu, l'erreur d'écriture est sans importance : la sortie le dira.
+            let _ = stdin.write_all(inv.stdin.as_bytes()).await;
+            drop(stdin);
+            let (mut result, mut text, mut inited) = (None, String::new(), false);
             while let Ok(Some(line)) = lines.next_line().await {
-                match parse_line(&line) {
+                let ev = parse_line(&line);
+                // Échec fermé : rien n'est accepté avant un Init valide qui annonce les outils.
+                if !inited && matches!(ev, Some(ClaudeEvent::Delta(_) | ClaudeEvent::Result { .. })) {
+                    return Err(ClaudeError::Failed("Claude a démarré sans annonce d'outils".into()));
+                }
+                match ev {
                     Some(ClaudeEvent::Init { tools }) => {
+                        inited = true;
                         let bad: Vec<String> = tools.into_iter().filter(|t| !t.starts_with("mcp__oniris__")).collect();
                         if !bad.is_empty() {
                             return Err(ClaudeError::ForbiddenTools(bad));
@@ -197,6 +203,17 @@ mod tests {
         let r = fake(d.path(), 20_000).complete("sys", format!("bash:{}", pidf.display()), &mut |_: &str| {}).await;
         assert_eq!(r, Err(ClaudeError::ForbiddenTools(vec!["Bash".into()])));
         assert!(gone_within_2s(pid_of(&pidf).await).await);
+    }
+
+    #[tokio::test]
+    async fn sans_annonce_d_outils_echec_ferme() {
+        for sc in ["sansoutils", "sansinit"] {
+            let d = tempfile::tempdir().unwrap();
+            let pidf = d.path().join("pid");
+            let r = fake(d.path(), 20_000).complete("sys", format!("{sc}:{}", pidf.display()), &mut |_: &str| {}).await;
+            assert_eq!(r, Err(ClaudeError::Failed("Claude a démarré sans annonce d'outils".into())), "{sc}");
+            assert!(gone_within_2s(pid_of(&pidf).await).await);
+        }
     }
 
     #[tokio::test]

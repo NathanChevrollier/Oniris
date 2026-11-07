@@ -55,7 +55,8 @@ pub fn parse_line(line: &str) -> Option<ClaudeEvent> {
     let s = |v: &Value| v.as_str().unwrap_or_default().to_string();
     match v["type"].as_str()? {
         "system" if v["subtype"] == "init" => {
-            let tools = v["tools"].as_array().map(|a| a.iter().map(s).collect()).unwrap_or_default();
+            // Sans liste d'outils valide, pas d'Init : le garde refuse alors le flux (échec fermé).
+            let tools = v["tools"].as_array()?.iter().map(s).collect();
             Some(ClaudeEvent::Init { tools })
         }
         "stream_event" if v["event"]["type"] == "content_block_delta" && v["event"]["delta"]["type"] == "text_delta" => {
@@ -146,6 +147,8 @@ mod tests {
         assert_eq!(srv["command"], "oniris.exe");
         assert_eq!(srv["args"], json!(["--mcp-relay", "pipe1"]));
         assert_eq!(srv["env"]["ONIRIS_MCP_TOKEN"], "tok");
+        let i = invocation(PathBuf::from("c.exe"), PathBuf::from("w"), "sys", "opus", None, "p".into());
+        assert_eq!(&i.args[14..], ["sys", "--model", "opus"]);
     }
 
     #[test]
@@ -158,6 +161,7 @@ mod tests {
             ClaudeEvent::Result { text: "Claude AI usage limit reached|1760000000".into(), is_error: true, subtype: "error_during_execution".into() },
         ]);
         assert_eq!(parse_line("pas du json"), None);
+        assert_eq!(parse_line(r#"{"type":"system","subtype":"init"}"#), None);
     }
 
     #[test]

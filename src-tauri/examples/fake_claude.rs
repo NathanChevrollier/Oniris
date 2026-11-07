@@ -1,5 +1,5 @@
 //! Faux `claude -p` des tests de `modules::iris` : le scénario et le fichier de PID viennent du prompt (stdin),
-//! `scénario:fichier_pid`. Scénarios : normal, limite, bash (init avec l'outil Bash), silence (init puis 10 s de rien).
+//! `scénario:fichier_pid`. Scénarios : normal, sansoutils (init sans `tools`), sansinit (aucun init), limite, bash (init avec l'outil Bash), silence (init puis 10 s de rien).
 //! Aucun réseau, aucun vrai Claude.
 use std::io::{Read, Write};
 
@@ -16,10 +16,14 @@ fn main() {
         o.flush().unwrap();
     };
     let tools = if scenario == "bash" { r#"["mcp__oniris__a","Bash"]"# } else { "[]" };
-    out(&format!(r#"{{"type":"system","subtype":"init","tools":{tools}}}"#));
+    match scenario {
+        "sansoutils" => out(r#"{"type":"system","subtype":"init"}"#),
+        "sansinit" => {}
+        _ => out(&format!(r#"{{"type":"system","subtype":"init","tools":{tools}}}"#)),
+    }
     let delta = |t: &str| format!(r#"{{"type":"stream_event","event":{{"type":"content_block_delta","index":0,"delta":{{"type":"text_delta","text":"{t}"}}}}}}"#);
     match scenario {
-        "normal" => {
+        "normal" | "sansoutils" | "sansinit" => {
             out(&delta("Bon"));
             out(&delta("jour"));
             out(r#"{"type":"result","subtype":"success","is_error":false,"result":"Bonjour"}"#);

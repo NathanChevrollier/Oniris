@@ -119,6 +119,12 @@ impl AppState {
         let allowlist: oniris_core::general::shell::Allowlist = Arc::new(move || handle.state::<AppState>().settings.read().iris_shell_allowlist.clone());
         let shell: Arc<dyn oniris_core::general::shell::ShellExec> = Arc::new(crate::modules::general::RealShell);
         tools.extend(oniris_core::general::shell::all(&shell, allowlist, dirs::home_dir().ok_or("dossier utilisateur introuvable")?, { let e = crate::modules::general::is_elevated(); Arc::new(move || e) }));
+        let handle = app.clone();
+        let work_dirs: oniris_core::general::files::WorkDirs = Arc::new(move || handle.state::<AppState>().settings.read().iris_work_dirs.clone());
+        let recycler: Arc<dyn oniris_core::general::recycle::Recycler> = Arc::new(crate::modules::general::ShellRecycler);
+        tools.extend(oniris_core::general::files::all(&recycler, work_dirs, oniris_core::general::files::protected_dirs()));
+        let win: Arc<dyn oniris_core::general::windows::WindowControl> = Arc::new(crate::modules::general::Win32Windows);
+        tools.extend(oniris_core::general::windows::all(&win, &apps));
         let broker = Arc::new(ToolBroker::new(db.clone(), clock, tools)?);
         broker.mark_interrupted();
         broker.expire_stale();

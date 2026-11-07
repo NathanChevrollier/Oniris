@@ -132,6 +132,9 @@ pub struct Settings {
     pub zenytt_path: String,
     /// Commandes PowerShell d'IRIS exécutées sans carte (préfixes de jetons) : 50 au plus, ASCII, 100 caractères.
     pub iris_shell_allowlist: Vec<String>,
+    /// Dossiers de travail d'IRIS : renommer, déplacer ou supprimer dedans se fait sans carte. 20 au plus, absolus,
+    /// locaux, jamais protégés.
+    pub iris_work_dirs: Vec<String>,
 }
 
 /// Commandes en lecture seule (aucun de leurs arguments sûrs n'écrit).
@@ -166,6 +169,7 @@ impl Default for Settings {
             sites: Vec::new(),
             zenytt_path: String::new(),
             iris_shell_allowlist: DEFAULT_SHELL_ALLOWLIST.map(String::from).to_vec(),
+            iris_work_dirs: Vec::new(),
         }
     }
 }
@@ -239,10 +243,20 @@ fn check_project_roots(roots: &[String]) -> Result<(), String> {
     Ok(())
 }
 
+/// Dossiers de travail : mêmes garde-fous que l'écriture d'IRIS (réseau refusé avant tout accès disque).
+fn check_work_dirs(dirs: &[String]) -> Result<(), String> {
+    check_roots(dirs, "dossiers de travail")?;
+    let prot = crate::general::files::protected_dirs();
+    for d in dirs {
+        crate::general::files::work_dir_ok(std::path::Path::new(d), &prot).map_err(|e| format!("dossiers de travail : {e}"))?;
+    }
+    Ok(())
+}
+
 impl Settings {
     /// Rogne les dossiers, retire les vides et les doublons (casse ignorée, comme Windows). Sans erreur possible.
     pub fn normalize_roots(&mut self) {
-        for list in [&mut self.search_roots, &mut self.projects_roots] {
+        for list in [&mut self.search_roots, &mut self.projects_roots, &mut self.iris_work_dirs] {
             let mut seen: Vec<String> = Vec::new();
             for r in list.drain(..) {
                 let r = r.trim().to_string();
@@ -341,6 +355,10 @@ impl Settings {
             errs.push("commandes sans confirmation : 50 au plus, ASCII sans caractère de contrôle du shell".into());
             self.iris_shell_allowlist = d.iris_shell_allowlist.clone();
         }
+        if let Err(e) = check_work_dirs(&self.iris_work_dirs) {
+            errs.push(e);
+            self.iris_work_dirs = d.iris_work_dirs.clone();
+        }
         if let Err(e) = check_hotkey(&self.hotkey) {
             errs.push(e);
             self.hotkey = d.hotkey;
@@ -412,6 +430,18 @@ mod tests {
         assert!(with(&[""]).is_err());
         assert!(with(&["é"]).is_err());
         assert!(with(&vec!["git status"; 51]).is_err());
+    }
+    #[test] fn dossiers_de_travail_valides() {
+        let with = |l: &[&str]| Settings { iris_work_dirs: l.iter().map(|x| x.to_string()).collect(), ..Settings::default() }.validate();
+        let t = tempfile::tempdir().unwrap();
+        let tmp = t.path().to_string_lossy().into_owned();
+        assert!(with(&[]).is_ok());
+        assert!(with(&[&tmp]).is_ok());
+        for ko in [r"C:\Windows", r"c:\program files\x", r"D:\", r"\srv\share", "//srv/share", "relatif", r"C:\a\..\Windows"] {
+            assert!(with(&[ko]).is_err(), "{ko}");
+        }
+        let many: Vec<String> = (0..21).map(|i| format!(r"{tmp}\{i}")).collect();
+        assert!(with(&many.iter().map(String::as_str).collect::<Vec<_>>()).is_err());
     }
     #[test] fn raccourci_partiel_garde_le_reste() {
         let s: Settings = serde_json::from_str(r#"{"user_name":"Nathan","hotkey":{"alt":true}}"#).unwrap();

@@ -52,6 +52,8 @@ export type Settings = {
   zenytt_path: string;
   /** Commandes PowerShell d'IRIS sans confirmation (préfixes de jetons) : 50 au plus, ASCII, 100 caractères. */
   iris_shell_allowlist: string[];
+  /** Dossiers de travail d'IRIS (renommer, déplacer, supprimer sans carte) : 20 au plus, absolus, locaux, jamais protégés. */
+  iris_work_dirs: string[];
 };
 
 const RESUME_NORMAL = "Reprends là où tu en étais sur ce projet. Appuie-toi sur le plan de développement et l'historique git. Commence par me dire où on en est.";
@@ -84,6 +86,7 @@ export const DEFAULT_SETTINGS: Settings = {
   sites: [],
   zenytt_path: "",
   iris_shell_allowlist: ["git status", "Get-ChildItem", "Get-Location", "Get-Date"],
+  iris_work_dirs: [],
 };
 
 /** Paramètres courants : chargés au montage, puis suivis via `oniris://settings`. */

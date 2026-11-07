@@ -73,7 +73,7 @@ fn plain(p: &Path) -> String {
 }
 
 /// `\\?\C:\x` devient `C:\x` et `\\?\UNC\srv\share` devient `\\srv\share` (resterait relatif sinon).
-fn unverbatim(s: &str) -> String {
+pub(crate) fn unverbatim(s: &str) -> String {
     match s.strip_prefix(r"\\?\UNC\") {
         Some(r) => format!(r"\\{r}"),
         None => s.strip_prefix(r"\\?\").unwrap_or(s).to_string(),

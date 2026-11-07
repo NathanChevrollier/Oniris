@@ -245,6 +245,7 @@ Chaque module occupe une carte du panneau, alimente le briefing quand c'est pert
 - **Les deux cerveaux voient les mêmes outils.** **[choix de conception]** Oniris expose ses outils (§7.4) sous forme de **serveur MCP local**, fourni à Claude Code au lancement. Ainsi Claude peut, par exemple, lire un mail ou créer un rappel par le même chemin, avec les mêmes règles de confirmation.
 - **Ressources** : le modèle local se charge à la première demande et se décharge après 5 minutes d'inactivité (réglable). Quand une app est en plein écran, ou qu'un jeu tourne, Oniris ne garde aucun modèle en mémoire. Ollama est une dépendance installée à part : Oniris vérifie sa présence et guide l'installation au premier lancement.
 - **Si Claude est indisponible** (limites d'usage atteintes, pas de réseau) : IRIS le dit simplement et propose de réessayer plus tard, ou de faire une version simple avec le cerveau local.
+- **[décision 2026-11-07, plan 5]** Modèle local par défaut : `qwen3:8b` (réglable ; `ministral-3:8b` à comparer à la main). Sans Ollama (absent, arrêté, modèle manquant), IRIS bascule sur Claude **tant qu'aucun outil n'a encore tourné dans le tour**, et le dit dans la conversation ; après un outil, elle s'arrête sur une erreur plutôt que de rejouer. Les demandes déterministes (« suivant », « rappelle-moi de… ») passent par un raccourci sans modèle (< 50 ms, test automatisé). Claude est lancé sans outils natifs (`--tools ""`) et ne voit que `mcp__oniris__*`, relayés par `oniris.exe --mcp-relay` (jeton aléatoire par tour, 127.0.0.1) ; le relais en build de production reste à vérifier au plan 7.
 
 ### 7.4 Outils d'IRIS
 
@@ -279,6 +280,13 @@ Ces outils sont protégés contre l'injection de consignes (un mail piégé qui 
 7. **Claude passe par les mêmes portes** : quand Claude Code est lancé en mode non interactif pour IRIS, ses outils natifs (Bash, Edit, Write…) sont désactivés. Il n'agit que via le serveur MCP d'Oniris, donc avec les mêmes confirmations, la même provenance et le même journal.
 
 Ces protections doivent être couvertes par des tests dédiés, en particulier des mails piégés de test qui tentent de déclencher une commande. Le vrai travail de code sur un projet reste dans VS Code via « Reprendre ».
+
+**[décision 2026-11-07, plan 5]** Réalisation des garanties ci-dessus :
+
+- **Références `{{uN}}`** : tout contenu non fiable lu par un outil (mail, page, fichier) est rangé dans un coffre par conversation ; le planificateur (local ou Claude) n'en voit que des références `{{u1}}`, `{{u2}}`… et jamais le texte. Un argument d'outil qui contient une référence rend l'appel soumis à confirmation, avec la source sur la carte. Les valeurs de forme identifiant (sans espace, 100 caractères au plus) restent en clair : un jeton choisi par un tiers mais de cette forme peut donc être réutilisé sans carte pour un outil libre, risque accepté.
+- **Liste blanche de commandes** réduite par défaut à `git status`, `Get-ChildItem`, `Get-Location`, `Get-Date` (pas de `git log` ni `git branch`, qui peuvent écrire) ; vérification mot à mot, rejet des commandes encodées, des chemins UNC et des jetons d'élévation. Les entrées ajoutées par l'utilisateur sont à sa charge.
+- **Fichiers** : en plus de `%APPDATA%\Oniris` et des dossiers système, les dossiers Démarrage et les profils PowerShell sont protégés en écriture, et `files.copy` ne lit pas `%APPDATA%\Oniris`. La suppression passe par la Corbeille avec l'avertissement Windows (`FOF_WANTNUKEWARNING`) : ce qui ne peut pas y aller (disque amovible) déclenche une question de Windows, et un refus fait échouer l'outil plutôt que de supprimer pour de bon.
+- **Journal** : la commande exacte et les chemins y sont gardés (§7.4.6) ; les journaux techniques n'en contiennent jamais.
 
 **Ajouter un outil doit rester simple.** Un module = un ensemble d'outils déclarés au même endroit, avec leur niveau d'autorisation.
 

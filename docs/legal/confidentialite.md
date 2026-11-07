@@ -1,16 +1,16 @@
 # Confidentialité d'Oniris
 
-Version 4 — 6 novembre 2026. Ce document décrit simplement ce qu'Oniris fait de tes données. Il est mis à jour à chaque nouveauté qui touche à ta vie privée.
+Version 5 — 7 novembre 2026. Ce document décrit simplement ce qu'Oniris fait de tes données. Il est mis à jour à chaque nouveauté qui touche à ta vie privée.
 
 ## En bref
 
-Oniris range tout chez toi, sur ton PC. Il n'envoie aucune statistique d'usage, et il n'y a aucun compte à créer pour l'utiliser. Oniris ne contacte Internet que pour ce que tu as choisi d'activer : la météo (si tu as choisi une ville), les icônes de tes favoris, les sondes de tes sites et, si tu connectes tes comptes, Google (Gmail et Agenda) et Spotify. Les comptes ne sont jamais obligatoires : sans eux, rien de tout cela n'est contacté.
+Oniris range tout chez toi, sur ton PC. Il n'envoie aucune statistique d'usage, et il n'y a aucun compte à créer pour l'utiliser. Oniris ne contacte Internet que pour ce que tu as choisi d'activer : la météo (si tu as choisi une ville), les icônes de tes favoris, les sondes de tes sites et, si tu connectes tes comptes, Google (Gmail et Agenda) et Spotify. Les comptes ne sont jamais obligatoires : sans eux, rien de tout cela n'est contacté. IRIS, l'assistante, réfléchit d'abord **sur ton PC** ; elle ne passe par Claude (donc par Anthropic) que dans les cas décrits plus bas.
 
 ## Où sont tes données
 
 Tout est stocké en local, dans le dossier `%APPDATA%\Oniris` :
 
-- la base de données `oniris.db` : réglages, agenda, rappels, notes, minuteurs, historique du presse-papiers, journal des actions, favoris, statistiques d'usage de la recherche, préférences de projets, liste de tes comptes (adresse et couleur, jamais les jetons), cache des en-têtes de mails, cache des événements Google et mesures des sondes ;
+- la base de données `oniris.db` : réglages, agenda, rappels, notes, minuteurs, historique du presse-papiers, journal des actions, favoris, statistiques d'usage de la recherche, préférences de projets, liste de tes comptes (adresse et couleur, jamais les jetons), cache des en-têtes de mails, cache des événements Google, mesures des sondes, conversations avec IRIS, préférences qu'elle retient et résumés de tri des mails ;
 - l'instantané de l'index de recherche `index.bin` : la liste des **chemins complets** de tous les fichiers et dossiers indexés (voir « Recherche de fichiers ») ;
 - les journaux techniques (`logs`) : ils ne contiennent ni le texte de tes notes, ni celui de tes rappels, ni celui de ton presse-papiers, ni adresse mail, sujet, titre d'événement ou de morceau, ni jeton. Seulement des identifiants, des compteurs, des codes de réponse et des messages d'erreur.
 
@@ -145,8 +145,42 @@ Si Zenytt est installé sur ce PC, Oniris lance son serveur en lecture seule (`Z
 - les journaux techniques ne contiennent que le genre d'une erreur, jamais de nom de serveur ni d'hôte ;
 - sans Zenytt, rien de tout cela ne se produit.
 
+## IRIS : le cerveau local
+
+IRIS comprend d'abord tes demandes avec un modèle de langage qui tourne **sur ton PC**, via [Ollama](https://ollama.com) (par défaut `qwen3:8b`). Ollama n'écoute que sur ton propre PC (`127.0.0.1`) : ce que tu dis à IRIS et ce que le modèle lit ou répond ne sort pas de ta machine. Certaines demandes simples (« suivant », « rappelle-moi de… ») sont même comprises sans modèle. Le modèle se charge à ta première demande et se décharge après quelques minutes d'inactivité, et jamais pendant un jeu ou une app en plein écran.
+
+Le tri de tes mails, le briefing du matin et les brouillons « en local » utilisent aussi ce cerveau. Le résultat du tri (une étiquette et un court résumé par mail) est gardé dans `oniris.db` avec l'en-tête du mail ; il disparaît avec le compte.
+
+## IRIS : le téléchargement du modèle
+
+Oniris n'installe pas Ollama et ne télécharge rien tout seul. Si le modèle manque, un bouton « Télécharger le modèle » dans les réglages d'IRIS demande à ton Ollama local de le récupérer : **c'est Ollama qui contacte ses propres serveurs**, et seulement après ton clic. Ils voient, comme tout site web, l'adresse IP de ta connexion et le nom du modèle demandé.
+
+## IRIS : Claude
+
+Pour rédiger (« Répondre avec IRIS »), raisonner ou répondre à ce qui dépasse le cerveau local, IRIS peut faire appel à Claude. Oniris lance alors **Claude Code sur ton PC**, avec **ton propre abonnement** (aucune clé n'est stockée par Oniris) ; c'est Claude Code qui communique avec Anthropic, comme quand tu le lances toi-même. Claude n'est utilisé que si tu le demandes (« demande à Claude… »), si IRIS juge que la demande le nécessite, ou si Ollama n'est pas disponible. Dans ce dernier cas, IRIS te le signale.
+
+Ce qui part chez Anthropic dans ce cas :
+
+- ta demande ;
+- les **six derniers échanges** de la conversation ;
+- tes **préférences retenues** (voir « Conversations et mémoire ») et la personnalité que tu as décrite ;
+- les **résultats des outils** utilisés pendant le tour, dans une version réduite, **sans le contenu venant de l'extérieur** (corps de mails, pages, fichiers lus) : Claude n'en voit que des références du genre `{{u1}}`, pas le texte ;
+- le **contenu d'un mail**, seulement quand tu cliques sur « Répondre avec IRIS » pour ce mail, ou que tu demandes un résumé détaillé. Jamais pour le tri ni pour le briefing, qui restent locaux.
+
+Claude ne reçoit aucun outil propre : il n'agit que par les outils d'Oniris, avec les mêmes cartes de confirmation que si c'était IRIS en local. Pour cela, Oniris ouvre un petit canal **sur ton PC seulement**, protégé par un jeton aléatoire valable le temps d'un tour. Un mail qui contiendrait des consignes ne peut déclencher aucune action sans qu'une carte te la montre d'abord.
+
+## Conversations et mémoire
+
+- Tes conversations avec IRIS (tes messages, ses réponses) sont gardées dans `oniris.db`. Tu peux les **consulter et les effacer** depuis les réglages d'IRIS ; effacer l'historique ne supprime pas tes préférences.
+- Les **préférences** (« retiens que ma playlist de sport, c'est X ») ne sont enregistrées que si tu les demandes ; elles sont visibles, modifiables et supprimables dans les réglages. IRIS ne tire aucun profil de ton usage.
+- Les extraits de mails qu'IRIS a lus pendant un tour ne sont pas gardés dans la conversation : seules des références y figurent.
+
+## Journal des commandes et des fichiers
+
+IRIS peut exécuter une commande PowerShell, gérer des fichiers et lancer, fermer ou mettre au premier plan une application, toujours dans des limites fixes (pas d'administrateur, dossiers système et `%APPDATA%\Oniris` protégés, suppressions envoyées à la **Corbeille** et jamais définitives). Le journal des actions garde pour cela la **commande exacte**, les **chemins complets** des fichiers concernés et les noms d'applications, pour que tu puisses voir ce qui s'est passé et annuler quand c'est possible. Le résultat, lui, est raccourci. Les journaux techniques, eux, ne contiennent ni commande ni chemin. Le journal d'actions n'est pas encore purgé automatiquement.
+
 ## À venir
 
 Ces fonctions n'existent pas encore. Chacune ajoutera sa propre section ici avant d'être disponible. Outlook n'est pas prévu : seul Gmail est géré.
 
-- Claude, via Claude Code : à venir. Il faudra alors indiquer clairement que le contenu d'une demande, et d'un mail concerné, est transmis à Anthropic via Claude Code.
+- La voix d'IRIS (écoute et parole) : à venir. Il faudra alors préciser où sont traités le son et les textes.

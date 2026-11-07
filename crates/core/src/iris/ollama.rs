@@ -215,6 +215,32 @@ mod tests {
     fn req(tools: Vec<PlannerTool>) -> ChatRequest {
         ChatRequest { model: "qwen3:8b".into(), messages: vec![Msg { role: Role::User, content: "salut".into(), tool_calls: vec![] }], tools, keep_alive_min: 5 }
     }
+    /// Vrai Ollama local (R8 : hors des tests courants). `ONIRIS_TEST_MODEL` change le modèle (défaut `qwen3:8b`).
+    /// Un premier tour charge le modèle, le second est mesuré : budget de 1 s, modèle chargé.
+    #[tokio::test]
+    #[ignore]
+    async fn iris_latence_reelle() {
+        let model = std::env::var("ONIRIS_TEST_MODEL").unwrap_or_else(|_| "qwen3:8b".into());
+        let brain = Ollama::new(&model, 5);
+        let tool = PlannerTool {
+            wire: "music__play_playlist".into(),
+            description: "Lance une playlist par son nom.".into(),
+            schema: json!({ "type": "object", "properties": { "name": { "type": "string" } }, "required": ["name"] }),
+        };
+        let ask = |text: &str| ChatRequest {
+            model: model.clone(),
+            messages: vec![Msg { role: Role::User, content: text.into(), tool_calls: vec![] }],
+            tools: vec![tool.clone()],
+            keep_alive_min: 5,
+        };
+        brain.chat(ask("Bonjour"), &mut |_| {}).await.expect("chargement du modèle");
+        let t = std::time::Instant::now();
+        let r = brain.chat(ask("Mets la musique de sport"), &mut |_| {}).await.expect("tour mesuré");
+        let took = t.elapsed();
+        println!("iris_latence_reelle ({model}) : {took:?}, appels d'outils : {:?}", r.tool_calls);
+        assert!(took < Duration::from_secs(1), "{took:?}");
+    }
+
     fn client(s: &MockServer) -> Ollama { Ollama::with_base(&s.uri(), "qwen3:8b", 7, Duration::from_secs(5), Duration::from_secs(5)) }
     fn ndjson(lines: &[Value]) -> ResponseTemplate {
         ResponseTemplate::new(200).set_body_string(lines.iter().map(|l| format!("{l}\n")).collect::<String>())

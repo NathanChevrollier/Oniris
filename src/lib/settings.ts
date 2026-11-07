@@ -62,7 +62,7 @@ export type Settings = {
   iris_local_model: string;
   /** Minutes avant que le modèle local quitte la mémoire : 1 à 60. */
   iris_unload_minutes: number;
-  /** Personnalité d'IRIS (`{prénom}` est remplacé) : 1 à 1000 caractères. */
+  /** Personnalité d'IRIS (`{prénom}` est remplacé) : 1 à 2000 caractères. */
   iris_personality: string;
 };
 

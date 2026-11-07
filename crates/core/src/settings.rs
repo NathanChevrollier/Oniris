@@ -143,7 +143,7 @@ pub struct Settings {
     pub iris_local_model: String,
     /// Minutes avant que le modèle local quitte la mémoire, 1..=60.
     pub iris_unload_minutes: u8,
-    /// Personnalité d'IRIS (`{prénom}` est remplacé) : non vide, 1000 caractères au plus.
+    /// Personnalité d'IRIS (`{prénom}` est remplacé) : non vide, 2000 caractères au plus.
     pub iris_personality: String,
 }
 
@@ -396,8 +396,8 @@ impl Settings {
             self.iris_unload_minutes = d.iris_unload_minutes;
         }
         self.iris_personality = self.iris_personality.trim().to_string();
-        if self.iris_personality.is_empty() || self.iris_personality.chars().count() > 1000 {
-            errs.push("personnalité d'IRIS : 1 à 1000 caractères".into());
+        if self.iris_personality.is_empty() || self.iris_personality.chars().count() > 2000 {
+            errs.push("personnalité d'IRIS : 1 à 2000 caractères".into());
             self.iris_personality = d.iris_personality.clone();
         }
         if let Err(e) = check_hotkey(&self.hotkey) {
@@ -482,9 +482,9 @@ mod tests {
     }
     #[test] fn personnalite_non_vide_et_bornee() {
         let p = |v: &str| Settings { iris_personality: v.into(), ..Settings::default() }.validate();
-        assert!(p("Sois bref.").is_ok() && p(&"é".repeat(1000)).is_ok());
+        assert!(p("Sois bref.").is_ok() && p(&"é".repeat(2000)).is_ok());
         assert!(p("").is_err() && p("  
- ").is_err() && p(&"a".repeat(1001)).is_err());
+ ").is_err() && p(&"a".repeat(2001)).is_err());
     }
     #[test] fn dossiers_de_travail_valides() {
         let with = |l: &[&str]| Settings { iris_work_dirs: l.iter().map(|x| x.to_string()).collect(), ..Settings::default() }.validate();

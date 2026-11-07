@@ -4,6 +4,7 @@ import { useSettings } from "../lib/settings";
 import { hhmm, useNow } from "../lib/time";
 import { PillTimer } from "../modules/timers/PillTimer";
 import { Orb } from "../ui/Orb";
+import { onIris } from "../modules/iris/api";
 import "../ui/tokens.css";
 import "../ui/glass.css";
 import "../ui/motion.css";
@@ -16,10 +17,16 @@ export function Pill() {
   const settings = useSettings();
   const now = useNow(60_000);
   const [panelOpen, setPanelOpen] = useState(false);
+  const [thinking, setThinking] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const hover = useRef<ReturnType<typeof setTimeout>>(undefined);
   const closedAt = useRef(-Infinity);
   const cancelHover = () => clearTimeout(hover.current);
+
+  useEffect(() => {
+    const un = onIris((e) => { if (e.type === "state") setThinking(e.state === "thinking"); });
+    return () => { un.then((f) => f()); };
+  }, []);
 
   useEffect(() => {
     const un = onPanelState((p) => {
@@ -55,7 +62,7 @@ export function Pill() {
         <PillTimer />
         <span className="slot-music" hidden />
         <span className="slot-mails" hidden />
-        <Orb state="idle" size={24} />
+        <Orb state={thinking ? "thinking" : "idle"} size={24} />
       </button>
     </div>
   );

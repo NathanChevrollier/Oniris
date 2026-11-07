@@ -1,4 +1,5 @@
-import { invoke, isTauri } from "../../lib/ipc";
+import type { UnlistenFn } from "@tauri-apps/api/event";
+import { invoke, isTauri, listen } from "../../lib/ipc";
 
 /** Miroir de `oniris_core::iris::Segment` : le texte d'un tiers garde sa source. */
 export type Segment = { t: "Text"; text: string } | { t: "Untrusted"; text: string; source: string };
@@ -26,3 +27,34 @@ export const irisBriefingIpc = {
   get: (): Promise<BriefingData | null> => isTauri ? invoke("iris_briefing") : Promise.resolve(fake()),
   act: (index: number): Promise<void> => isTauri ? invoke("iris_briefing_act", { index }) : Promise.resolve(),
 };
+
+export type Brain = "fast" | "local" | "claude";
+/** Miroir de `modules::iris::IrisStatus` (`local` en snake_case, `claude` étiqueté par `kind`). */
+export type IrisStatus = { local: "down" | "no_model" | "ready"; model: string; claude: { kind: "found"; path: string } | { kind: "missing" } };
+export type IrisErrorKind = "claude_unavailable" | "claude_missing" | "local_unavailable" | "failed";
+/** Miroir de `IrisEvent` / `IrisEventKind` (étiquette `type`) sur `oniris://iris`. */
+export type IrisEvent = { turn: number } & (
+  | { type: "state"; state: "idle" | "thinking"; brain: Brain }
+  | { type: "reply"; segments: Segment[]; done: boolean }
+  | { type: "tool_used"; tool: string }
+  | { type: "pending"; action_id: number }
+  | { type: "error"; kind: IrisErrorKind; message: string; offer_local: boolean }
+);
+export type HistoryItem = { conversation_id: number; ts_ms: number; role: string; shown_text: string };
+export type Memory = { id: number; text: string; created_ms: number };
+
+export const irisIpc = {
+  ask: (text: string, forceClaude: boolean): Promise<number> => invoke("iris_ask", { text, forceClaude }),
+  cancel: (turn: number): Promise<void> => invoke("iris_cancel", { turn }),
+  status: (): Promise<IrisStatus> => invoke("iris_status"),
+  history: (limit: number): Promise<HistoryItem[]> => invoke("iris_history", { limit }),
+  historyClear: (): Promise<void> => invoke("iris_history_clear"),
+  memories: (): Promise<Memory[]> => invoke("iris_memories"),
+  memoryDelete: (id: number): Promise<unknown> => invoke("iris_memory_delete", { id }),
+  conversationNew: (): Promise<number> => invoke("iris_conversation_new"),
+  draftReply: (account: number, id: string): Promise<string> => invoke("iris_draft_reply", { account, id }),
+  draftReplyLocal: (account: number, id: string): Promise<string> => invoke("iris_draft_reply_local", { account, id }),
+  pullModel: (): Promise<void> => invoke("iris_pull_model"),
+};
+
+export const onIris = (cb: (e: IrisEvent) => void): Promise<UnlistenFn> => listen<IrisEvent>("oniris://iris", (e) => cb(e.payload));

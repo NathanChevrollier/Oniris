@@ -6,6 +6,8 @@ import { Panel } from "./Panel";
 import { usePanelStore } from "./store";
 import { ipc, invoke } from "../lib/ipc";
 import { timersIpc } from "../modules/timers/api";
+import { irisIpc } from "../modules/iris/api";
+import { useIris } from "../modules/iris/store";
 
 // Comme dans Panel.test : « dans Tauri », `invoke` ne répond jamais (les cartes restent vides).
 vi.mock("../lib/ipc", async (orig) => ({
@@ -26,7 +28,7 @@ const HITS: Hit[] = [
 const answer = (hits: Hit[] = HITS) =>
   vi.spyOn(searchIpc, "query").mockImplementation((_q, _s, req) => Promise.resolve({ req, hits, indexing: false }));
 
-beforeEach(() => usePanelStore.setState({ open: true, pending: [] }));
+beforeEach(() => { usePanelStore.setState({ open: true, pending: [] }); useIris.setState({ turn: 0, floor: 0, state: "idle", user: "", segments: [], error: null, toolsUsed: [], pending: [], brain: null }); });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.mocked(invoke).mockClear(); });
 
 const bar = () => screen.getByRole("combobox", { name: "Commande" });
@@ -146,15 +148,58 @@ it("Échap vide le champ, puis ferme le panneau", async () => {
   expect(close).toHaveBeenCalledOnce();
 });
 
-it("texte sans résultat validé par Entrée : message d'attente d'IRIS", async () => {
+it("texte libre sans résultat : Entrée interroge IRIS, Ctrl+Maj+Entrée force Claude", async () => {
   answer([]);
-  const onCommand = vi.fn();
-  render(<CommandPalette onCommand={onCommand} />);
+  const ask = vi.spyOn(irisIpc, "ask").mockResolvedValue(1);
+  render(<CommandPalette />);
   await userEvent.type(bar(), "mets ma playlist");
   await act(async () => {});
   await userEvent.keyboard("{Enter}");
-  expect(onCommand).toHaveBeenCalledWith("mets ma playlist");
-  expect(screen.getByText("IRIS arrive bientôt — essaie /note, /rappel…")).toBeInTheDocument();
+  expect(ask).toHaveBeenCalledWith("mets ma playlist", false);
+  expect(bar()).toHaveValue("");
+  expect(useIris.getState()).toMatchObject({ user: "mets ma playlist", state: "thinking" });
+  await userEvent.type(bar(), "résume", { skipClick: true });
+  await act(async () => {});
+  await userEvent.keyboard("{Control>}{Shift>}{Enter}{/Shift}{/Control}");
+  expect(ask).toHaveBeenLastCalledWith("résume", true);
+});
+
+it("Entrée sur un résultat sélectionné l'ouvre sans solliciter IRIS", async () => {
+  answer();
+  const ask = vi.spyOn(irisIpc, "ask").mockResolvedValue(1);
+  const open = vi.spyOn(searchIpc, "open").mockResolvedValue("done");
+  render(<CommandPalette />);
+  await userEvent.type(bar(), "rapport");
+  await screen.findAllByRole("option");
+  await userEvent.keyboard("{Enter}");
+  expect(open).toHaveBeenCalledWith("file", "C:\\u\\docs\\rapport.pdf");
+  expect(ask).not.toHaveBeenCalled();
+});
+
+it("le bouton Claude force Claude", async () => {
+  answer([]);
+  const ask = vi.spyOn(irisIpc, "ask").mockResolvedValue(1);
+  render(<CommandPalette />);
+  await userEvent.type(bar(), "résume mes mails");
+  await userEvent.click(screen.getByRole("button", { name: "Claude" }));
+  expect(ask).toHaveBeenCalledWith("résume mes mails", true);
+});
+
+it("Échap pendant un tour l'annule sans fermer le panneau", async () => {
+  answer([]);
+  const close = vi.spyOn(ipc, "panelClose").mockResolvedValue(undefined);
+  vi.spyOn(irisIpc, "ask").mockResolvedValue(7);
+  const cancel = vi.spyOn(irisIpc, "cancel").mockResolvedValue(undefined);
+  render(<Panel />);
+  await userEvent.type(bar(), "bonjour");
+  await act(async () => {});
+  await userEvent.keyboard("{Enter}");
+  await act(async () => {});
+  await userEvent.keyboard("{Escape}");
+  await act(async () => {});
+  expect(cancel).toHaveBeenCalledWith(7);
+  expect(close).not.toHaveBeenCalled();
+  expect(useIris.getState()).toMatchObject({ user: "", state: "idle" });
 });
 
 it("un exécutable en attente de confirmation : barre vidée, sans erreur", async () => {
@@ -222,10 +267,10 @@ it("zones d'annonce (status, alert) toujours montées : seul leur contenu change
   const alert = screen.getByRole("alert");
   expect(status).toBeEmptyDOMElement();
   expect(alert).toBeEmptyDOMElement();
-  await userEvent.type(bar(), "zzz", { skipClick: true });
+  await userEvent.type(bar(), "/zzz", { skipClick: true });
   await act(async () => {});
   await userEvent.keyboard("{Enter}");
   expect(screen.getByRole("status")).toBe(status);
-  expect(status).toHaveTextContent("IRIS arrive bientôt");
+  expect(status).toHaveTextContent("Commande inconnue");
   expect(screen.getByRole("alert")).toBe(alert);
 });

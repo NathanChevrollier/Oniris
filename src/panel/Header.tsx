@@ -1,5 +1,5 @@
 import { UserRound } from "lucide-react";
-import { Orb } from "../ui/Orb";
+import { IrisOrb, IrisStatusLine } from "../modules/iris/IrisReply";
 import { formatLongDate, greeting, hhmm, ss, useNow } from "../lib/time";
 import { usePanelStore } from "./store";
 import { WeatherBadge } from "../modules/weather/WeatherBadge";
@@ -24,8 +24,8 @@ export function Header({ name, onAccounts }: { name: string; onAccounts?: () => 
         {onAccounts && <button type="button" className="hdr-btn" onClick={onAccounts}><UserRound size={13} />Comptes</button>}
       </div>
       <div className="orb-wrap">
-        <Orb state="idle" size={58} />
-        <div className="orb-status"><i />Prêt</div>
+        <IrisOrb size={58} />
+        <IrisStatusLine />
       </div>
       <div className="clock">
         <Clock />

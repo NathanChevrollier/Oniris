@@ -72,11 +72,10 @@ it("l'horloge avance chaque seconde sans re-rendre l'en-tête", () => {
   expect(greet).toHaveTextContent("Bonjour");
 });
 
-it("la barre de commande prend le focus à chaque ouverture et envoie le texte", async () => {
+it("la barre de commande prend le focus à chaque ouverture et envoie le texte à IRIS", async () => {
   vi.spyOn(searchIpc, "query").mockImplementation((_q, _s, req) => Promise.resolve({ req, hits: [], indexing: false }));
   usePanelStore.setState({ open: false });
-  const onCommand = vi.fn();
-  render(<Panel onCommand={onCommand} />);
+  render(<Panel />);
   const input = screen.getByRole("combobox", { name: "Commande" });
   act(() => usePanelStore.setState({ open: true }));
   expect(input).toHaveFocus();
@@ -86,7 +85,7 @@ it("la barre de commande prend le focus à chaque ouverture et envoie le texte",
   fireEvent.change(input, { target: { value: "  Mets ma playlist  " } });
   await act(async () => {}); // réponse (vide) de la recherche
   fireEvent.keyDown(input, { key: "Enter" });
-  expect(onCommand).toHaveBeenCalledWith("Mets ma playlist");
+  expect(invokeMock).toHaveBeenCalledWith("iris_ask", { text: "Mets ma playlist", forceClaude: false });
   expect(input).toHaveValue("");
 });
 

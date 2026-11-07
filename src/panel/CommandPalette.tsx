@@ -7,6 +7,7 @@ import { timersIpc } from "../modules/timers/api";
 import { notesIpc } from "../modules/notes/api";
 import { remindersIpc } from "../modules/reminders/api";
 import { agendaIpc } from "../modules/agenda/api";
+import { ask, cancel, useIris } from "../modules/iris/store";
 import { CommandBar } from "./CommandBar";
 import { usePanelStore } from "./store";
 import "./palette.css";
@@ -18,7 +19,6 @@ export type SearchResult = { req: number; hits: Hit[]; indexing: boolean };
 type Opened = "done" | "pending" | "note" | "command";
 type IndexStatus = { state: "indexing"; done: number } | { state: "ready"; count: number };
 
-const IRIS_SOON = "IRIS arrive bientôt — essaie /note, /rappel…";
 const OPEN_FAILED = "Impossible d'ouvrir cet élément.";
 const DONE: ToolOutcome = { Done: { action_id: 0, output: {} } };
 const ICONS: Record<ItemKind, LucideIcon> = {
@@ -158,7 +158,7 @@ let seq = 0;
  * Barre de commande + recherche universelle : une requête par frappe, sans délai, numérotée (réponses périmées
  * ignorées). Rien n'est cherché à l'ouverture du panneau : les récents se chargent au premier geste dans la barre.
  */
-export function CommandPalette({ onCommand = () => {} }: { onCommand?: (text: string) => void }) {
+export function CommandPalette() {
   const open = usePanelStore((s) => s.open);
   const input = useRef<HTMLInputElement>(null);
   const [text, setText] = useState("");
@@ -172,7 +172,7 @@ export function CommandPalette({ onCommand = () => {} }: { onCommand?: (text: st
   const latest = useRef(0);
   /** Requête la plus récente pas encore revenue : Entrée attend sa réponse. */
   const inflight = useRef(false);
-  const queued = useRef<{ text: string; ctrl: boolean } | null>(null);
+  const queued = useRef<{ text: string; ctrl: boolean; shift: boolean } | null>(null);
 
   const reset = () => {
     latest.current = 0;
@@ -195,7 +195,7 @@ export function CommandPalette({ onCommand = () => {} }: { onCommand?: (text: st
       setHits(r.hits); setSel(0); setIndexing(r.indexing);
       const e = queued.current;
       queued.current = null;
-      if (e) submit(e.text, r.hits, 0, e.ctrl);
+      if (e) submit(e.text, r.hits, 0, e.ctrl, e.shift);
     }, () => { if (req === latest.current) { inflight.current = false; queued.current = null; setHits([]); } });
   };
 
@@ -228,14 +228,21 @@ export function CommandPalette({ onCommand = () => {} }: { onCommand?: (text: st
     }, (e) => setMsg(friendlyError(String(e), OPEN_FAILED)));
   };
 
-  const submit = (t: string, list: Hit[], i: number, ctrl: boolean) => {
-    if (list[i]) return activate(list[i], ctrl, t);
+  /** Message libre pour IRIS : la barre se vide, la réponse s'affiche dans le panneau. */
+  const askIris = (t: string, forceClaude: boolean) => {
     const trimmed = t.trim();
-    if (!trimmed) return;
-    if (parseQuery(t).scope === "command") { setMsg("Commande inconnue — essaie /note, /rappel…"); return; }
-    onCommand(trimmed);
-    setText(""); setHits([]);
-    setMsg(IRIS_SOON);
+    if (!trimmed || parseQuery(t).scope === "command") return false;
+    ask(trimmed, forceClaude);
+    reset();
+    return true;
+  };
+
+  const submit = (t: string, list: Hit[], i: number, ctrl: boolean, shift = false) => {
+    const h = list[i];
+    // Ctrl+↵ garde son sens sur fichiers, dossiers et projets ; ailleurs il interroge IRIS (Ctrl+Maj+↵ : Claude).
+    if (h && !(shift || (ctrl && !["file", "dir", "project"].includes(h.item.kind)))) return activate(h, ctrl, t);
+    if (!t.trim()) return;
+    if (!askIris(t, shift)) setMsg("Commande inconnue — essaie /note, /rappel…");
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
@@ -246,8 +253,11 @@ export function CommandPalette({ onCommand = () => {} }: { onCommand?: (text: st
       setSel((s) => Math.min(Math.max(s + (e.key === "ArrowDown" ? 1 : -1), 0), hits.length - 1));
     } else if (e.key === "Enter") {
       e.preventDefault();
-      if (inflight.current) queued.current = { text, ctrl: e.ctrlKey };
-      else submit(text, hits, sel, e.ctrlKey);
+      if (inflight.current) queued.current = { text, ctrl: e.ctrlKey, shift: e.shiftKey };
+      else submit(text, hits, sel, e.ctrlKey, e.shiftKey);
+    } else if (e.key === "Escape" && useIris.getState().state === "thinking") {
+      e.stopPropagation(); // abandonne le tour au lieu de fermer le panneau
+      cancel();
     } else if (e.key === "Escape" && (text || msg || error)) {
       e.stopPropagation(); // sinon le panneau se ferme (Panel) : Échap vide d'abord
       reset();
@@ -313,7 +323,7 @@ export function CommandPalette({ onCommand = () => {} }: { onCommand?: (text: st
             {note == null && !showHint && hits[sel]?.item.kind === "project" && <span className="pal-tip">Ctrl+↵ reprendre avec Claude</span>}
           </div>
       </div>
-      <CommandBar inputRef={input} value={text} role="combobox" aria-expanded={hits.length > 0} aria-controls={hits.length ? "pal-list" : undefined}
+      <CommandBar inputRef={input} value={text} onClaude={() => askIris(text, true)} role="combobox" aria-expanded={hits.length > 0} aria-controls={hits.length ? "pal-list" : undefined}
         aria-autocomplete="list" aria-activedescendant={hits.length ? `pal-opt-${sel}` : undefined}
         onChange={(e) => edit(e.target.value)} onKeyDown={onKeyDown}
         onMouseDown={() => { if (!text && !hits.length) search(""); }} />

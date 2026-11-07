@@ -12,7 +12,7 @@ import { PcCard } from "../modules/system/PcCard";
 import { ClipboardCard } from "../modules/clipboard/ClipboardCard";
 import { ProjectsCard } from "../modules/projects/ProjectsCard";
 import { FavoritesCard } from "../modules/favorites/FavoritesCard";
-import { Briefing } from "../modules/iris/Briefing";
+import { IrisReply } from "../modules/iris/IrisReply";
 import { MailCard } from "../modules/mail/MailCard";
 import { Ambient, MusicCard } from "../modules/music/MusicCard";
 import { useNow } from "../lib/time";
@@ -27,13 +27,11 @@ import "../ui/glass.css";
 import "../ui/motion.css";
 import "./panel.css";
 
-const logCommand = (text: string) => console.info("[oniris] commande :", text); // branchée sur IRIS au plan 5
-
 const NO_EVENTS: AgendaEvent[] = [];
 const NO_REMINDERS: Reminder[] = [];
 const NO_COLORS: string[] = [];
 
-export function Panel({ onCommand = logCommand }: { onCommand?: (text: string) => void }) {
+export function Panel() {
   const open = usePanelStore((s) => s.open);
   const [accountsOpen, setAccountsOpen] = useState(false);
   const openAccounts = useCallback(() => setAccountsOpen(true), []);
@@ -75,11 +73,11 @@ export function Panel({ onCommand = logCommand }: { onCommand?: (text: string) =
         <Ambient colors={colors} />
         <div className="inner" inert={accountsOpen}>
           <Header name={settings.user_name} onAccounts={openAccounts} />
-          <Briefing />
+          <IrisReply />
           <Timeline startHour={settings.timeline_start_hour} endHour={settings.timeline_end_hour} items={[...items, ...dots]} />
           <ConfirmQueue subscribe={onConfirm} resolve={toolIpc.resolve} />
           <CardGrid slots={{ music: <MusicCard onAccounts={openAccounts} onColors={setColors} />, mails: <MailCard onAccounts={openAccounts} />, agenda: <AgendaCard />, projects: <ProjectsCard />, notes: <NotesCard />, clipboard: <ClipboardCard />, vps: <FavoritesCard />, pc: <PcCard />, timer: <TimerCard /> }} />
-          <CommandPalette onCommand={onCommand} />
+          <CommandPalette />
           <div className="handle" />
         </div>
         <AccountsSheet open={accountsOpen} onClose={closeAccounts} onAutoOpen={openAccounts} />

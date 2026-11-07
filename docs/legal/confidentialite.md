@@ -147,7 +147,7 @@ Si Zenytt est installé sur ce PC, Oniris lance son serveur en lecture seule (`Z
 
 ## IRIS : le cerveau local
 
-IRIS comprend d'abord tes demandes avec un modèle de langage qui tourne **sur ton PC**, via [Ollama](https://ollama.com) (par défaut `qwen3:8b`). Ollama n'écoute que sur ton propre PC (`127.0.0.1`) : ce que tu dis à IRIS et ce que le modèle lit ou répond ne sort pas de ta machine. Certaines demandes simples (« suivant », « rappelle-moi de… ») sont même comprises sans modèle. Le modèle se charge à ta première demande et se décharge après quelques minutes d'inactivité, et jamais pendant un jeu ou une app en plein écran.
+IRIS comprend d'abord tes demandes avec un modèle de langage qui tourne **sur ton PC**, via [Ollama](https://ollama.com) (par défaut `qwen3:8b`). Oniris ne parle à Ollama que sur ton propre PC (`127.0.0.1`) : ce que tu dis à IRIS et ce que le modèle lit ou répond ne sort pas de ta machine. Certaines demandes simples (« suivant », « rappelle-moi de… ») sont même comprises sans modèle. Le modèle se charge à ta première demande et se décharge après quelques minutes d'inactivité, et jamais pendant un jeu ou une app en plein écran.
 
 Le tri de tes mails, le briefing du matin et les brouillons « en local » utilisent aussi ce cerveau. Le résultat du tri (une étiquette et un court résumé par mail) est gardé dans `oniris.db` avec l'en-tête du mail ; il disparaît avec le compte.
 
@@ -165,7 +165,7 @@ Ce qui part chez Anthropic dans ce cas :
 - les **six derniers échanges** de la conversation ;
 - tes **préférences retenues** (voir « Conversations et mémoire ») et la personnalité que tu as décrite ;
 - les **résultats des outils** utilisés pendant le tour, dans une version réduite, **sans le contenu venant de l'extérieur** (corps de mails, pages, fichiers lus) : Claude n'en voit que des références du genre `{{u1}}`, pas le texte ;
-- le **contenu d'un mail**, seulement quand tu cliques sur « Répondre avec IRIS » pour ce mail, ou que tu demandes un résumé détaillé. Jamais pour le tri ni pour le briefing, qui restent locaux.
+- le **contenu que tu demandes de résumer en détail ou auquel tu demandes de répondre**, par le bouton « Répondre avec IRIS » ou dans la conversation : un mail (expéditeur, sujet, texte, tronqué à 8 Ko pour le bouton), mais aussi un élément du presse-papiers, un événement d'agenda externe, etc. Jamais pour le tri ni pour le briefing, qui restent locaux.
 
 Claude ne reçoit aucun outil propre : il n'agit que par les outils d'Oniris, avec les mêmes cartes de confirmation que si c'était IRIS en local. Pour cela, Oniris ouvre un petit canal **sur ton PC seulement**, protégé par un jeton aléatoire valable le temps d'un tour. Un mail qui contiendrait des consignes ne peut déclencher aucune action sans qu'une carte te la montre d'abord.
 

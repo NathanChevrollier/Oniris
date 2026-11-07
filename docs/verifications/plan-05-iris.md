@@ -44,7 +44,7 @@ Ouvre le panneau avec Alt+Espace. Les logs sont dans `%APPDATA%\Oniris\logs`. Le
 
 - [ ] ⚠️ à vérifier en priorité : envoie-toi un mail depuis un autre moyen. Ouvre-le dans la carte Mails, clique sur « Répondre avec IRIS » : un brouillon apparaît (par Claude, ou en local si tu choisis « en local »), modifiable, sans rien envoyer.
 - [ ] Envoie-le : la **carte de confirmation** montre le destinataire (toi) et le texte exact. Le mail arrive bien. Le journal des actions n'en garde que la taille, pas le sujet ni le texte.
-- [ ] Ctrl+Maj+Entrée ou le bouton correspondant fait la version « en local » : rien n'est envoyé à Claude (vérifie dans les logs qu'aucun tour Claude n'est lancé).
+- [ ] Version « en local » : rends Claude indisponible (dans la feuille IRIS, mets un `claude_path` erroné et enregistre), clique sur « Répondre avec IRIS », puis sur « Version simple en local ». Un brouillon apparaît et aucun processus ni tour Claude n'est lancé (vérifie dans les logs). Remets ensuite le bon `claude_path`.
 
 ## 4. Un mail piégé
 
@@ -83,7 +83,7 @@ Ouvre le panneau avec Alt+Espace. Les logs sont dans `%APPDATA%\Oniris\logs`. Le
   ```
 
   Utilise une application sans document non enregistré.
-- [ ] Les autres noms d'`ignore` du plan 4 (`cargo test -p oniris secrets_win -- --ignored`) passent toujours.
+- [ ] Les tests `#[ignore]` du plan 4 (`cargo test -p oniris secrets_win -- --ignored`) passent toujours.
 
 ## 8. Jeu en plein écran et ressources
 

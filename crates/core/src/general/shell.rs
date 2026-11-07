@@ -35,6 +35,10 @@ const FORBIDDEN: &str = ";|&><`$(){}@";
 
 /// Jeton d'argument sûr : `^-{0,2}[A-Za-z0-9][\w.\-/\\:]*$`, sans `=`.
 fn safe_token(t: &str) -> bool {
+    // Pas de chemin réseau caché dans un argument (`-Path:\hôte`, `-LiteralPath://hôte`).
+    if t.contains("\\\\") || t.contains("//") || t.contains("::") {
+        return false;
+    }
     let rest = t.strip_prefix("--").or_else(|| t.strip_prefix('-')).unwrap_or(t);
     let mut c = rest.chars();
     c.next().is_some_and(|f| f.is_ascii_alphanumeric())
@@ -78,7 +82,14 @@ pub fn risk(cmd: &str, list: &[String]) -> Risk {
 pub fn guard(cmd: &str) -> Result<(), String> {
     let lower = cmd.to_lowercase();
     for t in lower.split(|c: char| c.is_whitespace() || ";|&()'\"`,".contains(c)) {
-        let encoded = t.len() >= 2 && "-encodedcommand".starts_with(t) && t.starts_with("-e");
+        // PowerShell accepte `/` et les tirets typographiques comme préfixe d'option, et toute abréviation.
+        let mut c = t.chars();
+        let t = match c.next() {
+            Some('\u{2013}' | '\u{2014}' | '\u{2015}' | '/') => format!("-{}", c.as_str()),
+            _ => t.to_string(),
+        };
+        let t = t.as_str();
+        let encoded = matches!(t, "-ec" | "-ea") || t.len() >= 2 && t.starts_with("-e") && ("-encodedcommand".starts_with(t) || "-encodedarguments".starts_with(t));
         if encoded || matches!(t, "-verb" | "sudo" | "gsudo") || t.starts_with("-verb:") {
             return Err("élévation de droits ou commande encodée refusée".into());
         }
@@ -102,6 +113,8 @@ pub struct ShellRun {
     pub allowlist: Allowlist,
     /// Dossier par défaut (dossier utilisateur).
     pub home: PathBuf,
+    /// Oniris tourne-t-il en administrateur ? Alors l'outil est désactivé.
+    pub elevated: Arc<dyn Fn() -> bool + Send + Sync>,
 }
 
 impl ShellRun {
@@ -127,6 +140,9 @@ impl Tool for ShellRun {
     }
     fn check(&self, a: &Value) -> Result<(), ToolError> {
         let a: Args = parse(a)?;
+        if (self.elevated)() {
+            return Err(bad("Oniris tourne en administrateur : commandes désactivées"));
+        }
         if a.command.trim().is_empty() || a.command.chars().count() > MAX_COMMAND {
             return Err(bad(format!("commande : 1 à {MAX_COMMAND} caractères")));
         }
@@ -138,7 +154,8 @@ impl Tool for ShellRun {
         }
         guard(&a.command).map_err(bad)?;
         let cwd = self.cwd(a.cwd.as_deref());
-        if !cwd.is_absolute() || cwd.to_string_lossy().starts_with(r"\\") || !cwd.is_dir() {
+        // Refus du réseau AVANT tout accès disque : `is_dir` sur un UNC enverrait des identifiants NTLM sans confirmation.
+        if cwd.to_string_lossy().replace('/', "\\").starts_with("\\\\") || !cwd.is_absolute() || !cwd.is_dir() {
             return Err(bad("dossier : chemin absolu, existant et non réseau"));
         }
         Ok(())
@@ -164,8 +181,8 @@ impl Tool for ShellRun {
     }
 }
 
-pub fn all(shell: &Arc<dyn ShellExec>, allowlist: Allowlist, home: PathBuf) -> Vec<Arc<dyn Tool>> {
-    vec![Arc::new(ShellRun { shell: shell.clone(), allowlist, home })]
+pub fn all(shell: &Arc<dyn ShellExec>, allowlist: Allowlist, home: PathBuf, elevated: Arc<dyn Fn() -> bool + Send + Sync>) -> Vec<Arc<dyn Tool>> {
+    vec![Arc::new(ShellRun { shell: shell.clone(), allowlist, home, elevated })]
 }
 
 #[cfg(test)]
@@ -188,6 +205,7 @@ mod tests {
         for ko in [
             "git status; Remove-Item x", "git status | iex", "git status\nrm x", "git -c core.pager=x status",
             "git status --output=x", "git status ＆ x", "dir $(rm x)", "git", "git status --",
+            r"Get-ChildItem -Path:\\host\share", "Get-ChildItem -LiteralPath://host/x",
         ] {
             assert!(!allowlisted(ko, &l), "{ko}");
         }
@@ -206,7 +224,7 @@ mod tests {
 
     #[test]
     fn garde_fous() {
-        for ko in ["Start-Process pwsh -Verb RunAs", "runas /user:x", "powershell -enc AAAA", "pwsh -EncodedCommand AA", "pwsh -e AA"] {
+        for ko in ["Start-Process pwsh -Verb RunAs", "runas /user:x", "powershell -enc AAAA", "pwsh -EncodedCommand AA", "pwsh -e AA", "powershell -ec AA", "powershell /ec AA", "powershell /enc AA", "powershell \u{2013}enc AA", "pwsh -ea AA"] {
             assert!(guard(ko).is_err(), "{ko}");
         }
         assert!(guard("git status").is_ok());
@@ -225,7 +243,7 @@ mod tests {
         let home = tempfile::tempdir().unwrap();
         let fake = Arc::new(Fake(Mutex::new(vec![])));
         let sh: Arc<dyn ShellExec> = fake.clone();
-        let tools = all(&sh, Arc::new(list), home.path().to_path_buf());
+        let tools = all(&sh, Arc::new(list), home.path().to_path_buf(), Arc::new(|| false));
         let b = ToolBroker::new(Arc::new(Mutex::new(db())), Arc::new(|| 1_000), tools).unwrap();
         (b, fake, home)
     }
@@ -246,5 +264,19 @@ mod tests {
         assert_eq!(p.text.details, format!("Remove-Item a\nCommande saisie par toi\n{}", home.path().display()));
         assert_eq!(fake.0.lock().len(), 1);
         assert!(matches!(call(&b, "runas x", Provenance::User).await, ToolOutcome::Failed { .. }));
+        let r = b.call(ToolCall { tool: "shell.run".into(), args: json!({"command": "git status", "cwd": "//127.0.0.1/x"}), provenance: Provenance::User, origin: Origin::User }).await;
+        assert!(matches!(r, ToolOutcome::Failed { .. }));
+        assert_eq!(fake.0.lock().len(), 1);
+    }
+
+    #[test]
+    fn administrateur_desactive_l_outil() {
+        let home = tempfile::tempdir().unwrap();
+        let sh: Arc<dyn ShellExec> = Arc::new(Fake(Mutex::new(vec![])));
+        let a = json!({"command": "git status"});
+        for (elev, ok) in [(true, false), (false, true)] {
+            let t = all(&sh, Arc::new(list), home.path().to_path_buf(), Arc::new(move || elev));
+            assert_eq!(t[0].check(&a).is_ok(), ok);
+        }
     }
 }

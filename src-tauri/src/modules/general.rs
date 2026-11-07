@@ -11,6 +11,10 @@ use tokio::process::Command;
 /// Sortie en UTF-8 et sans barre de progression ; l'enveloppe ci-dessous fusionne stderr en texte (sinon CLIXML).
 const PRELUDE: &str = "[Console]::OutputEncoding=[Text.Encoding]::UTF8;$ProgressPreference='SilentlyContinue';";
 
+/// Enveloppe : sortie texte, puis code de sortie natif (`$LASTEXITCODE`) ou 1 si la dernière commande a échoué.
+const WRAP_HEAD: &str = "$global:LASTEXITCODE=0;& { ";
+const WRAP_TAIL: &str = "$global:oniris_ok = $?\n} 2>&1 | Out-String -Width 4096; if ($global:LASTEXITCODE) { exit $global:LASTEXITCODE }; if (-not $global:oniris_ok) { exit 1 }";
+
 pub struct RealShell;
 
 /// Garde au plus `MAX_OUTPUT` octets puis vide le tube (le processus ne doit jamais bloquer sur un tube plein).
@@ -24,8 +28,7 @@ async fn read_capped(mut r: impl AsyncRead + Unpin) -> Vec<u8> {
 #[async_trait]
 impl ShellExec for RealShell {
     async fn run(&self, command: &str, cwd: &Path, timeout: Duration) -> Result<ShellOutput, String> {
-        let utf16: Vec<u8> = format!("{PRELUDE}& {{ {command}
-}} 2>&1 | Out-String -Width 4096").encode_utf16().flat_map(u16::to_le_bytes).collect();
+        let utf16: Vec<u8> = format!("{PRELUDE}{WRAP_HEAD}{command}\n{WRAP_TAIL}").encode_utf16().flat_map(u16::to_le_bytes).collect();
         let encoded = base64::engine::general_purpose::STANDARD.encode(utf16);
         let root = std::env::var_os("SystemRoot").ok_or("SystemRoot absente")?;
         let exe = Path::new(&root).join(r"System32\WindowsPowerShell\v1.0\powershell.exe");
@@ -104,6 +107,14 @@ mod tests {
     async fn erreur_en_texte_brut() {
         let o = run(r"Get-Item C:\nope_zz", 30).await;
         assert!(!o.output.contains("CLIXML") && o.output.contains("nope_zz"), "{}", o.output);
+    }
+
+    #[tokio::test]
+    async fn codes_de_sortie() {
+        assert_eq!(run("cmd /c exit 3", 30).await.exit_code, Some(3));
+        assert_eq!(run("Write-Output ok", 30).await.exit_code, Some(0));
+        let o = run(r"Get-Item C:\nope_zz", 30).await;
+        assert!(o.exit_code.is_some_and(|c| c != 0), "{o:?}");
     }
 
     #[tokio::test]

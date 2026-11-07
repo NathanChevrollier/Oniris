@@ -36,7 +36,9 @@ const FORBIDDEN: &str = ";|&><`$(){}@";
 /// Jeton d'argument sûr : `^-{0,2}[A-Za-z0-9][\w.\-/\\:]*$`, sans `=`.
 fn safe_token(t: &str) -> bool {
     // Pas de chemin réseau caché dans un argument (`-Path:\hôte`, `-LiteralPath://hôte`).
-    if t.contains("\\\\") || t.contains("//") || t.contains("::") {
+    // Win32 traite `/` comme `\` : on normalise avant de chercher `\\`.
+    let n = t.replace('/', "\\");
+    if n.contains("\\\\") || n.contains("::") {
         return false;
     }
     let rest = t.strip_prefix("--").or_else(|| t.strip_prefix('-')).unwrap_or(t);
@@ -81,7 +83,7 @@ pub fn risk(cmd: &str, list: &[String]) -> Risk {
 /// Garde-fous fixes : pas d'élévation, pas de commande encodée (elle masquerait le texte confirmé).
 pub fn guard(cmd: &str) -> Result<(), String> {
     let lower = cmd.to_lowercase();
-    for t in lower.split(|c: char| c.is_whitespace() || ";|&()'\"`,".contains(c)) {
+    for t in lower.split(|c: char| c.is_whitespace() || ";|&()'\"`,:".contains(c)) {
         // PowerShell accepte `/` et les tirets typographiques comme préfixe d'option, et toute abréviation.
         let mut c = t.chars();
         let t = match c.next() {
@@ -205,7 +207,7 @@ mod tests {
         for ko in [
             "git status; Remove-Item x", "git status | iex", "git status\nrm x", "git -c core.pager=x status",
             "git status --output=x", "git status ＆ x", "dir $(rm x)", "git", "git status --",
-            r"Get-ChildItem -Path:\\host\share", "Get-ChildItem -LiteralPath://host/x",
+            r"Get-ChildItem -Path:\\host\share", "Get-ChildItem -LiteralPath://host/x", r"Get-ChildItem -Path:/\host\share", r"Get-ChildItem -Path:\/host/x",
         ] {
             assert!(!allowlisted(ko, &l), "{ko}");
         }
@@ -224,7 +226,7 @@ mod tests {
 
     #[test]
     fn garde_fous() {
-        for ko in ["Start-Process pwsh -Verb RunAs", "runas /user:x", "powershell -enc AAAA", "pwsh -EncodedCommand AA", "pwsh -e AA", "powershell -ec AA", "powershell /ec AA", "powershell /enc AA", "powershell \u{2013}enc AA", "pwsh -ea AA"] {
+        for ko in ["Start-Process pwsh -Verb RunAs", "runas /user:x", "powershell -enc AAAA", "pwsh -EncodedCommand AA", "pwsh -e AA", "powershell -ec AA", "powershell /ec AA", "powershell /enc AA", "powershell \u{2013}enc AA", "pwsh -ea AA", "pwsh -enc:AA", "pwsh -ec:AA"] {
             assert!(guard(ko).is_err(), "{ko}");
         }
         assert!(guard("git status").is_ok());

@@ -26,7 +26,7 @@ export function IrisStatusLine() {
   const local = useIris((s) => s.status?.local);
   useEffect(() => { if (open) void loadStatus(); }, [open]);
   const down = !thinking && local != null && local !== "ready";
-  const text = thinking ? `Réfléchit · ${brain === "claude" ? "Claude" : "local"}` : down ? "Local indisponible" : local ? "Prêt · local" : "Prêt";
+  const text = thinking ? `Réfléchit · ${brain ? BRAIN[brain] : "local"}` : down ? "Local indisponible" : local ? "Prêt · local" : "Prêt";
   return <div className={down ? "orb-status off" : "orb-status"} role="status"><i />{text}</div>;
 }
 
@@ -57,7 +57,7 @@ export function IrisReply() {
       <div className="spark"><Sparkles size={15} /></div>
       <div className="iris-body">
         <p className="iris-user">{user}</p>
-        <p className="iris-text">{segments.length ? segments.map((s, i) => <SegmentText key={i} s={s} />) : thinking ? "…" : null}</p>
+        <p className="iris-text" aria-live="polite">{segments.length ? segments.map((s, i) => <SegmentText key={i} s={s} />) : thinking ? "…" : null}</p>
         {error && (
           <div className="iris-err" role="alert">
             <p>{error.message}</p>

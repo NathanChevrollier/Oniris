@@ -19,7 +19,7 @@ it("le texte d'un tiers est stylé (italique, source en infobulle) et le texte d
   const { container } = render(<Briefing />);
   const q = await screen.findByText("Réunion piégée");
   expect(q).toHaveClass("iris-untrusted");
-  expect(q).toHaveAttribute("title", "Source : agenda externe");
+  expect(q).toHaveAttribute("title", "Événement externe, non fiable");
   expect(container.querySelectorAll(".iris-untrusted")).toHaveLength(1);
 });
 

@@ -24,6 +24,8 @@ export const useIris = create<IrisStore>()(() => ({ turn: 0, floor: 0, status: n
 
 /** Demande en route : `cancel` en a besoin pour connaître le numéro du tour. */
 let asking: Promise<number> | null = null;
+/** `asking` n'a pas encore rendu son numéro de tour. */
+let unresolved = false;
 
 export function apply(ev: IrisEvent) {
   useIris.setState((s) => {
@@ -42,9 +44,22 @@ export function apply(ev: IrisEvent) {
 /** Envoie un message à IRIS ; le tour précédent est abandonné par Rust. */
 export function ask(text: string, forceClaude: boolean) {
   useIris.setState((s) => ({ ...EMPTY, floor: s.turn, user: text, state: "thinking" }));
+  const prev = unresolved ? asking : null;
   const p = irisIpc.ask(text, forceClaude);
   asking = p;
-  p.then((t) => useIris.setState((s) => (s.user === text && t > s.turn ? { turn: t } : s)), () => {
+  unresolved = true;
+  const settle = () => { if (asking === p) unresolved = false; };
+  p.then(settle, settle);
+  // Le tour abandonné n'a pas encore de numéro : ses événements tardifs passeraient. On le barre dès qu'il est connu.
+  prev?.then((t) => useIris.setState((s) => {
+    if (s.user !== text) return s;
+    return s.turn <= t ? { ...EMPTY, user: text, state: "thinking", turn: t, floor: t } : { floor: Math.max(s.floor, t) };
+  }), () => {});
+  p.then((t) => useIris.setState((s) => {
+    if (s.user !== text || t <= s.turn) return s;
+    // Un tour plus ancien (abandonné) a déjà été accepté faute de numéro : son contenu est écarté.
+    return s.turn > s.floor ? { ...EMPTY, user: text, state: "thinking", turn: t } : { turn: t };
+  }), () => {
     if (asking === p) useIris.setState({ state: "idle", error: { kind: "failed", message: "IRIS n'a pas pu traiter ce message.", offer_local: false } });
   });
 }

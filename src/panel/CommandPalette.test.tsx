@@ -176,6 +176,23 @@ it("Entrée sur un résultat sélectionné l'ouvre sans solliciter IRIS", async 
   expect(ask).not.toHaveBeenCalled();
 });
 
+it("Maj+Entrée seul n'interroge pas IRIS : il ouvre le résultat ; Ctrl+Entrée sur une commande l'exécute", async () => {
+  answer();
+  const ask = vi.spyOn(irisIpc, "ask").mockResolvedValue(1);
+  const open = vi.spyOn(searchIpc, "open").mockResolvedValue("done");
+  render(<CommandPalette />);
+  await userEvent.type(bar(), "rapport");
+  await screen.findAllByRole("option");
+  await userEvent.keyboard("{Shift>}{Enter}{/Shift}");
+  expect(open).toHaveBeenCalledWith("file", "C:\\u\\docs\\rapport.pdf");
+  expect(ask).not.toHaveBeenCalled();
+  const start = vi.spyOn(timersIpc, "focus").mockResolvedValue(ok as never);
+  await userEvent.type(bar(), "/focus");
+  await userEvent.keyboard("{Control>}{Enter}{/Control}");
+  expect(start).toHaveBeenCalled();
+  expect(ask).not.toHaveBeenCalled();
+});
+
 it("le bouton Claude force Claude", async () => {
   answer([]);
   const ask = vi.spyOn(irisIpc, "ask").mockResolvedValue(1);

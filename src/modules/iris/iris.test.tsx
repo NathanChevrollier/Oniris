@@ -5,6 +5,7 @@ import { IrisOrb, IrisReply, IrisStatusLine, IDLE_MS } from "./IrisReply";
 import { irisIpc, type IrisEvent } from "./api";
 import { apply, ask, useIris, type IrisStore } from "./store";
 import { irisBriefingIpc } from "./api";
+import { untrustedLabel } from "./Briefing";
 import { usePanelStore } from "../../panel/store";
 
 const clean: Partial<IrisStore> = { turn: 0, floor: 0, state: "idle", brain: null, user: "", segments: [], pending: [], error: null, toolsUsed: [], status: null };
@@ -39,7 +40,33 @@ it("un segment Untrusted est du texte, jamais du HTML", () => {
   expect(container.querySelector("img")).toBeNull();
   const q = screen.getByText("<img src=x onerror=alert(1)>");
   expect(q).toHaveClass("iris-untrusted");
-  expect(q).toHaveAttribute("title", "Source : mail:1/a");
+  expect(q).toHaveAttribute("title", "Contenu de mail, non fiable");
+});
+
+it("infobulle selon la source", () => {
+  expect(untrustedLabel("agenda externe")).toBe("Événement externe, non fiable");
+  expect(untrustedLabel("clipboard")).toBe("Presse-papiers, non fiable");
+  expect(untrustedLabel("web:x")).toBe("Contenu externe, non fiable");
+});
+
+it("deux demandes avant la réponse de la première : ses événements tardifs sont écartés", async () => {
+  let r1!: (n: number) => void;
+  vi.spyOn(irisIpc, "ask").mockReturnValueOnce(new Promise((r) => { r1 = r; })).mockResolvedValueOnce(2);
+  render(<IrisReply />);
+  act(() => ask("A", false));
+  act(() => ask("B", false));
+  ev({ turn: 1, type: "reply", segments: [{ t: "Text", text: "tardif" }], done: false });
+  await act(async () => { r1(1); });
+  expect(screen.queryByText("tardif")).toBeNull();
+  ev({ turn: 2, type: "reply", segments: [{ t: "Text", text: "neuf" }], done: false });
+  expect(screen.getByText("neuf")).toBeInTheDocument();
+});
+
+it("statut : le vrai cerveau, y compris le raccourci", () => {
+  render(<IrisStatusLine />);
+  start();
+  ev({ type: "state", state: "thinking", brain: "fast" });
+  expect(screen.getByRole("status")).toHaveTextContent("Réfléchit · éclair");
 });
 
 it("claude_unavailable : les deux boutons, « local » relance sans forcer Claude", async () => {

@@ -239,8 +239,8 @@ export function CommandPalette() {
 
   const submit = (t: string, list: Hit[], i: number, ctrl: boolean, shift = false) => {
     const h = list[i];
-    // Ctrl+↵ garde son sens sur fichiers, dossiers et projets ; ailleurs il interroge IRIS (Ctrl+Maj+↵ : Claude).
-    if (h && !(shift || (ctrl && !["file", "dir", "project"].includes(h.item.kind)))) return activate(h, ctrl, t);
+    // Ctrl+↵ garde son sens sur fichiers, dossiers, projets et commandes ; ailleurs il interroge IRIS (Ctrl+Maj+↵ : Claude).
+    if (h && !(shift || (ctrl && !["file", "dir", "project", "command"].includes(h.item.kind)))) return activate(h, ctrl, t);
     if (!t.trim()) return;
     if (!askIris(t, shift)) setMsg("Commande inconnue — essaie /note, /rappel…");
   };
@@ -253,8 +253,8 @@ export function CommandPalette() {
       setSel((s) => Math.min(Math.max(s + (e.key === "ArrowDown" ? 1 : -1), 0), hits.length - 1));
     } else if (e.key === "Enter") {
       e.preventDefault();
-      if (inflight.current) queued.current = { text, ctrl: e.ctrlKey, shift: e.shiftKey };
-      else submit(text, hits, sel, e.ctrlKey, e.shiftKey);
+      if (inflight.current) queued.current = { text, ctrl: e.ctrlKey, shift: e.ctrlKey && e.shiftKey };
+      else submit(text, hits, sel, e.ctrlKey, e.ctrlKey && e.shiftKey); // Maj seul n'a aucun sens ici
     } else if (e.key === "Escape" && useIris.getState().state === "thinking") {
       e.stopPropagation(); // abandonne le tour au lieu de fermer le panneau
       cancel();

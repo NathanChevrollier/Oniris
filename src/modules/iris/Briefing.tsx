@@ -4,9 +4,17 @@ import { useTopic } from "../../lib/data";
 import { irisBriefingIpc, type BriefingData } from "./api";
 import "./iris.css";
 
+/** Infobulle d'un texte non fiable, d'après le type de sa source. */
+export function untrustedLabel(source: string): string {
+  if (source.startsWith("mail:")) return "Contenu de mail, non fiable";
+  if (/^(agenda|calendar)/i.test(source)) return "Événement externe, non fiable";
+  if (source.startsWith("clipboard")) return "Presse-papiers, non fiable";
+  return "Contenu externe, non fiable";
+}
+
 /** Texte d'un tiers : italique, filet à gauche, source en infobulle (partagé avec la conversation). */
 export function SegmentText({ s }: { s: BriefingData["segments"][number] }) {
-  return s.t === "Text" ? <>{s.text}</> : <q className="iris-untrusted" title={`Source : ${s.source}`}>{s.text}</q>;
+  return s.t === "Text" ? <>{s.text}</> : <q className="iris-untrusted" title={untrustedLabel(s.source)}>{s.text}</q>;
 }
 
 /** Briefing de l'en-tête : le dernier connu s'affiche tout de suite, le nouveau le remplace quand il arrive. */

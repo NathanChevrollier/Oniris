@@ -11,7 +11,7 @@ export function CommandBar({ inputRef, onClaude, ...input }: InputHTMLAttributes
       {onClaude && String(input.value ?? "").trim() !== "" && (
         <button type="button" className="iris-chip" onMouseDown={(e) => e.preventDefault()} onClick={onClaude}>Claude</button>
       )}
-      <div className="k"><kbd>Alt</kbd><kbd>Espace</kbd> parler · <kbd>/</kbd> commandes</div>
+      <div className="k">{onClaude && String(input.value ?? "").trim() !== "" && <><kbd>Ctrl</kbd><kbd>↵</kbd> demander à IRIS · </>}<kbd>Alt</kbd><kbd>Espace</kbd> parler · <kbd>/</kbd> commandes</div>
       <button type="button" className="mic" aria-label="Parler (bientôt)" disabled><Mic size={16} /></button>
     </div>
   );

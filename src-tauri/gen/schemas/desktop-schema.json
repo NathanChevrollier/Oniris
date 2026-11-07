@@ -339,6 +339,18 @@
           "markdownDescription": "Enables the index_status command without any pre-configured scope."
         },
         {
+          "description": "Enables the iris_pull_model command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-iris-pull-model",
+          "markdownDescription": "Enables the iris_pull_model command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the iris_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-iris-status",
+          "markdownDescription": "Enables the iris_status command without any pre-configured scope."
+        },
+        {
           "description": "Enables the journal_list command without any pre-configured scope.",
           "type": "string",
           "const": "allow-journal-list",
@@ -841,6 +853,18 @@
           "type": "string",
           "const": "deny-index-status",
           "markdownDescription": "Denies the index_status command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the iris_pull_model command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-iris-pull-model",
+          "markdownDescription": "Denies the iris_pull_model command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the iris_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-iris-status",
+          "markdownDescription": "Denies the iris_status command without any pre-configured scope."
         },
         {
           "description": "Denies the journal_list command without any pre-configured scope.",

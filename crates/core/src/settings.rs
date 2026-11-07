@@ -135,6 +135,10 @@ pub struct Settings {
     /// Dossiers de travail d'IRIS : renommer, déplacer ou supprimer dedans se fait sans carte. 20 au plus, absolus,
     /// locaux, jamais protégés.
     pub iris_work_dirs: Vec<String>,
+    /// Modèle Ollama du cerveau local : 1 à 100 caractères parmi `[a-z0-9._:/-]`.
+    pub iris_local_model: String,
+    /// Minutes avant que le modèle local quitte la mémoire, 1..=60.
+    pub iris_unload_minutes: u8,
 }
 
 /// Commandes en lecture seule (aucun de leurs arguments sûrs n'écrit).
@@ -170,6 +174,8 @@ impl Default for Settings {
             zenytt_path: String::new(),
             iris_shell_allowlist: DEFAULT_SHELL_ALLOWLIST.map(String::from).to_vec(),
             iris_work_dirs: Vec::new(),
+            iris_local_model: "qwen3:8b".into(),
+            iris_unload_minutes: 5,
         }
     }
 }
@@ -359,6 +365,17 @@ impl Settings {
             errs.push(e);
             self.iris_work_dirs = d.iris_work_dirs.clone();
         }
+        let model_ok = !self.iris_local_model.is_empty()
+            && self.iris_local_model.len() <= 100
+            && self.iris_local_model.bytes().all(|b| matches!(b, b'a'..=b'z' | b'0'..=b'9' | b'.' | b'_' | b':' | b'/' | b'-'));
+        if !model_ok {
+            errs.push("modèle local : 1 à 100 caractères parmi a-z 0-9 . _ : / -".into());
+            self.iris_local_model = d.iris_local_model.clone();
+        }
+        if !(1..=60).contains(&self.iris_unload_minutes) {
+            errs.push("déchargement du modèle : 1 à 60 minutes".into());
+            self.iris_unload_minutes = d.iris_unload_minutes;
+        }
         if let Err(e) = check_hotkey(&self.hotkey) {
             errs.push(e);
             self.hotkey = d.hotkey;
@@ -430,6 +447,14 @@ mod tests {
         assert!(with(&[""]).is_err());
         assert!(with(&["é"]).is_err());
         assert!(with(&vec!["git status"; 51]).is_err());
+    }
+    #[test] fn modele_local_et_delai_de_dechargement_valides() {
+        let m = |v: &str| Settings { iris_local_model: v.into(), ..Settings::default() }.validate();
+        let u = |v: u8| Settings { iris_unload_minutes: v, ..Settings::default() }.validate();
+        assert!(m("qwen3:8b").is_ok() && m("hf.co/a/b_c-1:q4").is_ok());
+        assert!(m("QWEN 3").is_err() && m("").is_err() && m(&"a".repeat(101)).is_err());
+        assert!(u(1).is_ok() && u(60).is_ok());
+        assert!(u(0).is_err() && u(61).is_err());
     }
     #[test] fn dossiers_de_travail_valides() {
         let with = |l: &[&str]| Settings { iris_work_dirs: l.iter().map(|x| x.to_string()).collect(), ..Settings::default() }.validate();

@@ -99,6 +99,9 @@ fn apply(active: bool) {
     }
     let Some(app) = APP.get() else { return };
     let _ = app.emit("oniris://fullscreen", FullscreenState { active });
+    if active {
+        crate::modules::iris::unload_on_fullscreen(app); // une fois par entrée : `swap` ci-dessus filtre les répétitions
+    }
     if let Some(pill) = app.get_webview_window("pill") {
         if !active {
             let _ = pill.show();

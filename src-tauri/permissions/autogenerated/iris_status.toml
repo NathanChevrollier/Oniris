@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-iris-status"
+description = "Enables the iris_status command without any pre-configured scope."
+commands.allow = ["iris_status"]
+
+[[permission]]
+identifier = "deny-iris-status"
+description = "Denies the iris_status command without any pre-configured scope."
+commands.deny = ["iris_status"]

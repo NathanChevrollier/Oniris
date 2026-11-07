@@ -54,6 +54,10 @@ export type Settings = {
   iris_shell_allowlist: string[];
   /** Dossiers de travail d'IRIS (renommer, déplacer, supprimer sans carte) : 20 au plus, absolus, locaux, jamais protégés. */
   iris_work_dirs: string[];
+  /** Modèle Ollama du cerveau local : 1 à 100 caractères parmi a-z 0-9 . _ : / - */
+  iris_local_model: string;
+  /** Minutes avant que le modèle local quitte la mémoire : 1 à 60. */
+  iris_unload_minutes: number;
 };
 
 const RESUME_NORMAL = "Reprends là où tu en étais sur ce projet. Appuie-toi sur le plan de développement et l'historique git. Commence par me dire où on en est.";
@@ -87,6 +91,8 @@ export const DEFAULT_SETTINGS: Settings = {
   zenytt_path: "",
   iris_shell_allowlist: ["git status", "Get-ChildItem", "Get-Location", "Get-Date"],
   iris_work_dirs: [],
+  iris_local_model: "qwen3:8b",
+  iris_unload_minutes: 5,
 };
 
 /** Paramètres courants : chargés au montage, puis suivis via `oniris://settings`. */

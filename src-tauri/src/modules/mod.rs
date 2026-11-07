@@ -7,6 +7,7 @@ pub mod favicons;
 pub mod favorites;
 pub mod general;
 pub mod indexer;
+pub mod iris;
 pub mod mail;
 pub mod music;
 pub mod projects;

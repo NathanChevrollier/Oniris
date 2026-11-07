@@ -70,6 +70,8 @@
     "allow-mail-archive",
     "allow-mail-delete",
     "allow-mail-send",
+    "allow-iris-status",
+    "allow-iris-pull-model",
     "allow-mail-open-web",
     "allow-mail-open-link",
     "allow-mail-status",

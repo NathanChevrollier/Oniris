@@ -68,6 +68,8 @@ fn main() {
         "mail_archive",
         "mail_delete",
         "mail_send",
+        "iris_status",
+        "iris_pull_model",
         "mail_open_web",
         "mail_open_link",
         "mail_status",

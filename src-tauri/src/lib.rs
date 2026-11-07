@@ -5,6 +5,7 @@ mod hotkey;
 mod job;
 mod launch;
 mod logging;
+pub mod mcp_relay;
 mod modules;
 mod oauth_loopback;
 #[cfg(any(debug_assertions, feature = "perf"))]
@@ -16,6 +17,9 @@ mod tray;
 mod windows;
 
 use tauri::Manager;
+
+/// Côté app du serveur MCP, pour les tests d'intégration du relais.
+pub use modules::iris_mcp;
 
 pub fn run() {
     tauri::Builder::default()

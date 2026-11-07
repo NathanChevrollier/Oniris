@@ -3,7 +3,8 @@
 use crate::job;
 use crate::state::AppState;
 use async_trait::async_trait;
-use oniris_core::iris::{classify, invocation, locate, parse_line, ClaudeBrain, ClaudeError, ClaudeEvent, Executor, LocalStatus, OnDelta, Ollama};
+use oniris_core::iris::{classify, invocation, locate, parse_line, ClaudeBrain, ClaudeError, ClaudeEvent, Executor, LocalStatus, McpConfig, OnDelta, Ollama};
+use oniris_core::Settings;
 use serde::Serialize;
 use std::path::PathBuf;
 use std::process::Stdio;
@@ -24,7 +25,7 @@ fn claude_exe(setting: &str) -> Option<PathBuf> {
 }
 
 /// Lance `claude -p` ; fermer le `Job` (fin, erreur ou abandon du futur) tue le processus et ses descendants.
-#[allow(dead_code)] // câblé par l'agent (tâche 7)
+#[allow(dead_code)] // câblé par l'agent (tâche ultérieure)
 pub struct RealClaude { pub program: PathBuf, pub cwd: PathBuf, pub model: String, pub timeout: Duration }
 
 #[allow(dead_code)] // idem
@@ -33,9 +34,15 @@ impl RealClaude {
         Self { program, cwd, model, timeout: Duration::from_secs(180) }
     }
 
-    async fn run(&self, system: &str, prompt: String, on_delta: OnDelta<'_>) -> Result<String, ClaudeError> {
+    /// claude.exe des réglages (ou détecté), dossier de travail `%APPDATA%\Oniris\claude` ; `None` sans claude.exe.
+    pub fn from_settings(s: &Settings) -> Option<Self> {
+        let cwd = PathBuf::from(std::env::var_os("APPDATA")?).join("Oniris").join("claude");
+        Some(Self::new(claude_exe(&s.claude_path)?, cwd, s.iris_claude_model.clone()))
+    }
+
+    async fn run(&self, system: &str, prompt: String, mcp: Option<&McpConfig>, on_delta: OnDelta<'_>) -> Result<String, ClaudeError> {
         std::fs::create_dir_all(&self.cwd).map_err(|_| ClaudeError::Failed("dossier de travail illisible".into()))?;
-        let inv = invocation(self.program.clone(), self.cwd.clone(), system, &self.model, None, prompt);
+        let inv = invocation(self.program.clone(), self.cwd.clone(), system, &self.model, mcp, prompt);
         let mut cmd = Command::new(&inv.program);
         cmd.args(&inv.args).current_dir(&inv.cwd).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
         let (mut child, _job) = job::spawn(cmd).map_err(|e| match e.kind() {
@@ -90,12 +97,15 @@ impl RealClaude {
 #[async_trait]
 impl ClaudeBrain for RealClaude {
     async fn complete(&self, system: &str, prompt: String, on_delta: OnDelta<'_>) -> Result<String, ClaudeError> {
-        self.run(system, prompt, on_delta).await
+        self.run(system, prompt, None, on_delta).await
     }
 
-    // Tâche 7 : session MCP réelle.
-    async fn plan(&self, _system: &str, _prompt: String, _exec: Arc<Executor>, _on_delta: OnDelta<'_>) -> Result<String, ClaudeError> {
-        Err(ClaudeError::Failed("MCP non branché".into()))
+    /// Le tube vit le temps du tour : `session` est lâchée au retour.
+    async fn plan(&self, system: &str, prompt: String, exec: Arc<Executor>, on_delta: OnDelta<'_>) -> Result<String, ClaudeError> {
+        let session = crate::modules::iris_mcp::serve(exec).map_err(|_| ClaudeError::Failed("serveur MCP indisponible".into()))?;
+        let relay_exe = std::env::current_exe().map_err(|_| ClaudeError::Failed("exécutable introuvable".into()))?;
+        let cfg = McpConfig { pipe: session.pipe.clone(), token: session.token.clone(), relay_exe };
+        self.run(system, prompt, Some(&cfg), on_delta).await
     }
 }
 
@@ -249,6 +259,24 @@ mod tests {
         task.abort();
         assert!(task.await.unwrap_err().is_cancelled());
         assert!(gone_within_2s(pid).await);
+    }
+
+    #[tokio::test]
+    async fn plan_sert_le_tube_pendant_le_tour_seulement() {
+        let d = tempfile::tempdir().unwrap();
+        let cfgf = d.path().join("cfg");
+        let exec = crate::modules::iris_mcp::tests::exec(d.path());
+        let r = fake(d.path(), 20_000).plan("sys", format!("mcp:{}", cfgf.display()), exec, &mut |_: &str| {}).await;
+        assert_eq!(r, Ok("Bonjour".into()));
+        let cfg: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&cfgf).unwrap()).unwrap();
+        let o = &cfg["mcpServers"]["oniris"];
+        assert_eq!(o["command"], std::env::current_exe().unwrap().to_string_lossy().as_ref());
+        assert_eq!(o["args"][0], "--mcp-relay");
+        assert_eq!(o["env"]["ONIRIS_MCP_TOKEN"].as_str().unwrap().len(), 32);
+        assert_eq!(o["args"][2], "connecté", "le tube était joignable pendant le tour");
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        let pipe = o["args"][1].as_str().unwrap();
+        assert!(tokio::net::windows::named_pipe::ClientOptions::new().open(pipe).is_err(), "tube arrêté après le tour");
     }
 
     #[tokio::test]

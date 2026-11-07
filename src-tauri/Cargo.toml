@@ -26,7 +26,9 @@ serde_json = "1"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 tokio = { version = "1", features = ["sync", "time", "macros", "rt", "net", "io-util", "process"] }
 # Client MCP de Zenytt (même version que Zenytt) ; le processus est lancé par nous (CREATE_NO_WINDOW, arrêt à la fermeture).
-rmcp = { version = "~3.4.0", default-features = false, features = ["client", "transport-async-rw"] }
+# Serveur : `oniris.exe --mcp-relay` (mcp_relay.rs), lancé par Claude Code.
+rmcp = { version = "~3.4.0", default-features = false, features = ["client", "transport-async-rw", "server", "transport-io"] }
+getrandom = "0.3"
 url = "2"
 tauri-plugin-dialog = "2"
 tracing-appender = "0.2"
@@ -73,5 +75,5 @@ custom-protocol = ["tauri/custom-protocol"] # embarque le frontend (build releas
 [dev-dependencies]
 tempfile = "3"
 # Faux serveur Zenytt des tests (examples/fake_zenytt.rs, compilé par `cargo test`).
-rmcp = { version = "~3.4.0", features = ["server", "transport-io", "macros"] }
+rmcp = { version = "~3.4.0", features = ["macros"] }
 tokio = { version = "1", features = ["rt-multi-thread", "io-std"] }

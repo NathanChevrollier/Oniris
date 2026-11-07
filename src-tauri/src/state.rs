@@ -74,58 +74,36 @@ impl AppState {
         let db = Arc::new(Mutex::new(conn));
         let clock = Arc::new(|| oniris_core::time_util::now_ms() as u64);
         let events: Arc<dyn Events> = Arc::new(crate::events::TauriEvents(app.clone()));
-        let mut tools: Vec<Arc<dyn Tool>> = vec![]; // les plans 2 à 5 ajoutent leurs outils ici
-        tools.extend(oniris_core::agenda::tools::all(&db, &events));
-        tools.extend(oniris_core::reminders::tools::all(&db, &events));
-        tools.extend(oniris_core::notes::tools::all(&db, &events));
-        tools.extend(oniris_core::timers::tools::all(&db, &events));
-        tools.extend(oniris_core::clipboard::tools::all(&db));
-        let snapshot: oniris_core::system::tools::Snapshot = Arc::new(crate::modules::system::snapshot);
-        tools.extend(oniris_core::system::tools::all(&snapshot));
-        tools.extend(oniris_core::weather::tools::all(&db));
         let apps = Arc::new(oniris_core::apps::Inventory::default());
         let opener: Arc<dyn oniris_core::launch::Opener> = Arc::new(crate::launch::RealOpener);
+        let secrets: Arc<dyn SecretStore> = Arc::new(crate::secrets_win::WinCredentials);
+        let account_http = oniris_core::accounts::client()?;
+        let handle = app.clone();
+        let accounts = Arc::new(TokenCache::new(db.clone(), secrets.clone(), events.clone(), account_http.clone(), Arc::new(move |p| provider_config(&handle, p))));
+        let spotify = oniris_core::music::tools::Web::new(db.clone(), events.clone(), accounts.clone(), oniris_core::music::spotify::Client::new(account_http.clone()));
         let handle = app.clone();
         let roots: oniris_core::apps::tools::Roots = Arc::new(move || {
             let st = handle.state::<AppState>();
             let s = st.settings.read();
             crate::modules::indexer::effective_roots(&s.search_roots, &s.projects_roots, dirs::home_dir())
         });
-        tools.extend(oniris_core::apps::tools::all(&opener, roots, &apps));
-        tools.extend(oniris_core::favorites::tools::all(&db, &events, &opener));
-        tools.extend(oniris_core::iris::memory::all(&db, &events));
         let handle = app.clone();
         let projects: oniris_core::projects::tools::Source = Arc::new(move || handle.state::<AppState>().projects.read().list.clone());
-        tools.extend(oniris_core::projects::tools::all(&projects));
         let handle = app.clone();
-        let env: oniris_core::projects::tools::ResumeEnv = Arc::new(move || crate::modules::projects::resume_env(&handle));
-        tools.push(Arc::new(oniris_core::projects::tools::Resume { source: projects, env, opener: opener.clone() }));
-        tools.extend(oniris_core::accounts::tools::all(&db));
-        let secrets: Arc<dyn SecretStore> = Arc::new(crate::secrets_win::WinCredentials);
-        let account_http = oniris_core::accounts::client()?;
-        let handle = app.clone();
-        let accounts = Arc::new(TokenCache::new(db.clone(), secrets.clone(), events.clone(), account_http.clone(), Arc::new(move |p| provider_config(&handle, p))));
-        let gmail = oniris_core::mail::gmail::Client::new(account_http.clone());
-        tools.extend(oniris_core::mail::tools::all(&db, &events, &accounts, gmail, &opener));
-        tools.extend(oniris_core::calendar::all(&db));
-        let media: Arc<dyn oniris_core::music::MediaControl> = Arc::new(crate::modules::smtc::Smtc);
-        let spotify = oniris_core::music::tools::Web::new(db.clone(), events.clone(), accounts.clone(), oniris_core::music::spotify::Client::new(account_http.clone()));
-        tools.extend(oniris_core::music::tools::all(&media, &spotify));
+        let resume_env: oniris_core::projects::tools::ResumeEnv = Arc::new(move || crate::modules::projects::resume_env(&handle));
         let handle = app.clone();
         let sites: oniris_core::sites::tools::Source = Arc::new(move || crate::modules::sites::list(&handle.state::<AppState>()));
-        tools.push(Arc::new(oniris_core::sites::tools::Status { source: sites }));
         let handle = app.clone();
-        tools.push(Arc::new(oniris_core::sites::tools::Vps { source: Arc::new(move || crate::modules::zenytt::status(&handle)) }));
+        let vps: oniris_core::sites::tools::VpsSource = Arc::new(move || crate::modules::zenytt::status(&handle));
         let handle = app.clone();
         let allowlist: oniris_core::general::shell::Allowlist = Arc::new(move || handle.state::<AppState>().settings.read().iris_shell_allowlist.clone());
-        let shell: Arc<dyn oniris_core::general::shell::ShellExec> = Arc::new(crate::modules::general::RealShell);
-        tools.extend(oniris_core::general::shell::all(&shell, allowlist, dirs::home_dir().ok_or("dossier utilisateur introuvable")?, { let e = crate::modules::general::is_elevated(); Arc::new(move || e) }));
         let handle = app.clone();
         let work_dirs: oniris_core::general::files::WorkDirs = Arc::new(move || handle.state::<AppState>().settings.read().iris_work_dirs.clone());
-        let recycler: Arc<dyn oniris_core::general::recycle::Recycler> = Arc::new(crate::modules::general::ShellRecycler);
-        tools.extend(oniris_core::general::files::all(&recycler, work_dirs, oniris_core::general::files::protected_dirs()));
-        let win: Arc<dyn oniris_core::general::windows::WindowControl> = Arc::new(crate::modules::general::Win32Windows);
-        tools.extend(oniris_core::general::windows::all(&win, &apps));
+        let home = dirs::home_dir().ok_or("dossier utilisateur introuvable")?;
+        let tools = tools(ToolDeps {
+            db: db.clone(), events: events.clone(), opener, apps: apps.clone(), accounts: accounts.clone(), spotify: spotify.clone(),
+            account_http: account_http.clone(), roots, projects, resume_env, sites, vps, allowlist, work_dirs, home,
+        });
         let broker = Arc::new(ToolBroker::new(db.clone(), clock, tools)?);
         broker.mark_interrupted();
         broker.expire_stale();
@@ -157,6 +135,61 @@ impl AppState {
             settings: RwLock::new(s),
         })
     }
+}
+
+/// Ce dont les outils ont besoin au-delà de la base : sources lues dans l'application, injectées pour que les tests
+/// construisent exactement la même liste (`tools`).
+pub struct ToolDeps {
+    pub db: Db,
+    pub events: Arc<dyn Events>,
+    pub opener: Arc<dyn oniris_core::launch::Opener>,
+    pub apps: Arc<oniris_core::apps::Inventory>,
+    pub accounts: Arc<TokenCache>,
+    pub spotify: Arc<oniris_core::music::tools::Web>,
+    pub account_http: reqwest::Client,
+    pub roots: oniris_core::apps::tools::Roots,
+    pub projects: oniris_core::projects::tools::Source,
+    pub resume_env: oniris_core::projects::tools::ResumeEnv,
+    pub sites: oniris_core::sites::tools::Source,
+    pub vps: oniris_core::sites::tools::VpsSource,
+    pub allowlist: oniris_core::general::shell::Allowlist,
+    pub work_dirs: oniris_core::general::files::WorkDirs,
+    pub home: std::path::PathBuf,
+}
+
+/// Tous les outils du courtier (les plans 2 à 5 ajoutent les leurs ici).
+pub fn tools(d: ToolDeps) -> Vec<Arc<dyn Tool>> {
+    let ToolDeps { db, events, opener, apps, accounts, spotify, account_http, roots, projects, resume_env, sites, vps, allowlist, work_dirs, home } = d;
+    let mut tools: Vec<Arc<dyn Tool>> = vec![];
+    tools.extend(oniris_core::agenda::tools::all(&db, &events));
+    tools.extend(oniris_core::reminders::tools::all(&db, &events));
+    tools.extend(oniris_core::notes::tools::all(&db, &events));
+    tools.extend(oniris_core::timers::tools::all(&db, &events));
+    tools.extend(oniris_core::clipboard::tools::all(&db));
+    let snapshot: oniris_core::system::tools::Snapshot = Arc::new(crate::modules::system::snapshot);
+    tools.extend(oniris_core::system::tools::all(&snapshot));
+    tools.extend(oniris_core::weather::tools::all(&db));
+    tools.extend(oniris_core::apps::tools::all(&opener, roots, &apps));
+    tools.extend(oniris_core::favorites::tools::all(&db, &events, &opener));
+    tools.extend(oniris_core::iris::memory::all(&db, &events));
+    tools.extend(oniris_core::projects::tools::all(&projects));
+    tools.push(Arc::new(oniris_core::projects::tools::Resume { source: projects, env: resume_env, opener: opener.clone() }));
+    tools.extend(oniris_core::accounts::tools::all(&db));
+    let gmail = oniris_core::mail::gmail::Client::new(account_http);
+    tools.extend(oniris_core::mail::tools::all(&db, &events, &accounts, gmail, &opener));
+    tools.extend(oniris_core::calendar::all(&db));
+    let media: Arc<dyn oniris_core::music::MediaControl> = Arc::new(crate::modules::smtc::Smtc);
+    tools.extend(oniris_core::music::tools::all(&media, &spotify));
+    tools.push(Arc::new(oniris_core::sites::tools::Status { source: sites }));
+    tools.push(Arc::new(oniris_core::sites::tools::Vps { source: vps }));
+    let shell: Arc<dyn oniris_core::general::shell::ShellExec> = Arc::new(crate::modules::general::RealShell);
+    let elevated = crate::modules::general::is_elevated();
+    tools.extend(oniris_core::general::shell::all(&shell, allowlist, home, Arc::new(move || elevated)));
+    let recycler: Arc<dyn oniris_core::general::recycle::Recycler> = Arc::new(crate::modules::general::ShellRecycler);
+    tools.extend(oniris_core::general::files::all(&recycler, work_dirs, oniris_core::general::files::protected_dirs()));
+    let win: Arc<dyn oniris_core::general::windows::WindowControl> = Arc::new(crate::modules::general::Win32Windows);
+    tools.extend(oniris_core::general::windows::all(&win, &apps));
+    tools
 }
 
 /// Configuration OAuth courante : identifiant client des réglages, secret Google du coffre ; `None` si non configuré.

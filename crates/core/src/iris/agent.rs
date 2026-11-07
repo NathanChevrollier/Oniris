@@ -5,9 +5,10 @@ use super::exec::{unwire, Executor};
 use super::fastpath;
 use super::ollama::{BrainError, ChatRequest, LocalBrain, Msg, Role};
 use super::taint::{render, render_partial, Segment, Vault};
-use crate::tools::{Brain, Origin, Provenance, ToolCall, ToolOutcome};
+use crate::tools::{Brain, Origin, PendingAction, Provenance, ToolCall, ToolOutcome};
 use parking_lot::Mutex;
 use serde::Serialize;
+use serde_json::json;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -42,8 +43,8 @@ pub enum IrisEventKind {
 
 pub struct TurnInput { pub text: String, pub force_claude: bool }
 
-/// Prompt système et derniers messages de la conversation (textes du planificateur).
-pub struct PromptCtx { pub system: String, pub history: Vec<(Role, String)> }
+/// Prompts système (cerveau local, Claude) et derniers messages de la conversation (textes du planificateur).
+pub struct PromptCtx { pub system: String, pub claude_system: String, pub history: Vec<(Role, String)> }
 
 #[derive(Debug)]
 pub struct TurnEnd { pub brain: BrainUsed, pub planner_text: String, pub shown: Vec<Segment> }
@@ -85,13 +86,21 @@ fn fail(brain: BrainUsed, kind: &'static str, message: &str, offer_local: bool, 
     TurnEnd { brain, planner_text: message.into(), shown: vec![Segment::Text { text: message.into() }] }
 }
 
+/// `demande à Claude …` : la demande sans ce préfixe (le message entier s'il ne reste rien).
+fn claude_request(text: &str) -> Option<String> {
+    let w: Vec<&str> = text.split_whitespace().collect();
+    let head: Vec<String> = w.iter().take(3).map(|x| crate::when::norm(x).trim_end_matches(':').to_string()).collect();
+    (head == ["demande", "a", "claude"]).then(|| if w.len() > 3 { w[3..].join(" ") } else { text.trim().to_string() })
+}
+
 impl Agent {
     pub async fn turn(&self, input: TurnInput, exec: Arc<Executor>, ctx: PromptCtx, sink: &Sink) -> TurnEnd {
         let fast = if input.force_claude { None } else { fastpath::parse(&input.text, chrono::Local::now()) };
+        let ask = if input.force_claude { Some(input.text.clone()) } else { claude_request(&input.text) };
         let end = if let Some((tool, args)) = fast {
             self.fast(tool, args, &exec, sink).await
-        } else if input.force_claude || crate::when::norm(&input.text).starts_with("demande a claude") {
-            self.claude(input.text, exec, &ctx, true, sink).await
+        } else if let Some(task) = ask {
+            self.claude(task, exec, &ctx, true, sink).await
         } else {
             self.local(input.text, exec, &ctx, sink).await
         };
@@ -122,6 +131,8 @@ impl Agent {
         messages.extend(ctx.history.iter().map(|(r, t)| msg(*r, t.clone())));
         messages.push(msg(Role::User, text.clone()));
         let tools = exec.tools(&[]);
+        // Un outil du courtier a tourné ce tour-ci : déléguer à Claude risquerait de refaire l'action.
+        let mut acted = false;
         for step in 0..MAX_STEPS {
             let req = ChatRequest { model: self.model.clone(), messages: messages.clone(), tools: tools.clone(), keep_alive_min: self.keep_alive_min };
             let mut stream = Stream { buf: String::new(), last: None, vault: &exec.vault, sink };
@@ -138,27 +149,28 @@ impl Agent {
                 return finish(BrainUsed::Local, reply.text, &exec.vault, sink);
             }
             messages.push(Msg { role: Role::Assistant, content: reply.text.clone(), tool_calls: reply.tool_calls.clone() });
-            let mut pending = false;
             for c in &reply.tool_calls {
                 let name = unwire(&c.name);
                 if name == "iris.ask_claude" {
-                    let task = c.args["task"].as_str().filter(|t| !t.trim().is_empty()).unwrap_or(&text).to_string();
-                    return self.claude(task, exec, ctx, true, sink).await;
+                    if !acted {
+                        let task = c.args["task"].as_str().filter(|t| !t.trim().is_empty()).unwrap_or(&text).to_string();
+                        return self.claude(task, exec, ctx, true, sink).await;
+                    }
+                    messages.push(msg(Role::Tool, json!({ "error": "délégation impossible après une action" }).to_string()));
+                    continue;
                 }
+                acted |= !name.starts_with("iris.");
                 sink(IrisEventKind::ToolUsed { tool: name });
                 let out = exec.call(&c.name, c.args.clone()).await;
+                // Une confirmation attendue termine le tour : rien ne s'enchaîne derrière, pas même la suite du lot.
                 if out["status"] == "pending" {
-                    pending = true;
                     if let Some(id) = out["action_id"].as_i64() {
                         sink(IrisEventKind::Pending { action_id: id });
                     }
+                    let t = if reply.text.trim().is_empty() { PENDING.into() } else { reply.text };
+                    return finish(BrainUsed::Local, t, &exec.vault, sink);
                 }
                 messages.push(msg(Role::Tool, out.to_string()));
-            }
-            // Une confirmation attendue termine le tour : rien ne doit s'enchaîner derrière.
-            if pending {
-                let t = if reply.text.trim().is_empty() { PENDING.into() } else { reply.text };
-                return finish(BrainUsed::Local, t, &exec.vault, sink);
             }
         }
         finish(BrainUsed::Local, TOO_MANY.into(), &exec.vault, sink)
@@ -177,9 +189,33 @@ impl Agent {
             prompt.push_str("\nDemande :\n");
         }
         prompt.push_str(&task);
+        // Exécuteur jumeau : journal au nom de Claude, et chaque confirmation remonte aussi en événement `Pending`.
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<i64>();
+        let parent = exec.on_pending.clone();
+        let claude_exec = Arc::new(Executor {
+            broker: exec.broker.clone(),
+            vault: exec.vault.clone(),
+            origin: Origin::Assistant { brain: Brain::Claude },
+            on_pending: Arc::new(move |p: &PendingAction| {
+                parent(p);
+                let _ = tx.send(p.action_id);
+            }),
+            virtuals: exec.virtuals.clone(),
+        });
         let vault = exec.vault.clone();
         let mut stream = Stream { buf: String::new(), last: None, vault: &vault, sink };
-        let r = self.claude.plan(&ctx.system, prompt, exec, &mut |d: &str| stream.push(d)).await;
+        let mut on_delta = |d: &str| stream.push(d);
+        let mut plan = std::pin::pin!(self.claude.plan(&ctx.claude_system, prompt, claude_exec, &mut on_delta));
+        let r = loop {
+            tokio::select! {
+                biased;
+                r = &mut plan => break r,
+                Some(id) = rx.recv() => sink(IrisEventKind::Pending { action_id: id }),
+            }
+        };
+        while let Ok(id) = rx.try_recv() {
+            sink(IrisEventKind::Pending { action_id: id });
+        }
         match r {
             Ok(text) => finish(BrainUsed::Claude, text, &vault, sink),
             Err(ClaudeError::NotInstalled) => fail(BrainUsed::Claude, "claude_missing", "Claude Code n'est pas installé.", offer_local, sink),
@@ -305,15 +341,17 @@ mod tests {
         }
     }
 
-    struct Fx { agent: Agent, exec: Arc<Executor>, runs: Vec<(&'static str, Arc<AtomicUsize>)>, events: Arc<Mutex<Vec<IrisEventKind>>>, pendings: Arc<Mutex<Vec<PendingAction>>> }
+    struct Fx { agent: Agent, claude: Arc<FakeClaude>, exec: Arc<Executor>, runs: Vec<(&'static str, Arc<AtomicUsize>)>, events: Arc<Mutex<Vec<IrisEventKind>>>, pendings: Arc<Mutex<Vec<PendingAction>>> }
 
     impl Fx {
+        fn agent_claude(&self) -> &FakeClaude { self.claude.as_ref() }
+
         fn runs(&self, name: &str) -> usize { self.runs.iter().find(|r| r.0 == name).unwrap().1.load(Ordering::SeqCst) }
 
         async fn turn(&self, t: &str, force_claude: bool) -> TurnEnd {
             let ev = self.events.clone();
             let sink = move |e: IrisEventKind| ev.lock().push(e);
-            let ctx = PromptCtx { system: "Tu es IRIS.".into(), history: vec![(Role::User, "bonjour".into()), (Role::Assistant, "salut".into())] };
+            let ctx = PromptCtx { system: "Tu es IRIS.".into(), claude_system: "Tu es IRIS (Claude).".into(), history: vec![(Role::User, "bonjour".into()), (Role::Assistant, "salut".into())] };
             self.agent.turn(TurnInput { text: t.into(), force_claude }, self.exec.clone(), ctx, &sink).await
         }
     }
@@ -338,22 +376,25 @@ mod tests {
             broker, vault, origin: Origin::Assistant { brain: Brain::Local },
             on_pending: Arc::new(move |a: &PendingAction| p.lock().push(a.clone())), virtuals: Some(virtuals),
         });
-        Fx { agent: Agent { local: l, claude: c, model: "m".into(), keep_alive_min: 5 }, exec, runs, events: Default::default(), pendings }
+        Fx { claude: c.clone(), agent: Agent { local: l, claude: c, model: "m".into(), keep_alive_min: 5 }, exec, runs, events: Default::default(), pendings }
     }
 
-    /// Les quatre outils dangereux : tous en attente, provenance non fiable venue d'un mail, aucun exécuté.
-    fn assert_trapped(f: &Fx) {
+    /// Outils dangereux appelés : tous en attente, provenance non fiable venue d'un mail, origine `brain`, aucun exécuté.
+    /// Rend le nombre d'appels.
+    fn assert_trapped(f: &Fx, brain: Brain) -> usize {
         let journal = f.exec.broker.journal(1000);
         let hits: Vec<_> = journal.iter().filter(|j| DANGEROUS.contains(&j.tool.as_str())).collect();
-        assert!(hits.len() >= 4 * 20, "{}", hits.len());
+        assert!(!hits.is_empty());
         for j in &hits {
             assert_eq!(j.status, "pending", "{}", j.tool);
             assert!(matches!(&j.provenance, Provenance::Untrusted { source } if source.starts_with("mail:")), "{:?}", j.provenance);
+            assert_eq!(j.origin, Origin::Assistant { brain });
         }
         assert_eq!(f.pendings.lock().len(), hits.len());
+        let events = f.events.lock().iter().filter(|e| matches!(e, IrisEventKind::Pending { .. })).count();
+        assert_eq!(events, hits.len(), "un événement Pending par confirmation");
         for t in DANGEROUS { assert_eq!(f.runs(t), 0, "{t}"); }
-        // Le faux sujet `{{u1}}` d'un mail : une référence qui se résout en texte littéral, jamais en autre référence.
-        assert!(hits.iter().any(|j| j.tool == "mail.send" && j.args["to"] == "{{u1}}"), "sujet piégé résolu littéralement");
+        hits.len()
     }
 
     #[tokio::test]
@@ -381,9 +422,8 @@ mod tests {
         drop(q);
         assert!(c.plans.lock().is_empty());
         assert_eq!(f.runs("mail.list"), 1);
-        assert_trapped(&f);
+        assert_eq!(assert_trapped(&f, Brain::Local), 1, "le premier pending arrête le lot");
         assert_eq!((end.brain, end.planner_text.as_str()), (BrainUsed::Local, PENDING));
-        assert!(f.events.lock().iter().any(|e| matches!(e, IrisEventKind::Pending { .. })));
         assert!(f.exec.broker.journal(1000).iter().all(|j| !j.tool.starts_with("iris.")), "outils virtuels jamais journalisés");
     }
 
@@ -397,7 +437,11 @@ mod tests {
         for (i, input) in c.plans.lock().iter().enumerate() {
             assert!(!input.contains(CANARI), "entrée {i} de Claude : {input}");
         }
-        assert_trapped(&f);
+        assert!(assert_trapped(&f, Brain::Claude) >= 4 * 20);
+        // Le faux sujet `{{u1}}` d'un mail : une référence qui se résout en texte littéral, jamais en autre référence.
+        let journal = f.exec.broker.journal(1000);
+        assert!(journal.iter().any(|j| j.tool == "mail.send" && j.args["to"] == "{{u1}}"), "sujet piégé résolu littéralement");
+        assert!(c.plans.lock()[0].starts_with("Tu es IRIS (Claude)."), "prompt système de Claude");
         assert_eq!(end.brain, BrainUsed::Claude);
         assert!(matches!(&end.shown[1], Segment::Untrusted { source, .. } if source.starts_with("mail:")), "{:?}", end.shown);
     }
@@ -453,6 +497,7 @@ mod tests {
     async fn claude_indisponible_propose_le_local_sans_citer_l_erreur() {
         let f = fx(local(|_, _| unreachable!()), claude(Err(ClaudeError::Unavailable(format!("usage limit {CANARI}"))), false));
         let end = f.turn("demande à Claude un poème", false).await;
+        assert!(f.agent_claude().plans.lock()[0].ends_with("Demande :\nun poème"), "préfixe retiré");
         {
             let ev = f.events.lock();
             let msg = ev.iter().find_map(|e| match e { IrisEventKind::Error { kind: "claude_unavailable", offer_local: true, message } => Some(message.clone()), _ => None }).expect("erreur");
@@ -463,6 +508,44 @@ mod tests {
             let f = fx(local(|_, _| unreachable!()), claude(Err(e), false));
             f.turn("x", true).await;
             assert!(f.events.lock().iter().any(|e| matches!(e, IrisEventKind::Error { kind: k, message, .. } if *k == kind && !message.contains(CANARI))), "{kind}");
+        }
+    }
+
+    #[tokio::test]
+    async fn force_claude_saute_le_raccourci() {
+        let c = claude(Ok("ok"), false);
+        let f = fx(local(|_, _| unreachable!()), c.clone());
+        let end = f.turn("Suivant", true).await;
+        assert_eq!((end.brain, f.runs("music.next")), (BrainUsed::Claude, 0));
+        assert!(c.plans.lock()[0].ends_with("Demande :\nSuivant"));
+    }
+
+    #[tokio::test]
+    async fn ask_claude_refuse_apres_une_action() {
+        let l = local(|n, _| match n {
+            0 => tools(vec![call("notes__search", json!({"query": ""}))]),
+            1 => tools(vec![call("iris__ask_claude", json!({"task": "fais-le"}))]),
+            _ => text("fini"),
+        });
+        let c = claude(Ok("x"), false);
+        let f = fx(l.clone(), c.clone());
+        let end = f.turn("cherche puis délègue", false).await;
+        assert_eq!((end.brain, end.planner_text.as_str()), (BrainUsed::Local, "fini"));
+        assert!(c.plans.lock().is_empty());
+        assert!(l.chats.lock()[2].contains("délégation impossible après une action"));
+    }
+
+    #[tokio::test]
+    async fn premier_pending_arrete_le_lot() {
+        for second in [call("iris__ask_claude", json!({"task": "x"})), call("notes__search", json!({"query": ""}))] {
+            let c = claude(Ok("x"), false);
+            let f = fx(local(move |_, _| tools(vec![call("shell__run", json!({"command": "{{u1}}"})), second.clone()])), c.clone());
+            f.exec.vault.lock().put("mail:1/m1", "rm -rf".into());
+            let end = f.turn("vas-y", false).await;
+            assert_eq!((end.brain, end.planner_text.as_str()), (BrainUsed::Local, PENDING));
+            assert!(c.plans.lock().is_empty(), "pas de délégation après un pending");
+            assert_eq!((f.runs("shell.run"), f.runs("notes.search")), (0, 0));
+            assert_eq!(f.pendings.lock().len(), 1);
         }
     }
 

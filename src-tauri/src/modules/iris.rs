@@ -139,16 +139,16 @@ static TURN: Mutex<Option<(u32, tauri::async_runtime::JoinHandle<()>)>> = parkin
 /// Coffre de la conversation en cours : une nouvelle conversation repart d'un coffre vide.
 static VAULT: Mutex<Option<(i64, Arc<Mutex<Vault>>)>> = parking_lot::const_mutex(None);
 
-fn vault_for(conv: i64) -> Arc<Mutex<Vault>> {
-    let mut v = VAULT.lock();
-    match &*v {
-        Some((c, vault)) if *c == conv => vault.clone(),
-        _ => {
-            let fresh: Arc<Mutex<Vault>> = Default::default();
-            *v = Some((conv, fresh.clone()));
-            fresh
-        }
+/// Conversation du tour et son coffre. Coffre vide (premier tour depuis le lancement) : nouvelle conversation, pour
+/// qu'aucune référence d'avant le redémarrage, restée dans l'historique, ne se résolve sur un contenu neuf.
+fn conversation_vault(c: &rusqlite::Connection, now: i64, slot: &mut Option<(i64, Arc<Mutex<Vault>>)>) -> Result<(i64, Arc<Mutex<Vault>>), String> {
+    let conv = if slot.is_none() { memory::new_conversation(c, now) } else { memory::conversation(c, now) }.map_err(|e| e.to_string())?;
+    if let Some((id, vault)) = slot.as_ref().filter(|(id, _)| *id == conv) {
+        return Ok((*id, vault.clone()));
     }
+    let fresh: Arc<Mutex<Vault>> = Default::default();
+    *slot = Some((conv, fresh.clone()));
+    Ok((conv, fresh))
 }
 
 /// Lance un tour et rend son numéro ; le tour précédent, s'il court encore, est abandonné.
@@ -190,14 +190,13 @@ async fn run_turn(app: &AppHandle, turn: u32, text: String, force_claude: bool) 
     let st = app.state::<AppState>();
     let s = st.settings.read().clone();
     let now = now_ms();
-    let (conv, history, memories) = {
+    let (conv, vault, history, memories) = {
         let c = st.db.lock();
-        let conv = memory::conversation(&c, now).map_err(|e| e.to_string())?;
+        let (conv, vault) = conversation_vault(&c, now, &mut VAULT.lock())?;
         let history = memory::context(&c, conv, CONTEXT_MESSAGES).map_err(|e| e.to_string())?;
         let memories: Vec<String> = memory::list(&c).map_err(|e| e.to_string())?.into_iter().map(|m| m.text).collect();
-        (conv, history, memories)
+        (conv, vault, history, memories)
     };
-    let vault = vault_for(conv);
     let local: Arc<dyn LocalBrain> = Arc::new(Ollama::new(&s.iris_local_model, s.iris_unload_minutes));
     let claude: Arc<dyn ClaudeBrain> = match RealClaude::from_settings(&s) {
         Some(c) => Arc::new(c),
@@ -211,13 +210,15 @@ async fn run_turn(app: &AppHandle, turn: u32, text: String, force_claude: bool) 
         on_pending: Arc::new(move |p: &PendingAction| show_confirm(&handle, p)),
         virtuals: Some(Arc::new(Quarantine { local: local.clone(), claude: claude.clone(), vault, now_ms })),
     });
-    let system = prompt::system(&s.iris_personality, &s.user_name, chrono::Local::now(), &memories, Brain::Local);
+    let at = chrono::Local::now();
+    let system = prompt::system(&s.iris_personality, &s.user_name, at, &memories, Brain::Local);
+    let claude_system = prompt::system(&s.iris_personality, &s.user_name, at, &memories, Brain::Claude);
     let agent = Agent { local, claude, model: s.iris_local_model.clone(), keep_alive_min: s.iris_unload_minutes };
     let emitter = app.clone();
     let sink = move |kind: IrisEventKind| {
         let _ = emitter.emit("oniris://iris", IrisEvent { turn, kind });
     };
-    let end = agent.turn(TurnInput { text: text.clone(), force_claude }, exec, PromptCtx { system, history }, &sink).await;
+    let end = agent.turn(TurnInput { text: text.clone(), force_claude }, exec, PromptCtx { system, claude_system, history }, &sink).await;
     let shown: String = end.shown.iter().map(|s| match s { Segment::Text { text } | Segment::Untrusted { text, .. } => text.as_str() }).collect();
     {
         let c = st.db.lock();
@@ -446,51 +447,45 @@ mod tests {
     /// Source jamais appelée : seuls les noms des outils sont lus.
     fn never<T>() -> Arc<dyn Fn() -> T + Send + Sync> { Arc::new(|| unreachable!("jamais appelé")) }
 
-    /// Noms d'outils enregistrés : mêmes constructeurs que `AppState::open` (qui exige une `AppHandle`), plus les outils virtuels.
+    /// Noms d'outils enregistrés : la liste de `AppState::open` (`state::tools`, sources jamais appelées), plus les outils virtuels.
     fn registered_names(dir: &Path) -> Vec<String> {
-        use oniris_core::{accounts, agenda, apps, calendar, clipboard, events, favorites, general, mail, music, notes, projects, reminders, secrets, sites, system, timers, weather};
         use oniris_core::iris::VirtualTools;
-        use oniris_core::tools::Tool;
+        use oniris_core::{accounts, events, music, secrets};
         let mut c = oniris_core::open_db(&dir.join("t.db")).unwrap();
         oniris_core::migrate(&mut c, oniris_core::CORE_MIGRATIONS).unwrap();
         let db = Arc::new(Mutex::new(c));
         let ev: Arc<dyn events::Events> = Arc::new(events::NoEvents);
-        let opener: Arc<dyn oniris_core::launch::Opener> = Arc::new(crate::launch::RealOpener);
-        let inventory = Arc::new(apps::Inventory::default());
         let http = reqwest::Client::new();
         let secrets: Arc<dyn secrets::SecretStore> = Arc::new(crate::secrets_win::WinCredentials);
-        let tokens = Arc::new(accounts::TokenCache::new(db.clone(), secrets, ev.clone(), http.clone(), Arc::new(|_| None)));
-        let media: Arc<dyn music::MediaControl> = Arc::new(crate::modules::smtc::Smtc);
-        let web = music::tools::Web::new(db.clone(), ev.clone(), tokens.clone(), music::spotify::Client::new(http.clone()));
-        let shell: Arc<dyn general::shell::ShellExec> = Arc::new(crate::modules::general::RealShell);
-        let recycler: Arc<dyn general::recycle::Recycler> = Arc::new(crate::modules::general::ShellRecycler);
-        let win: Arc<dyn general::windows::WindowControl> = Arc::new(crate::modules::general::Win32Windows);
-        let source: projects::tools::Source = never();
-        let mut tools: Vec<Arc<dyn Tool>> = vec![];
-        tools.extend(agenda::tools::all(&db, &ev));
-        tools.extend(reminders::tools::all(&db, &ev));
-        tools.extend(notes::tools::all(&db, &ev));
-        tools.extend(timers::tools::all(&db, &ev));
-        tools.extend(clipboard::tools::all(&db));
-        tools.extend(system::tools::all(&never()));
-        tools.extend(weather::tools::all(&db));
-        tools.extend(apps::tools::all(&opener, never(), &inventory));
-        tools.extend(favorites::tools::all(&db, &ev, &opener));
-        tools.extend(memory::all(&db, &ev));
-        tools.extend(projects::tools::all(&source));
-        tools.push(Arc::new(projects::tools::Resume { source, env: never(), opener: opener.clone() }));
-        tools.extend(accounts::tools::all(&db));
-        tools.extend(mail::tools::all(&db, &ev, &tokens, mail::gmail::Client::new(http), &opener));
-        tools.extend(calendar::all(&db));
-        tools.extend(music::tools::all(&media, &web));
-        tools.push(Arc::new(sites::tools::Status { source: never() }));
-        tools.push(Arc::new(sites::tools::Vps { source: never() }));
-        tools.extend(general::shell::all(&shell, never(), dir.to_path_buf(), Arc::new(|| false)));
-        tools.extend(general::files::all(&recycler, never(), general::files::protected_dirs()));
-        tools.extend(general::windows::all(&win, &inventory));
+        let accounts = Arc::new(accounts::TokenCache::new(db.clone(), secrets, ev.clone(), http.clone(), Arc::new(|_| None)));
+        let spotify = music::tools::Web::new(db.clone(), ev.clone(), accounts.clone(), music::spotify::Client::new(http.clone()));
+        let tools = crate::state::tools(crate::state::ToolDeps {
+            db, events: ev, opener: Arc::new(crate::launch::RealOpener), apps: Default::default(), accounts, spotify, account_http: http,
+            roots: never(), projects: never(), resume_env: never(), sites: never(), vps: never(), allowlist: never(), work_dirs: never(),
+            home: dir.to_path_buf(),
+        });
         let local: Arc<dyn LocalBrain> = Arc::new(Ollama::new("m", 5));
         let q = Quarantine { local, claude: Arc::new(NoClaude), vault: Default::default(), now_ms };
         tools.iter().map(|t| t.spec().name).chain(q.specs().into_iter().map(|s| s.name)).collect()
+    }
+
+    #[test]
+    fn premier_tour_apres_lancement_ouvre_une_conversation_neuve() {
+        let d = tempfile::tempdir().unwrap();
+        let mut c = oniris_core::open_db(&d.path().join("t.db")).unwrap();
+        oniris_core::migrate(&mut c, oniris_core::CORE_MIGRATIONS).unwrap();
+        let before = memory::conversation(&c, 1_000).unwrap();
+        let mut slot = None;
+        let (conv, vault) = conversation_vault(&c, 2_000, &mut slot).unwrap();
+        assert_ne!(conv, before, "coffre vide : nouvelle conversation même dans les 30 minutes");
+        vault.lock().put("mail:1/a", "x".into());
+        let (again, same) = conversation_vault(&c, 3_000, &mut slot).unwrap();
+        assert_eq!(again, conv);
+        assert!(Arc::ptr_eq(&vault, &same), "même conversation : même coffre");
+        let newer = memory::new_conversation(&c, 4_000).unwrap();
+        let (conv2, fresh) = conversation_vault(&c, 5_000, &mut slot).unwrap();
+        assert_eq!(conv2, newer);
+        assert!(fresh.lock().get("{{u1}}").is_none(), "nouvelle conversation : coffre neuf");
     }
 
     #[test]

@@ -47,9 +47,9 @@ impl Vault {
     }
 }
 
-/// Valeur de `SAFE_KEYS` montrable : `^[\w@.\-:/\\ ]{1,200}$` (`\w` Unicode, comme le moteur regex par défaut).
+/// Valeur de `SAFE_KEYS` montrable : `^[\w@.\-:/\\]{1,100}$` (`\w` Unicode ; sans espace, une phrase ne passe pas).
 pub(crate) fn safe(s: &str) -> bool {
-    (1..=200).contains(&s.chars().count()) && s.chars().all(|c| c.is_alphanumeric() || "_@.-:/\\ ".contains(c))
+    (1..=100).contains(&s.chars().count()) && s.chars().all(|c| c.is_alphanumeric() || "_@.-:/\\".contains(c))
 }
 
 /// Clé d'objet montrable telle quelle (nom de champ) ; une autre clé peut venir d'un tiers.
@@ -204,6 +204,12 @@ mod tests {
         assert_eq!(p["summary"], Value::Null);
         let p = project(&mail_row("x\"; rm -rf /"), "mail", &mut v);
         assert!(p["id"].as_str().unwrap().starts_with("{{u"), "id douteux : référence");
+        let p = project(&json!({"status": "a b", "kind": "x".repeat(101), "state": "x".repeat(100), "key": "ignore_previous_instructions_now"}), "s", &mut v);
+        assert!(p["status"].as_str().unwrap().starts_with("{{u"), "espace : référence");
+        assert!(p["kind"].as_str().unwrap().starts_with("{{u"), "101 caractères : référence");
+        assert_eq!(p["state"], "x".repeat(100));
+        // Résidu assumé : un identifiant sans espace sous une clé sûre passe.
+        assert_eq!(p["key"], "ignore_previous_instructions_now");
     }
 
     #[test]

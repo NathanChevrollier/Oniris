@@ -135,18 +135,19 @@ it("échecs : chargement et suppression affichent une erreur", async () => {
   expect(await screen.findByText("Suppression refusée.")).toBeTruthy();
 });
 
-it("enregistrer une section ne réinitialise pas le texte non enregistré d'une autre", async () => {
+afterEach(() => { delete (globalThis as { __s?: unknown }).__s; });
+
+it("enregistrer la personnalité ne réinitialise pas le texte non enregistré de la sécurité", async () => {
   vi.spyOn(ipc, "getSettings").mockResolvedValue(DEFAULT_SETTINGS);
   vi.spyOn(ipc, "saveSettings").mockResolvedValue(undefined);
   const { rerender } = render(<IrisSheet open onClose={() => {}} />);
-  const area = screen.getByLabelText("Personnalité d'IRIS") as HTMLTextAreaElement;
+  const box = screen.getByLabelText(/Commandes autorisées/) as HTMLTextAreaElement;
+  await userEvent.type(box, "{Enter}brouillon");
+  const area = screen.getByLabelText("Personnalité d'IRIS");
   await userEvent.clear(area);
-  await userEvent.type(area, "brouillon");
-  const box = screen.getByLabelText(/Commandes autorisées/);
-  await userEvent.type(box, "{Enter}ls");
-  await userEvent.click(screen.getByRole("button", { name: "Enregistrer la sécurité" }));
-  (globalThis as { __s?: unknown }).__s = { ...DEFAULT_SETTINGS, iris_shell_allowlist: [...DEFAULT_SETTINGS.iris_shell_allowlist, "ls"] };
+  await userEvent.type(area, "nouvelle");
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer la personnalité" }));
+  (globalThis as { __s?: unknown }).__s = { ...DEFAULT_SETTINGS, iris_personality: "nouvelle" };
   rerender(<IrisSheet open onClose={() => {}} />);
-  expect(area.value).toBe("brouillon");
-  delete (globalThis as { __s?: unknown }).__s;
+  expect(box.value).toContain("brouillon");
 });

@@ -101,7 +101,9 @@ function Security() {
   const [cmds, setCmds] = useState(s.iris_shell_allowlist.join("\n"));
   const [dirs, setDirs] = useState(s.iris_work_dirs.join("\n"));
   const [save, note] = useSave();
-  useEffect(() => { setCmds(s.iris_shell_allowlist.join("\n")); setDirs(s.iris_work_dirs.join("\n")); }, [s]);
+  const cmdsKey = s.iris_shell_allowlist.join("\n"), dirsKey = s.iris_work_dirs.join("\n");
+  // Clés textuelles : seul un changement de ces champs réinitialise la section.
+  useEffect(() => { setCmds(cmdsKey); setDirs(dirsKey); }, [cmdsKey, dirsKey]);
   return (
     <>
       <h3>Sécurité</h3>

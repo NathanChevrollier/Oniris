@@ -15,22 +15,42 @@ pub const MAX_PATHS: usize = 100;
 const DELETE_MARGIN_MS: i64 = 2_000;
 /// Protégés sur tous les lecteurs (en plus de `protected_dirs`).
 const SPECIAL: [&str; 2] = ["$Recycle.Bin", "System Volume Information"];
+/// Noms de périphériques DOS (avec ou sans extension) : `C:\x\NUL.txt` ouvre le périphérique, pas un fichier.
+const DEVICES: [&str; 24] = [
+    "con", "prn", "aux", "nul", "com1", "com2", "com3", "com4", "com5", "com6", "com7", "com8", "com9", "lpt1", "lpt2", "lpt3", "lpt4", "lpt5",
+    "lpt6", "lpt7", "lpt8", "lpt9", "conin$", "conout$",
+];
 
 /// Dossiers de travail d'IRIS (`iris_work_dirs`), relus à chaque appel.
 pub type WorkDirs = Arc<dyn Fn() -> Vec<String> + Send + Sync>;
 
-/// Dossiers interdits en écriture (Global Constraints), d'après l'environnement. `$Recycle.Bin` et
-/// `System Volume Information` sont refusés par nom sur tout lecteur par `writable`.
+fn env_dir(k: &str) -> Option<PathBuf> {
+    std::env::var_os(k).filter(|v| !v.is_empty()).map(PathBuf::from)
+}
+
+/// Données d'Oniris (`%APPDATA%\Oniris` : base avec cache des mails et journal).
+fn oniris_data() -> Option<PathBuf> {
+    env_dir("APPDATA").map(|a| a.join("Oniris"))
+}
+
+/// Dossiers interdits en écriture (Global Constraints, plus les dossiers de démarrage et de profils PowerShell :
+/// un `files.create` libre y gagnerait une exécution au prochain démarrage), d'après l'environnement.
+/// `$Recycle.Bin` et `System Volume Information` sont refusés par nom sur tout lecteur par `writable`.
+// shortcut: Documents pris dans %USERPROFILE% et %OneDrive% ; un Documents déplacé ailleurs (dossier connu) échappe.
 pub fn protected_dirs() -> Vec<PathBuf> {
-    let env = |k: &str| std::env::var_os(k).filter(|v| !v.is_empty()).map(PathBuf::from);
-    let mut v: Vec<PathBuf> = ["SystemRoot", "windir", "ProgramFiles", "ProgramFiles(x86)", "ProgramW6432", "ProgramData"].into_iter().filter_map(env).collect();
-    v.extend(env("APPDATA").map(|a| a.join("Oniris")));
+    let mut v: Vec<PathBuf> = ["SystemRoot", "windir", "ProgramFiles", "ProgramFiles(x86)", "ProgramW6432", "ProgramData"].into_iter().filter_map(env_dir).collect();
+    v.extend(oniris_data());
+    v.extend(env_dir("APPDATA").map(|a| a.join(r"Microsoft\Windows\Start Menu\Programs\Startup")));
+    v.extend(env_dir("ProgramData").map(|a| a.join(r"Microsoft\Windows\Start Menu\Programs\StartUp")));
+    for root in ["USERPROFILE", "OneDrive"].into_iter().filter_map(env_dir) {
+        v.extend(["WindowsPowerShell", "PowerShell"].map(|d| root.join("Documents").join(d)));
+    }
     v
 }
 
 /// Forme lexicale sûre, sans aucun accès disque : `X:\…` (après `/` → `\`), donc ni relatif, ni UNC, ni `\\?\`,
-/// ni `\\.\` ; pas de `:` après le lecteur (flux alternatif) ; aucun composant `.`, `..` ou finissant par `.` ou
-/// une espace (Win32 les rognerait : `Windows.` vaut `Windows`).
+/// ni `\\.\` ; pas de `:` après le lecteur (flux alternatif), ni `* ? < > | "` ; aucun composant `.`, `..`, finissant
+/// par `.` ou une espace (Win32 les rognerait : `Windows.` vaut `Windows`) ni nom de périphérique DOS.
 pub fn lexical(p: &Path) -> Result<PathBuf, String> {
     let s = p.to_string_lossy().replace('/', "\\");
     let b = s.as_bytes();
@@ -40,14 +60,25 @@ pub fn lexical(p: &Path) -> Result<PathBuf, String> {
     if s[2..].contains(':') {
         return Err("flux alternatif refusé".into());
     }
-    if s[3..].split('\\').any(|c| c.ends_with('.') || c.ends_with(' ')) {
-        return Err("composant « . », « .. » ou finissant par un point ou une espace refusé".into());
+    if s.contains(['*', '?', '<', '>', '|', '"']) {
+        return Err("caractère interdit dans un chemin".into());
+    }
+    for c in s[3..].split('\\') {
+        if c.ends_with('.') || c.ends_with(' ') {
+            return Err("composant « . », « .. » ou finissant par un point ou une espace refusé".into());
+        }
+        let stem = c.split('.').next().unwrap_or_default().trim_end().to_lowercase();
+        if DEVICES.contains(&stem.as_str()) {
+            return Err("nom de périphérique refusé".into());
+        }
     }
     Ok(PathBuf::from(s))
 }
 
 /// Canonique (jonctions, liens et noms 8.3 résolus) de l'ancêtre existant le plus profond, suivi du reste.
 /// Seule l'absence fait remonter ; toute autre erreur (accès refusé…) refuse. À n'appeler qu'après `lexical`.
+// shortcut: une jonction locale déjà existante vers un partage UNC est ouverte ici (identifiants NTLM envoyés) avant
+// le refus « réseau » ; aucun outil d'IRIS ne crée de lien. À durcir en lisant les points d'analyse à la main.
 fn resolve(p: &Path) -> Result<PathBuf, String> {
     let mut tail = vec![];
     let mut cur = p;
@@ -70,10 +101,20 @@ fn resolve(p: &Path) -> Result<PathBuf, String> {
     }
 }
 
+fn lower(p: &Path) -> PathBuf {
+    PathBuf::from(p.to_string_lossy().to_lowercase())
+}
+
 /// `c` est-il `d` ou en dessous, pour l'un des dossiers (composant par composant, sans casse) ?
 fn under(c: &Path, dirs: &[PathBuf]) -> bool {
-    let lc = PathBuf::from(c.to_string_lossy().to_lowercase());
-    dirs.iter().any(|d| lc.starts_with(d.to_string_lossy().to_lowercase()))
+    let lc = lower(c);
+    dirs.iter().any(|d| lc.starts_with(lower(d)))
+}
+
+/// `c` est-il strictement sous l'un des dossiers (le dossier lui-même exclu) ?
+fn strictly_under(c: &Path, dirs: &[PathBuf]) -> bool {
+    let lc = lower(c);
+    dirs.iter().map(|d| lower(d)).any(|d| lc != d && lc.starts_with(&d))
 }
 
 /// Dossiers tels que donnés et canoniques (un dossier non local reste tel quel : jamais touché).
@@ -82,14 +123,18 @@ fn canonical_dirs(dirs: &[PathBuf]) -> Vec<PathBuf> {
 }
 
 fn forbidden(c: &Path, protected: &[PathBuf]) -> bool {
+    let lc = lower(c);
     c.parent().and_then(Path::parent).is_none() // racine d'un lecteur, ou directement dedans
         || c.components().any(|k| SPECIAL.iter().any(|s| k.as_os_str().eq_ignore_ascii_case(s)))
         || under(c, protected)
+        // Un ancêtre d'un protégé non plus : supprimer `AppData\Roaming` emporterait `%APPDATA%\Oniris`.
+        || protected.iter().any(|d| lower(d).starts_with(&lc))
 }
 
-/// Chemin où IRIS peut écrire : forme `lexical`, parent canonisé, hors des dossiers protégés canoniques et hors de
-/// la racine d'un lecteur. S'il existe déjà, sa propre cible (jonction, lien) doit l'être aussi. Renvoie le parent
-/// canonique suivi du nom : c'est lui qu'il faut toucher (un lien est alors visé lui-même, jamais sa cible).
+/// Chemin où IRIS peut écrire : forme `lexical`, parent canonisé, hors des dossiers protégés canoniques (ni dedans,
+/// ni l'un de leurs ancêtres) et hors de la racine d'un lecteur. S'il existe déjà, sa propre cible (jonction, lien)
+/// doit l'être aussi. Renvoie le parent canonique suivi du nom : c'est lui qu'il faut toucher (un lien est alors
+/// visé lui-même, jamais sa cible).
 pub fn writable(p: &Path, protected: &[PathBuf]) -> Result<PathBuf, String> {
     let p = lexical(p)?;
     let (Some(parent), Some(name)) = (p.parent(), p.file_name()) else {
@@ -119,14 +164,20 @@ pub struct Files {
     pub protected: Vec<PathBuf>,
 }
 
+/// Exécute `op` hors des fils de tokio (Corbeille du Shell, renommages et copies peuvent durer).
+async fn blocking<T: Send + 'static>(f: &Arc<Files>, v: &Value, op: fn(&Files, &Value) -> Result<T, ToolError>) -> Result<T, ToolError> {
+    let (f, v) = (f.clone(), v.clone());
+    tokio::task::spawn_blocking(move || op(&f, &v)).await.map_err(failed)?
+}
+
 impl Files {
     fn w(&self, p: &str) -> Result<PathBuf, ToolError> {
         writable(Path::new(p), &self.protected).map_err(bad)
     }
-    /// Vrai si le chemin (accepté par `writable`) est dans un dossier de travail.
+    /// Vrai si le chemin (accepté par `writable`) est strictement dans un dossier de travail (pas sa racine).
     fn inside(&self, p: Option<&str>) -> bool {
         let dirs: Vec<PathBuf> = (self.work_dirs)().iter().filter_map(|d| lexical(Path::new(d)).ok()).collect();
-        p.and_then(|p| self.w(p).ok()).is_some_and(|c| under(&c, &canonical_dirs(&dirs)))
+        p.and_then(|p| self.w(p).ok()).is_some_and(|c| strictly_under(&c, &canonical_dirs(&dirs)))
     }
     /// Chemin canonique à montrer (l'entrée brute si elle est refusée : la carte ne s'affiche alors pas).
     fn shown(&self, p: &str) -> String {
@@ -148,6 +199,8 @@ impl Files {
         after.map_or(Ok(()), |t| self.recycler.restore(p, t).map_err(failed))
     }
     /// Déplace `from` vers `to` (cible existante à la Corbeille si `overwrite`) ; undo = mouvement inverse.
+    // shortcut: contrôle d'existence puis `rename` (qui remplace un fichier) : petite fenêtre de course ; à passer à
+    // `MoveFileExW` sans `MOVEFILE_REPLACE_EXISTING` si elle gêne.
     fn mv(&self, from: &Path, to: &Path, overwrite: bool) -> Result<ToolResult, ToolError> {
         if std::fs::symlink_metadata(from).is_err() {
             return Err(failed("source introuvable"));
@@ -159,7 +212,7 @@ impl Files {
         }
         Ok(ToolResult { output: json!({"path": to}), undo: Some(json!({"from": to, "to": from, "restore_after_ms": after})) })
     }
-    async fn undo_move(&self, u: &Value) -> Result<(), ToolError> {
+    fn undo_move(&self, u: &Value) -> Result<(), ToolError> {
         let u: MoveUndo = parse(u)?;
         let (from, to) = (self.w(&u.from)?, self.w(&u.to)?);
         if std::fs::symlink_metadata(&to).is_ok() {
@@ -209,7 +262,7 @@ struct DeleteUndo {
     after_ms: i64,
 }
 
-async fn undo_recycle(f: &Files, u: &Value) -> Result<(), ToolError> {
+fn undo_recycle(f: &Files, u: &Value) -> Result<(), ToolError> {
     let u: RecycleUndo = parse(u)?;
     let p = f.w(&u.path)?;
     f.recycler.recycle(&p).map_err(failed)?;
@@ -222,6 +275,24 @@ pub struct FilesRename(pub Arc<Files>);
 pub struct FilesMove(pub Arc<Files>);
 pub struct FilesDelete(pub Arc<Files>);
 
+fn create_check(f: &Files, a: &Value) -> Result<(), ToolError> {
+    let a: CreateArgs = parse(a)?;
+    if a.content.as_ref().is_some_and(|c| c.len() > MAX_CONTENT) {
+        return Err(bad("contenu : 1 Mo au plus"));
+    }
+    f.w(&a.path).map(|_| ())
+}
+
+fn create_run(f: &Files, a: &Value) -> Result<ToolResult, ToolError> {
+    create_check(f, a)?;
+    let a: CreateArgs = parse(a)?;
+    let p = f.w(&a.path)?;
+    // `create_new` : jamais d'écrasement, même en course.
+    let mut file = std::fs::OpenOptions::new().write(true).create_new(true).open(&p).map_err(failed)?;
+    std::io::Write::write_all(&mut file, a.content.unwrap_or_default().as_bytes()).map_err(failed)?;
+    Ok(ToolResult { output: json!({"path": p}), undo: Some(json!({"path": p})) })
+}
+
 #[async_trait]
 impl Tool for FilesCreate {
     fn spec(&self) -> ToolSpec {
@@ -233,27 +304,53 @@ impl Tool for FilesCreate {
         )
     }
     fn check(&self, a: &Value) -> Result<(), ToolError> {
-        let a: CreateArgs = parse(a)?;
-        if a.content.as_ref().is_some_and(|c| c.len() > MAX_CONTENT) {
-            return Err(bad("contenu : 1 Mo au plus"));
-        }
-        self.0.w(&a.path).map(|_| ())
+        create_check(&self.0, a)
     }
     fn describe(&self, a: &Value) -> ConfirmationText {
         ConfirmationText { summary: "Créer un fichier".into(), details: self.0.shown(a["path"].as_str().unwrap_or_default()), risk: Risk::Low }
     }
     async fn run(&self, a: &Value) -> Result<ToolResult, ToolError> {
-        self.check(a)?;
-        let a: CreateArgs = parse(a)?;
-        let p = self.0.w(&a.path)?;
-        // `create_new` : jamais d'écrasement, même en course.
-        let mut f = std::fs::OpenOptions::new().write(true).create_new(true).open(&p).map_err(failed)?;
-        std::io::Write::write_all(&mut f, a.content.unwrap_or_default().as_bytes()).map_err(failed)?;
-        Ok(ToolResult { output: json!({"path": p}), undo: Some(json!({"path": p})) })
+        blocking(&self.0, a, create_run).await
     }
     async fn undo(&self, u: &Value) -> Result<(), ToolError> {
-        undo_recycle(&self.0, u).await
+        blocking(&self.0, u, undo_recycle).await
     }
+}
+
+/// Source d'une copie : forme `lexical` (jamais de réseau), jamais les données d'Oniris (mails, journal).
+fn copy_source(from: &str) -> Result<PathBuf, ToolError> {
+    let l = lexical(Path::new(from)).map_err(bad)?;
+    let c = resolve(&l).map_err(bad)?;
+    if under(&c, &canonical_dirs(&oniris_data().into_iter().collect::<Vec<_>>())) {
+        return Err(bad("données d'Oniris : copie refusée"));
+    }
+    Ok(c)
+}
+
+fn copy_check(f: &Files, a: &Value) -> Result<(), ToolError> {
+    let a: MoveArgs = parse(a)?;
+    copy_source(&a.from)?;
+    f.w(&a.to).map(|_| ())
+}
+
+fn copy_run(f: &Files, a: &Value) -> Result<ToolResult, ToolError> {
+    copy_check(f, a)?;
+    let a: MoveArgs = parse(a)?;
+    let (from, to) = (copy_source(&a.from)?, f.w(&a.to)?);
+    let mut src = std::fs::File::open(&from).map_err(failed)?;
+    if !src.metadata().map_err(failed)?.is_file() {
+        return Err(bad("source : un fichier (pas un dossier)"));
+    }
+    let after = f.clear(&to, a.overwrite)?;
+    // `create_new` : si quelqu'un a pris la place entre-temps, on ne touche pas à son fichier.
+    let mut dst = std::fs::OpenOptions::new().write(true).create_new(true).open(&to).map_err(failed)?;
+    if let Err(e) = std::io::copy(&mut src, &mut dst) {
+        drop(dst);
+        let _ = std::fs::remove_file(&to); // copie partielle, créée par nous
+        let _ = f.restore_opt(&to, after);
+        return Err(failed(e));
+    }
+    Ok(ToolResult { output: json!({"path": to}), undo: Some(json!({"path": to, "restore_after_ms": after})) })
 }
 
 #[async_trait]
@@ -267,9 +364,7 @@ impl Tool for FilesCopy {
         )
     }
     fn check(&self, a: &Value) -> Result<(), ToolError> {
-        let a: MoveArgs = parse(a)?;
-        lexical(Path::new(&a.from)).map_err(bad)?; // lecture : seule la forme compte (jamais de réseau)
-        self.0.w(&a.to).map(|_| ())
+        copy_check(&self.0, a)
     }
     fn needs_confirm(&self, a: &Value) -> bool {
         a["overwrite"].as_bool().unwrap_or(false)
@@ -278,26 +373,10 @@ impl Tool for FilesCopy {
         move_text(&self.0, "Copier un fichier", a)
     }
     async fn run(&self, a: &Value) -> Result<ToolResult, ToolError> {
-        self.check(a)?;
-        let a: MoveArgs = parse(a)?;
-        let (from, to) = (lexical(Path::new(&a.from)).map_err(bad)?, self.0.w(&a.to)?);
-        let mut src = std::fs::File::open(&from).map_err(failed)?;
-        if !src.metadata().map_err(failed)?.is_file() {
-            return Err(bad("source : un fichier (pas un dossier)"));
-        }
-        let after = self.0.clear(&to, a.overwrite)?;
-        // `create_new` : si quelqu'un a pris la place entre-temps, on ne touche pas à son fichier.
-        let mut dst = std::fs::OpenOptions::new().write(true).create_new(true).open(&to).map_err(failed)?;
-        if let Err(e) = std::io::copy(&mut src, &mut dst) {
-            drop(dst);
-            let _ = std::fs::remove_file(&to); // copie partielle, créée par nous
-            let _ = self.0.restore_opt(&to, after);
-            return Err(failed(e));
-        }
-        Ok(ToolResult { output: json!({"path": to}), undo: Some(json!({"path": to, "restore_after_ms": after})) })
+        blocking(&self.0, a, copy_run).await
     }
     async fn undo(&self, u: &Value) -> Result<(), ToolError> {
-        undo_recycle(&self.0, u).await
+        blocking(&self.0, u, undo_recycle).await
     }
 }
 
@@ -309,6 +388,11 @@ fn move_text(f: &Files, summary: &str, a: &Value) -> ConfirmationText {
         details.push_str("\nUn élément déjà présent à la cible ira à la Corbeille.");
     }
     ConfirmationText { summary: summary.into(), details, risk: if over { Risk::High } else { Risk::Medium } }
+}
+
+fn move_run(f: &Files, a: &Value) -> Result<ToolResult, ToolError> {
+    let a: MoveArgs = parse(a)?;
+    f.mv(&f.w(&a.from)?, &f.w(&a.to)?, a.overwrite)
 }
 
 #[async_trait]
@@ -333,24 +417,26 @@ impl Tool for FilesMove {
         move_text(&self.0, "Déplacer", a)
     }
     async fn run(&self, a: &Value) -> Result<ToolResult, ToolError> {
-        let a: MoveArgs = parse(a)?;
-        self.0.mv(&self.0.w(&a.from)?, &self.0.w(&a.to)?, a.overwrite)
+        blocking(&self.0, a, move_run).await
     }
     async fn undo(&self, u: &Value) -> Result<(), ToolError> {
-        self.0.undo_move(u).await
+        blocking(&self.0, u, Files::undo_move).await
     }
 }
 
-impl FilesRename {
-    fn target(&self, a: &RenameArgs) -> Result<(PathBuf, PathBuf), ToolError> {
-        let n = &a.new_name;
-        if n.is_empty() || n.chars().any(|c| matches!(c, '\\' | '/' | ':') || c.is_control()) {
-            return Err(bad("nouveau nom : sans séparateur ni « : »"));
-        }
-        let from = self.0.w(&a.path)?;
-        let to = self.0.w(&from.with_file_name(n).to_string_lossy())?;
-        Ok((from, to))
+fn rename_target(f: &Files, a: &RenameArgs) -> Result<(PathBuf, PathBuf), ToolError> {
+    let n = &a.new_name;
+    if n.is_empty() || n.chars().any(|c| matches!(c, '\\' | '/' | ':') || c.is_control()) {
+        return Err(bad("nouveau nom : sans séparateur ni « : »"));
     }
+    let from = f.w(&a.path)?;
+    let to = f.w(&from.with_file_name(n).to_string_lossy())?;
+    Ok((from, to))
+}
+
+fn rename_run(f: &Files, a: &Value) -> Result<ToolResult, ToolError> {
+    let (from, to) = rename_target(f, &parse(a)?)?;
+    f.mv(&from, &to, false)
 }
 
 #[async_trait]
@@ -364,29 +450,68 @@ impl Tool for FilesRename {
         )
     }
     fn check(&self, a: &Value) -> Result<(), ToolError> {
-        self.target(&parse(a)?).map(|_| ())
+        rename_target(&self.0, &parse(a)?).map(|_| ())
     }
     fn needs_confirm(&self, a: &Value) -> bool {
         !self.0.inside(a["path"].as_str())
     }
     fn describe(&self, a: &Value) -> ConfirmationText {
-        let details = match parse::<RenameArgs>(a).and_then(|r| self.target(&r)) {
+        let details = match parse::<RenameArgs>(a).and_then(|r| rename_target(&self.0, &r)) {
             Ok((from, to)) => format!("{}\n→ {}", from.display(), to.display()),
             Err(_) => a["path"].as_str().unwrap_or_default().to_string(),
         };
         ConfirmationText { summary: "Renommer".into(), details, risk: Risk::Medium }
     }
     async fn run(&self, a: &Value) -> Result<ToolResult, ToolError> {
-        let (from, to) = self.target(&parse(a)?)?;
-        self.0.mv(&from, &to, false)
+        blocking(&self.0, a, rename_run).await
     }
     async fn undo(&self, u: &Value) -> Result<(), ToolError> {
-        self.0.undo_move(u).await
+        blocking(&self.0, u, Files::undo_move).await
     }
 }
 
 fn items(n: usize) -> String {
     if n == 1 { "1 élément ira".into() } else { format!("{n} éléments iront") }
+}
+
+fn delete_check(f: &Files, a: &Value) -> Result<(), ToolError> {
+    let a: DeleteArgs = parse(a)?;
+    if !(1..=MAX_PATHS).contains(&a.paths.len()) {
+        return Err(bad(format!("1 à {MAX_PATHS} chemins")));
+    }
+    a.paths.iter().try_for_each(|p| f.w(p).map(|_| ()))
+}
+
+fn delete_run(f: &Files, a: &Value) -> Result<ToolResult, ToolError> {
+    delete_check(f, a)?;
+    let a: DeleteArgs = parse(a)?;
+    let paths: Vec<PathBuf> = a.paths.iter().map(|p| f.w(p)).collect::<Result<_, _>>()?;
+    let after = crate::time_util::now_ms() - DELETE_MARGIN_MS;
+    let (mut done, mut missed) = (vec![], vec![]);
+    for p in paths {
+        match std::fs::symlink_metadata(&p).map_err(|e| e.to_string()).and_then(|_| f.recycler.recycle(&p)) {
+            Ok(()) => done.push(p),
+            Err(_) => missed.push(p),
+        }
+    }
+    if done.is_empty() {
+        return Err(failed("aucun élément n'a pu aller à la Corbeille"));
+    }
+    // Échec partiel : ce qui est parti garde son undo, le reste est signalé.
+    Ok(ToolResult { output: json!({"recycled": done.len(), "failed": missed}), undo: Some(json!({"paths": done, "after_ms": after})) })
+}
+
+/// Rejouable après un échec partiel : un élément déjà restauré (place prise, entrée de Corbeille partie) est
+/// reconnu par `restore_from` et compte comme fait.
+fn delete_undo(f: &Files, u: &Value) -> Result<(), ToolError> {
+    let u: DeleteUndo = parse(u)?;
+    let mut errs = 0;
+    for p in &u.paths {
+        if f.w(p).and_then(|c| f.recycler.restore(&c, u.after_ms).map_err(failed)).is_err() {
+            errs += 1;
+        }
+    }
+    if errs == 0 { Ok(()) } else { Err(failed(format!("{errs} élément(s) non restauré(s)"))) }
 }
 
 #[async_trait]
@@ -400,11 +525,7 @@ impl Tool for FilesDelete {
         )
     }
     fn check(&self, a: &Value) -> Result<(), ToolError> {
-        let a: DeleteArgs = parse(a)?;
-        if !(1..=MAX_PATHS).contains(&a.paths.len()) {
-            return Err(bad(format!("1 à {MAX_PATHS} chemins")));
-        }
-        a.paths.iter().try_for_each(|p| self.0.w(p).map(|_| ()))
+        delete_check(&self.0, a)
     }
     fn needs_confirm(&self, a: &Value) -> bool {
         a["paths"].as_array().is_none_or(|ps| ps.iter().any(|p| !self.0.inside(p.as_str())))
@@ -418,32 +539,10 @@ impl Tool for FilesDelete {
         }
     }
     async fn run(&self, a: &Value) -> Result<ToolResult, ToolError> {
-        self.check(a)?;
-        let a: DeleteArgs = parse(a)?;
-        let paths: Vec<PathBuf> = a.paths.iter().map(|p| self.0.w(p)).collect::<Result<_, _>>()?;
-        let after = crate::time_util::now_ms() - DELETE_MARGIN_MS;
-        let (mut done, mut missed) = (vec![], vec![]);
-        for p in paths {
-            match std::fs::symlink_metadata(&p).map_err(|e| e.to_string()).and_then(|_| self.0.recycler.recycle(&p)) {
-                Ok(()) => done.push(p),
-                Err(_) => missed.push(p),
-            }
-        }
-        if done.is_empty() {
-            return Err(failed("aucun élément n'a pu aller à la Corbeille"));
-        }
-        // Échec partiel : ce qui est parti garde son undo, le reste est signalé.
-        Ok(ToolResult { output: json!({"recycled": done.len(), "failed": missed}), undo: Some(json!({"paths": done, "after_ms": after})) })
+        blocking(&self.0, a, delete_run).await
     }
     async fn undo(&self, u: &Value) -> Result<(), ToolError> {
-        let u: DeleteUndo = parse(u)?;
-        let mut errs = vec![];
-        for p in &u.paths {
-            if let Err(e) = self.0.w(p).and_then(|c| self.0.recycler.restore(&c, u.after_ms).map_err(failed)) {
-                errs.push(e.to_string());
-            }
-        }
-        if errs.is_empty() { Ok(()) } else { Err(failed(format!("{} élément(s) non restauré(s)", errs.len()))) }
+        blocking(&self.0, u, delete_undo).await
     }
 }
 
@@ -457,6 +556,7 @@ pub fn all(recycler: &Arc<dyn Recycler>, work_dirs: WorkDirs, protected: Vec<Pat
         Arc::new(FilesDelete(f)),
     ]
 }
+
 
 #[cfg(test)]
 mod tests {
@@ -678,5 +778,91 @@ mod tests {
         assert!(matches!(call(&e.broker, "files.copy", json!({"from": r"\\127.0.0.1\x\a", "to": s(&b)})).await, ToolOutcome::Failed { .. }));
         e.broker.undo(action_id).await.unwrap();
         assert!(!b.exists() && a.exists());
+    }
+
+    #[test]
+    fn lexical_refuse_caracteres_et_peripheriques() {
+        for ko in [r"C:\t\a*b", r"C:\t\a?b", r"C:\t\a<b", r"C:\t\a>b", r"C:\t\a|b", r#"C:\t\a"b"#, r"C:\t\NUL", r"C:\t\nul.txt", r"C:\t\Con", r"C:\t\COM1.log", r"C:\t\lpt9", r"C:\t\CONIN$", r"C:\t\conout$.x", r"C:\AUX\x", r"C:\t\prn .txt"] {
+            assert!(lexical(Path::new(ko)).is_err(), "{ko}");
+        }
+        for ok in [r"C:\t\console.txt", r"C:\t\com10", r"C:\t\nullable", r"C:\t\a.con"] {
+            assert!(lexical(Path::new(ok)).is_ok(), "{ok}");
+        }
+    }
+
+    #[test]
+    fn un_ancetre_de_dossier_protege_est_refuse() {
+        let t = tempfile::tempdir().unwrap();
+        let prot = [t.path().join("a").join("b")];
+        std::fs::create_dir_all(&prot[0]).unwrap();
+        assert!(writable(&t.path().join("a"), &prot).is_err());
+        assert!(writable(&t.path().join("A"), &prot).is_err(), "casse ignorée");
+        assert!(writable(&t.path().join("ab"), &prot).is_ok(), "comparaison par composant");
+        assert!(writable(&t.path().join("a").join("c"), &prot).is_ok());
+    }
+
+    #[test]
+    fn demarrage_et_profils_powershell_proteges() {
+        let prot = protected_dirs();
+        let (appdata, home) = (std::env::var("APPDATA").unwrap(), std::env::var("USERPROFILE").unwrap());
+        refused(&format!(r"{appdata}\Microsoft\Windows\Start Menu\Programs\Startup\x.bat"), &prot);
+        refused(&format!(r"{home}\Documents\WindowsPowerShell\Microsoft.PowerShell_profile.ps1"), &prot);
+        refused(&format!(r"{home}\Documents\PowerShell\profile.ps1"), &prot);
+        refused(&format!(r"{home}\Documents"), &prot);
+        refused(&home, &prot);
+        assert!(writable(Path::new(&format!(r"{home}\Documents\zz_oniris_x.txt")), &prot).is_ok());
+    }
+
+    #[tokio::test]
+    async fn appdata_et_son_parent_jamais_touches() {
+        let e = setup();
+        let appdata = std::env::var("APPDATA").unwrap();
+        let parent = Path::new(&appdata).parent().unwrap().to_string_lossy().into_owned();
+        let src = e.work.path().join("a.txt");
+        std::fs::write(&src, "a").unwrap();
+        for target in [&appdata, &parent] {
+            assert!(matches!(call(&e.broker, "files.delete", json!({"paths": [target]})).await, ToolOutcome::Failed { .. }), "{target}");
+            assert!(matches!(call(&e.broker, "files.rename", json!({"path": target, "new_name": "x"})).await, ToolOutcome::Failed { .. }), "{target}");
+            assert!(matches!(call(&e.broker, "files.move", json!({"from": target, "to": s(&e.work.path().join("m"))})).await, ToolOutcome::Failed { .. }), "{target}");
+            for tool in ["files.move", "files.copy"] {
+                let r = call(&e.broker, tool, json!({"from": s(&src), "to": target, "overwrite": true})).await;
+                assert!(matches!(r, ToolOutcome::Failed { .. }), "{tool} {target}");
+            }
+        }
+        assert_eq!(*e.bin.n.lock(), 0);
+        assert!(src.exists());
+    }
+
+    #[tokio::test]
+    async fn la_racine_d_un_dossier_de_travail_demande_une_carte() {
+        let e = setup();
+        let root = s(e.work.path());
+        assert!(matches!(call(&e.broker, "files.delete", json!({"paths": [root]})).await, ToolOutcome::NeedsConfirmation(_)));
+        assert!(matches!(call(&e.broker, "files.rename", json!({"path": root, "new_name": "autre"})).await, ToolOutcome::NeedsConfirmation(_)));
+        assert!(e.work.path().exists());
+    }
+
+    #[tokio::test]
+    async fn copie_des_donnees_d_oniris_refusee() {
+        let e = setup();
+        let db = format!(r"{}\Oniris\oniris.db", std::env::var("APPDATA").unwrap());
+        let r = call(&e.broker, "files.copy", json!({"from": db, "to": s(&e.work.path().join("vol.db"))})).await;
+        assert!(matches!(r, ToolOutcome::Failed { .. }));
+        assert!(!e.work.path().join("vol.db").exists());
+    }
+
+    #[tokio::test]
+    async fn undo_de_suppression_rejouable_apres_echec_partiel() {
+        let e = setup();
+        let (a, b) = (e.work.path().join("a.txt"), e.work.path().join("b.txt"));
+        std::fs::write(&a, "a").unwrap();
+        std::fs::write(&b, "b").unwrap();
+        let ToolOutcome::Done { action_id, .. } = call(&e.broker, "files.delete", json!({"paths": [s(&a), s(&b)]})).await else { panic!() };
+        std::fs::write(&a, "intrus").unwrap();
+        assert!(e.broker.undo(action_id).await.is_err());
+        assert_eq!(std::fs::read_to_string(&b).unwrap(), "b");
+        std::fs::remove_file(&a).unwrap();
+        e.broker.undo(action_id).await.unwrap();
+        assert_eq!((std::fs::read_to_string(&a).unwrap(), std::fs::read_to_string(&b).unwrap()), ("a".into(), "b".into()));
     }
 }

@@ -28,7 +28,7 @@ pub fn parse_info(b: &[u8]) -> Option<(PathBuf, i64)> {
 }
 
 /// Cherche dans `bin_dir` le `$I` le plus récent de `original` (après `after_ms`), renomme son `$R` jumeau vers
-/// `original` (refusé si la cible existe), puis supprime le `$I`.
+/// `original` (refusé si la cible existe), puis supprime le `$I`. Sans entrée et cible présente : déjà fait, `Ok`.
 pub fn restore_from(bin_dir: &Path, original: &Path, after_ms: i64) -> Result<(), String> {
     let want = original.to_string_lossy().to_lowercase();
     let mut best: Option<(i64, PathBuf)> = None;
@@ -41,11 +41,15 @@ pub fn restore_from(bin_dir: &Path, original: &Path, after_ms: i64) -> Result<()
             best = Some((ms, e.path()));
         }
     }
-    let (_, info) = best.ok_or("élément introuvable dans la Corbeille")?;
+    let occupied = std::fs::symlink_metadata(original).is_ok();
+    let Some((_, info)) = best else {
+        // Plus d'entrée mais la place est prise : déjà restauré (undo rejoué après un échec partiel).
+        return if occupied { Ok(()) } else { Err("élément introuvable dans la Corbeille".into()) };
+    };
     let suffix = &info.file_name().unwrap_or_default().to_string_lossy()[2..];
     let data = info.with_file_name(format!("$R{suffix}"));
     // `symlink_metadata` : un lien cassé occupe aussi la place (et `rename` remplacerait un fichier existant).
-    if std::fs::symlink_metadata(original).is_ok() {
+    if occupied {
         return Err("un élément occupe déjà cet emplacement".into());
     }
     std::fs::rename(&data, original).map_err(|e| format!("restauration impossible : {e}"))?;
@@ -93,6 +97,8 @@ mod tests {
         restore_from(bin.path(), &upper, 0).unwrap();
         assert_eq!(std::fs::read_to_string(&upper).unwrap(), "récent");
         assert!(!bin.path().join("$IBBB.txt").exists() && !bin.path().join("$RBBB.txt").exists());
+        // Rejoué : plus d'entrée récente et la place est prise, donc déjà restauré.
+        assert!(restore_from(bin.path(), &orig, 4_000).is_ok());
         // La cible existe désormais : le reste n'est pas restauré par-dessus.
         assert!(restore_from(bin.path(), &orig, 0).is_err());
         assert!(bin.path().join("$RAAA.txt").exists());

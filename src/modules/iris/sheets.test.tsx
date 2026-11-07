@@ -87,7 +87,7 @@ it("« Tout effacer » demande confirmation et garde les préférences", async (
   expect(clear).toHaveBeenCalled();
 });
 
-const entry = (over: Partial<JournalEntry>): JournalEntry => ({ id: 1, ts_ms: 0, tool: "mail_send", args: {}, origin: { Assistant: { brain: "Local" } }, provenance: { Untrusted: { source: "mail de Marc" } }, status: "Done", result: { ok: true }, undoable: true, ...over });
+const entry = (over: Partial<JournalEntry>): JournalEntry => ({ id: 1, ts_ms: 0, tool: "mail_send", args: { to: "<b>marc</b>" }, origin: { Assistant: { brain: "Local" } }, provenance: { Untrusted: { source: "mail de Marc" } }, status: "done", result: { ok: true }, undoable: true, ...over });
 
 it("journal : provenance lisible, « Annuler » appelle undo puis recharge", async () => {
   const list = vi.spyOn(toolIpc, "journal").mockResolvedValue([entry({}), entry({ id: 2, origin: "Mcp", provenance: "User", undoable: false, result: { t: "<b>x</b>".repeat(40) } })]);
@@ -115,4 +115,38 @@ it("le focus revient au bouton d'en-tête à la fermeture", async () => {
   await userEvent.click(btn);
   await userEvent.click(await screen.findByRole("button", { name: "Fermer le journal" }));
   await waitFor(() => expect(document.activeElement).toBe(btn));
+});
+
+it("journal : les arguments et le statut localisé s'affichent en texte brut", async () => {
+  vi.spyOn(toolIpc, "journal").mockResolvedValue([entry({})]);
+  const { container } = render(<JournalSheet open onClose={() => {}} />);
+  expect(await screen.findByText('{"to":"<b>marc</b>"}')).toBeTruthy();
+  expect(container.querySelector("b")).toBeNull();
+  expect(screen.getByText(/· fait$/)).toBeTruthy();
+});
+
+it("échecs : chargement et suppression affichent une erreur", async () => {
+  vi.mocked(irisIpc.history).mockRejectedValue("x");
+  vi.mocked(irisIpc.memories).mockResolvedValue([{ id: 7, text: "aime le thé", created_ms: 0 }]);
+  vi.spyOn(irisIpc, "memoryDelete").mockRejectedValue("Suppression refusée.");
+  render(<IrisSheet open onClose={() => {}} />);
+  expect(await screen.findByText("Impossible de charger l'historique.")).toBeTruthy();
+  await userEvent.click(await screen.findByRole("button", { name: "Oublier : aime le thé" }));
+  expect(await screen.findByText("Suppression refusée.")).toBeTruthy();
+});
+
+it("enregistrer une section ne réinitialise pas le texte non enregistré d'une autre", async () => {
+  vi.spyOn(ipc, "getSettings").mockResolvedValue(DEFAULT_SETTINGS);
+  vi.spyOn(ipc, "saveSettings").mockResolvedValue(undefined);
+  const { rerender } = render(<IrisSheet open onClose={() => {}} />);
+  const area = screen.getByLabelText("Personnalité d'IRIS") as HTMLTextAreaElement;
+  await userEvent.clear(area);
+  await userEvent.type(area, "brouillon");
+  const box = screen.getByLabelText(/Commandes autorisées/);
+  await userEvent.type(box, "{Enter}ls");
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer la sécurité" }));
+  (globalThis as { __s?: unknown }).__s = { ...DEFAULT_SETTINGS, iris_shell_allowlist: [...DEFAULT_SETTINGS.iris_shell_allowlist, "ls"] };
+  rerender(<IrisSheet open onClose={() => {}} />);
+  expect(area.value).toBe("brouillon");
+  delete (globalThis as { __s?: unknown }).__s;
 });

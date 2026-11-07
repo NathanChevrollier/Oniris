@@ -33,7 +33,7 @@ function Brains({ status, reload }: { status: IrisStatus | null; reload: () => v
   const [pull, setPull] = useState<{ done: number; total: number } | null>(null);
   const [pullError, setPullError] = useState<string | null>(null);
   const [save, note] = useSave();
-  useEffect(() => { setModel(s.iris_local_model); setMinutes(String(s.iris_unload_minutes)); setClaudePath(s.claude_path); setClaudeModel(s.iris_claude_model); }, [s]);
+  useEffect(() => { setModel(s.iris_local_model); setMinutes(String(s.iris_unload_minutes)); setClaudePath(s.claude_path); setClaudeModel(s.iris_claude_model); }, [s.iris_local_model, s.iris_unload_minutes, s.claude_path, s.iris_claude_model]);
   useEffect(() => {
     const un = onIrisPull((e) => { if (e.error) setPullError(e.error); else setPull({ done: e.done ?? 0, total: e.total ?? 0 }); });
     return () => { void un.then((f) => f()); };
@@ -117,15 +117,17 @@ function Security() {
 
 function Memories() {
   const [list, setList] = useState<Memory[]>([]);
-  const load = useCallback(() => { irisIpc.memories().then(setList, () => {}); }, []);
+  const [err, setErr] = useState<string | null>(null);
+  const load = useCallback(() => { irisIpc.memories().then((l) => { setList(l); setErr(null); }, () => setErr("Impossible de charger les préférences.")); }, []);
   useEffect(load, [load]);
   return (
     <>
       <h3>Mémoire</h3>
-      {list.length === 0 ? <p className="acc-empty">Aucune préférence retenue.</p> : (
+      {err && <p className="err" role="alert">{err}</p>}
+      {list.length === 0 && !err ? <p className="acc-empty">Aucune préférence retenue.</p> : (
         <ul className="acc-list">{list.map((m) => (
           <li key={m.id} className="acc-row"><div className="acc-main"><span className="acc-label">{m.text}</span>
-            <button type="button" className="acc-icon" aria-label={`Oublier : ${m.text}`} onClick={() => void irisIpc.memoryDelete(m.id).finally(load)}><Trash2 size={14} /></button></div></li>
+            <button type="button" className="acc-icon" aria-label={`Oublier : ${m.text}`} onClick={() => void irisIpc.memoryDelete(m.id).then(load, (e) => setErr(errorText(e, "Suppression impossible.")))}><Trash2 size={14} /></button></div></li>
         ))}</ul>
       )}
     </>
@@ -135,12 +137,14 @@ function Memories() {
 function History() {
   const [list, setList] = useState<HistoryItem[]>([]);
   const [confirm, setConfirm] = useState(false);
-  const load = useCallback(() => { irisIpc.history(50).then(setList, () => {}); }, []);
+  const [err, setErr] = useState<string | null>(null);
+  const load = useCallback(() => { irisIpc.history(50).then((l) => { setList(l); setErr(null); }, () => setErr("Impossible de charger l'historique.")); }, []);
   useEffect(load, [load]);
   return (
     <>
       <h3>Historique</h3>
-      {list.length === 0 ? <p className="acc-empty">Aucun message.</p> : (
+      {err && <p className="err" role="alert">{err}</p>}
+      {list.length === 0 && !err ? <p className="acc-empty">Aucun message.</p> : (
         <ul className="iris-hist">{list.map((h, i) => <li key={i}><small>{h.role === "user" ? "Toi" : "IRIS"}</small> {h.shown_text}</li>)}</ul>
       )}
       {!confirm
@@ -148,7 +152,7 @@ function History() {
         : (
           <div className="iris-row" role="alertdialog" aria-label="Confirmer l'effacement">
             <small>Efface les messages ; les préférences retenues (Mémoire) restent.</small>
-            <button type="button" className="acc-btn primary" onClick={() => void irisIpc.historyClear().finally(() => { setConfirm(false); load(); })}>Confirmer l'effacement</button>
+            <button type="button" className="acc-btn primary" onClick={() => void irisIpc.historyClear().then(load, (e) => setErr(errorText(e, "Effacement impossible."))).finally(() => setConfirm(false))}>Confirmer l'effacement</button>
             <button type="button" className="acc-btn" onClick={() => setConfirm(false)}>Garder</button>
           </div>
         )}

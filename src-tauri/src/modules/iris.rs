@@ -36,7 +36,7 @@ impl RealClaude {
 
     /// claude.exe des réglages (ou détecté), dossier de travail `%APPDATA%\Oniris\claude` ; `None` sans claude.exe.
     pub fn from_settings(s: &Settings) -> Option<Self> {
-        let cwd = PathBuf::from(std::env::var_os("APPDATA")?).join("Oniris").join("claude");
+        let cwd = dirs::data_dir()?.join("Oniris").join("claude");
         Some(Self::new(claude_exe(&s.claude_path)?, cwd, s.iris_claude_model.clone()))
     }
 
@@ -262,7 +262,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn plan_sert_le_tube_pendant_le_tour_seulement() {
+    async fn plan_sert_le_tube_pendant_le_tour() {
         let d = tempfile::tempdir().unwrap();
         let cfgf = d.path().join("cfg");
         let exec = crate::modules::iris_mcp::tests::exec(d.path());
@@ -273,10 +273,18 @@ mod tests {
         assert_eq!(o["command"], std::env::current_exe().unwrap().to_string_lossy().as_ref());
         assert_eq!(o["args"][0], "--mcp-relay");
         assert_eq!(o["env"]["ONIRIS_MCP_TOKEN"].as_str().unwrap().len(), 32);
+        // L'arrêt du tube au drop est couvert par `iris_mcp::tests::le_drop_arrete_le_tube`.
         assert_eq!(o["args"][2], "connecté", "le tube était joignable pendant le tour");
-        tokio::time::sleep(Duration::from_millis(50)).await;
-        let pipe = o["args"][1].as_str().unwrap();
-        assert!(tokio::net::windows::named_pipe::ClientOptions::new().open(pipe).is_err(), "tube arrêté après le tour");
+    }
+
+    #[test]
+    fn from_settings_travaille_dans_appdata_oniris_claude() {
+        let d = tempfile::tempdir().unwrap();
+        let exe = fake(d.path(), 1).program;
+        let s = Settings { claude_path: exe.to_string_lossy().into_owned(), iris_claude_model: "sonnet".into(), ..Settings::default() };
+        let c = RealClaude::from_settings(&s).unwrap();
+        assert_eq!((c.program, c.model), (exe, "sonnet".to_string()));
+        assert_eq!(c.cwd, dirs::data_dir().unwrap().join("Oniris").join("claude"));
     }
 
     #[tokio::test]

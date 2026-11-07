@@ -21,8 +21,7 @@ fn relay(pipe: &str) -> Command {
 }
 
 async fn send(stdin: &mut ChildStdin, v: Value) {
-    stdin.write_all(format!("{v}
-").as_bytes()).await.unwrap();
+    stdin.write_all(format!("{v}\n").as_bytes()).await.unwrap();
 }
 
 async fn reply(out: &mut Lines<BufReader<ChildStdout>>, id: u64) -> Value {

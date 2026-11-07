@@ -14,9 +14,12 @@ use tokio::io::{AsyncWriteExt, BufReader, ReadHalf, WriteHalf};
 use tokio::net::windows::named_pipe::{ClientOptions, NamedPipeClient};
 use tokio::sync::Mutex;
 
+type Conn = (BufReader<ReadHalf<NamedPipeClient>>, WriteHalf<NamedPipeClient>);
+
 struct Relay {
     token: String,
-    pipe: Mutex<(BufReader<ReadHalf<NamedPipeClient>>, WriteHalf<NamedPipeClient>)>,
+    /// `None` après une erreur d'échange : les réponses suivantes ne seraient plus alignées sur les requêtes.
+    pipe: Mutex<Option<Conn>>,
 }
 
 fn down(_: impl std::fmt::Debug) -> McpError {
@@ -28,9 +31,15 @@ impl Relay {
     async fn ask(&self, mut req: Value) -> Result<Value, McpError> {
         req["token"] = self.token.clone().into();
         let mut p = self.pipe.lock().await;
-        let (r, w) = &mut *p;
-        w.write_all(format!("{req}\n").as_bytes()).await.map_err(down)?;
-        let line = read_line(r).await.map_err(down)?.ok_or_else(|| down(()))?;
+        let (r, w) = p.as_mut().ok_or_else(|| down(()))?;
+        let line = match w.write_all(format!("{req}\n").as_bytes()).await {
+            Ok(()) => read_line(r).await,
+            Err(e) => Err(e),
+        };
+        let Ok(Some(line)) = line else {
+            *p = None;
+            return Err(down(()));
+        };
         let v: Value = serde_json::from_str(&line).map_err(down)?;
         match v.get("error") {
             Some(e) => Err(McpError::internal_error(format!("refusé par Oniris : {e}"), None)),
@@ -72,7 +81,7 @@ pub fn main(pipe: &str) -> ExitCode {
             Err(e) => { eprintln!("oniris --mcp-relay : tube d'Oniris injoignable ({e})"); return ExitCode::from(2); }
         };
         let (r, w) = tokio::io::split(client);
-        let relay = Relay { token, pipe: Mutex::new((BufReader::new(r), w)) };
+        let relay = Relay { token, pipe: Mutex::new(Some((BufReader::new(r), w))) };
         match relay.serve(rmcp::transport::stdio()).await {
             Ok(s) => { let _ = s.waiting().await; ExitCode::SUCCESS }
             Err(e) => { eprintln!("oniris --mcp-relay : {e}"); ExitCode::FAILURE }

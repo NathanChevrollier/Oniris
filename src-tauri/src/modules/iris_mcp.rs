@@ -1,6 +1,6 @@
 //! Côté app du serveur MCP d'Oniris : un tube nommé que relaie `oniris.exe --mcp-relay` (lancé par Claude Code).
 //! Chaque appel passe par l'exécuteur face planificateur, avec `Origin::Mcp` : mêmes confirmations, provenance et journal.
-use oniris_core::iris::Executor;
+use oniris_core::iris::{unwire, Executor};
 use oniris_core::tools::Origin;
 use serde_json::{json, Value};
 use std::io;
@@ -11,6 +11,9 @@ use tokio::task::JoinHandle;
 
 /// Taille maximale d'une ligne du protocole (octets, sans le `\n`).
 pub const LINE_MAX: usize = 1 << 20;
+
+/// Outils jamais offerts à Claude, ni listés ni appelables (Claude ne se rappelle pas lui-même).
+const EXCLUDED: &[&str] = &["iris.ask_claude"];
 
 /// Session d'un tour de Claude : la lâcher arrête le tube.
 pub struct McpSession { pub pipe: String, pub token: String, pub task: JoinHandle<()> }
@@ -71,10 +74,13 @@ async fn session(server: NamedPipeServer, exec: Arc<Executor>, token: String) {
         let resp = match req["op"].as_str() {
             _ if !allowed => json!({ "error": "refusé" }),
             Some("list") => {
-                let tools: Vec<Value> = exec.tools(&["iris.ask_claude"]).into_iter()
+                let tools: Vec<Value> = exec.tools(EXCLUDED).into_iter()
                     .map(|t| json!({ "name": t.wire, "description": t.description, "input_schema": t.schema }))
                     .collect();
                 json!({ "tools": tools })
+            }
+            Some("call") if EXCLUDED.contains(&unwire(req["name"].as_str().unwrap_or_default()).as_str()) => {
+                json!({ "text": json!({ "error": "outil indisponible" }).to_string(), "is_error": true })
             }
             Some("call") => {
                 let out = exec.call(req["name"].as_str().unwrap_or_default(), req["args"].clone()).await;
@@ -93,7 +99,11 @@ pub(crate) mod tests {
     use super::*;
     use oniris_core::events::{Events, NoEvents};
     use oniris_core::iris::Vault;
-    use oniris_core::tools::{Brain, PendingAction, Provenance, ToolBroker};
+    use async_trait::async_trait;
+    use oniris_core::iris::VirtualTools;
+    use oniris_core::tools::helpers::spec;
+    use oniris_core::tools::{Brain, Permission, PendingAction, Provenance, ToolBroker, ToolSpec};
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use parking_lot::Mutex;
     use tokio::io::{ReadHalf, WriteHalf};
     use tokio::net::windows::named_pipe::{ClientOptions, NamedPipeClient};
@@ -154,6 +164,31 @@ pub(crate) mod tests {
         assert!(serde_json::from_str::<Value>(r["text"].as_str().unwrap()).unwrap()["ok"]["id"].is_i64(), "{r}");
         let j = &e.broker.journal(1)[0];
         assert_eq!((j.origin.clone(), j.provenance.clone()), (Origin::Mcp, Provenance::User));
+    }
+
+    /// `iris.ask_claude` virtuel qui compte ses appels.
+    struct AskClaude(AtomicUsize);
+
+    #[async_trait]
+    impl VirtualTools for AskClaude {
+        fn specs(&self) -> Vec<ToolSpec> { vec![spec("iris.ask_claude", "fake", json!({"type":"object"}), Permission::Free)] }
+        async fn call(&self, _: &str, _: Value) -> Value { self.0.fetch_add(1, Ordering::SeqCst); json!({"ok": "appelé"}) }
+    }
+
+    #[tokio::test]
+    async fn ask_claude_ni_liste_ni_appelable() {
+        let d = tempfile::tempdir().unwrap();
+        let e = exec(d.path());
+        let ask_claude = Arc::new(AskClaude(AtomicUsize::new(0)));
+        let e = Arc::new(Executor { broker: e.broker.clone(), vault: e.vault.clone(), origin: e.origin.clone(), on_pending: e.on_pending.clone(), virtuals: Some(ask_claude.clone()) });
+        assert!(e.tools(&[]).iter().any(|t| t.wire == "iris__ask_claude"), "bien enregistré sur l'exécuteur");
+        let s = serve(e).unwrap();
+        let mut c = connect(&s.pipe);
+        let r = ask(&mut c, json!({"token": s.token, "op": "list"})).await.unwrap();
+        assert!(!r.to_string().contains("ask_claude"), "{r}");
+        let r = ask(&mut c, json!({"token": s.token, "op": "call", "name": "iris__ask_claude", "args": {}})).await.unwrap();
+        assert_eq!(r, json!({"text": "{\"error\":\"outil indisponible\"}", "is_error": true}));
+        assert_eq!(ask_claude.0.load(Ordering::SeqCst), 0, "l'exécuteur n'est jamais atteint");
     }
 
     #[tokio::test]

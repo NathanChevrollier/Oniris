@@ -19,6 +19,7 @@ mod windows;
 use tauri::Manager;
 
 /// Côté app du serveur MCP, pour les tests d'intégration du relais.
+#[doc(hidden)]
 pub use modules::iris_mcp;
 
 pub fn run() {

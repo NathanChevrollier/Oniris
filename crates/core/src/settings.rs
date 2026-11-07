@@ -90,7 +90,7 @@ fn check_exe_path(p: &str) -> Result<(), String> {
     if p.is_empty() || (p.chars().count() <= 260 && !p.starts_with(r"\\") && !p.starts_with("//") && std::path::Path::new(p).is_absolute() && p.to_ascii_lowercase().ends_with(".exe")) {
         Ok(())
     } else {
-        Err("chemin de Zenytt : absolu, en .exe, 260 caractères au plus".into())
+        Err("chemin de l'exécutable : absolu, en .exe, 260 caractères au plus".into())
     }
 }
 
@@ -130,6 +130,10 @@ pub struct Settings {
     pub sites: Vec<Site>,
     /// Chemin de Zenytt.exe (serveur MCP de la charge du VPS) : vide = détection automatique.
     pub zenytt_path: String,
+    /// Chemin de claude.exe : vide = détection automatique.
+    pub claude_path: String,
+    /// Modèle de Claude Code (`--model`) : vide = celui par défaut ; 100 caractères au plus parmi `[A-Za-z0-9._:/-]` et crochets.
+    pub iris_claude_model: String,
     /// Commandes PowerShell d'IRIS exécutées sans carte (préfixes de jetons) : 50 au plus, ASCII, 100 caractères.
     pub iris_shell_allowlist: Vec<String>,
     /// Dossiers de travail d'IRIS : renommer, déplacer ou supprimer dedans se fait sans carte. 20 au plus, absolus,
@@ -172,6 +176,8 @@ impl Default for Settings {
             mail_poll_minutes: 3,
             sites: Vec::new(),
             zenytt_path: String::new(),
+            claude_path: String::new(),
+            iris_claude_model: String::new(),
             iris_shell_allowlist: DEFAULT_SHELL_ALLOWLIST.map(String::from).to_vec(),
             iris_work_dirs: Vec::new(),
             iris_local_model: "qwen3:8b".into(),
@@ -351,6 +357,16 @@ impl Settings {
         if let Err(e) = check_exe_path(&self.zenytt_path) {
             errs.push(e);
             self.zenytt_path = d.zenytt_path.clone();
+        }
+        self.claude_path = self.claude_path.trim().to_string();
+        if let Err(e) = check_exe_path(&self.claude_path) {
+            errs.push(e);
+            self.claude_path = d.claude_path.clone();
+        }
+        self.iris_claude_model = self.iris_claude_model.trim().to_string();
+        if self.iris_claude_model.len() > 100 || !self.iris_claude_model.bytes().all(|b| b.is_ascii_alphanumeric() || b".:_/-[]".contains(&b)) {
+            errs.push("modèle Claude : 100 caractères au plus parmi A-Z a-z 0-9 . _ : / - [ ]".into());
+            self.iris_claude_model = d.iris_claude_model.clone();
         }
         for e in &mut self.iris_shell_allowlist {
             *e = e.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -576,6 +592,17 @@ mod tests {
         assert!(s.fix().is_empty());
         assert_eq!(s.zenytt_path, r"C:\Z\Zenytt.exe");
         assert_eq!(Settings::default().zenytt_path, "");
+    }
+    #[test] fn reglages_de_claude() {
+        let with = |p: &str, m: &str| Settings { claude_path: p.into(), iris_claude_model: m.into(), ..Settings::default() }.validate();
+        assert!(with("", "").is_ok());
+        assert!(with(r"C:\c\claude.exe", "claude-opus-4-5").is_ok());
+        assert!(with("", "sonnet[1m]").is_ok());
+        assert!(with(r"\\srv\claude.exe", "").is_err());
+        assert!(with(r"C:\c\claude.cmd", "").is_err());
+        assert!(with("", "a b").is_err());
+        assert!(with("", &"a".repeat(101)).is_err());
+        assert_eq!((Settings::default().claude_path.as_str(), Settings::default().iris_claude_model.as_str()), ("", ""));
     }
     #[test] fn import_de_domaines_sans_doublon_ni_depassement() {
         let site = |u: &str| Site { name: "x".into(), url: u.into(), slow_ms: 1500 };

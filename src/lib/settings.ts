@@ -50,6 +50,10 @@ export type Settings = {
   sites: Site[];
   /** Chemin de Zenytt.exe (charge du VPS) : vide = détection automatique ; absolu, en .exe, 260 caractères au plus. */
   zenytt_path: string;
+  /** Chemin de claude.exe : vide = détection automatique ; absolu, en .exe, 260 caractères au plus. */
+  claude_path: string;
+  /** Modèle de Claude Code : vide = par défaut ; 100 caractères au plus parmi A-Z a-z 0-9 . _ : / - [ ] */
+  iris_claude_model: string;
   /** Commandes PowerShell d'IRIS sans confirmation (préfixes de jetons) : 50 au plus, ASCII, 100 caractères. */
   iris_shell_allowlist: string[];
   /** Dossiers de travail d'IRIS (renommer, déplacer, supprimer sans carte) : 20 au plus, absolus, locaux, jamais protégés. */
@@ -89,6 +93,8 @@ export const DEFAULT_SETTINGS: Settings = {
   mail_poll_minutes: 3,
   sites: [],
   zenytt_path: "",
+  claude_path: "",
+  iris_claude_model: "",
   iris_shell_allowlist: ["git status", "Get-ChildItem", "Get-Location", "Get-Date"],
   iris_work_dirs: [],
   iris_local_model: "qwen3:8b",

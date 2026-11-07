@@ -1,14 +1,93 @@
-//! IRIS : état du cerveau local (Ollama) et téléchargement de son modèle. Le journal ne porte aucun texte utilisateur.
+//! IRIS : état du cerveau local (Ollama), téléchargement de son modèle et lancement de Claude Code sans outils natifs.
+//! Le journal ne porte aucun texte utilisateur.
+use crate::job;
 use crate::state::AppState;
-use oniris_core::iris::{LocalStatus, Ollama};
+use async_trait::async_trait;
+use oniris_core::iris::{classify, invocation, locate, parse_line, ClaudeBrain, ClaudeError, ClaudeEvent, Executor, LocalStatus, OnDelta, Ollama};
 use serde::Serialize;
+use std::path::PathBuf;
+use std::process::Stdio;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
+use tokio::process::Command;
 
-/// Claude Code : la détection arrive avec la tâche 6 (`Found { path }` / `Missing`).
-#[derive(Serialize, Clone, Copy)]
+/// Claude Code : `claude.exe` trouvé (réglage, npm, installeur natif) ou absent.
+#[derive(Serialize, Clone)]
 #[serde(tag = "kind", rename_all = "snake_case")]
-pub enum ClaudeStatus { Unknown }
+pub enum ClaudeStatus { Found { path: String }, Missing }
+
+fn claude_exe(setting: &str) -> Option<PathBuf> {
+    locate(setting, dirs::data_dir().as_deref(), dirs::home_dir().as_deref())
+}
+
+/// Lance `claude -p` ; fermer le `Job` (fin, erreur ou abandon du futur) tue le processus et ses descendants.
+#[allow(dead_code)] // câblé par l'agent (tâche 7)
+pub struct RealClaude { pub program: PathBuf, pub cwd: PathBuf, pub model: String, pub timeout: Duration }
+
+#[allow(dead_code)] // idem
+impl RealClaude {
+    pub fn new(program: PathBuf, cwd: PathBuf, model: String) -> Self {
+        Self { program, cwd, model, timeout: Duration::from_secs(180) }
+    }
+
+    async fn run(&self, system: &str, prompt: String, on_delta: OnDelta<'_>) -> Result<String, ClaudeError> {
+        std::fs::create_dir_all(&self.cwd).map_err(|_| ClaudeError::Failed("dossier de travail illisible".into()))?;
+        let inv = invocation(self.program.clone(), self.cwd.clone(), system, &self.model, None, prompt);
+        let mut cmd = Command::new(&inv.program);
+        cmd.args(&inv.args).current_dir(&inv.cwd).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
+        let (mut child, _job) = job::spawn(cmd).map_err(|e| match e.kind() {
+            std::io::ErrorKind::NotFound => ClaudeError::NotInstalled,
+            _ => ClaudeError::Failed("lancement impossible".into()),
+        })?;
+        let mut stdin = child.stdin.take().ok_or_else(|| ClaudeError::Failed("entrée indisponible".into()))?;
+        // Si le processus meurt avant d'avoir tout lu, l'erreur d'écriture est sans importance : la sortie le dira.
+        let _ = stdin.write_all(inv.stdin.as_bytes()).await;
+        drop(stdin);
+        let mut err = child.stderr.take().ok_or_else(|| ClaudeError::Failed("erreur indisponible".into()))?;
+        let stderr = tokio::spawn(async move { let mut s = String::new(); let _ = err.read_to_string(&mut s).await; s });
+        let mut lines = BufReader::new(child.stdout.take().ok_or_else(|| ClaudeError::Failed("sortie indisponible".into()))?).lines();
+
+        let read = async {
+            let (mut result, mut text) = (None, String::new());
+            while let Ok(Some(line)) = lines.next_line().await {
+                match parse_line(&line) {
+                    Some(ClaudeEvent::Init { tools }) => {
+                        let bad: Vec<String> = tools.into_iter().filter(|t| !t.starts_with("mcp__oniris__")).collect();
+                        if !bad.is_empty() {
+                            return Err(ClaudeError::ForbiddenTools(bad));
+                        }
+                    }
+                    Some(ClaudeEvent::Delta(d)) => { on_delta(&d); text.push_str(&d); }
+                    Some(r @ ClaudeEvent::Result { .. }) => result = Some(r),
+                    None => {}
+                }
+            }
+            Ok((result, text))
+        };
+        let (result, streamed) = tokio::time::timeout(self.timeout, read).await.map_err(|_| ClaudeError::Failed("délai dépassé".into()))??;
+        let exit = tokio::time::timeout(Duration::from_secs(2), child.wait()).await.ok().and_then(|r| r.ok()).and_then(|s| s.code());
+        let stderr = tokio::time::timeout(Duration::from_secs(1), stderr).await.ok().and_then(|r| r.ok()).unwrap_or_default();
+        match result {
+            Some(ClaudeEvent::Result { text, is_error: false, .. }) => Ok(if text.is_empty() { streamed } else { text }),
+            other => Err(classify(&stderr, other.as_ref(), exit)),
+        }
+    }
+}
+
+#[async_trait]
+impl ClaudeBrain for RealClaude {
+    async fn complete(&self, system: &str, prompt: String, on_delta: OnDelta<'_>) -> Result<String, ClaudeError> {
+        self.run(system, prompt, on_delta).await
+    }
+
+    // Tâche 7 : session MCP réelle.
+    async fn plan(&self, _system: &str, _prompt: String, _exec: Arc<Executor>, _on_delta: OnDelta<'_>) -> Result<String, ClaudeError> {
+        Err(ClaudeError::Failed("MCP non branché".into()))
+    }
+}
 
 #[derive(Serialize)]
 pub struct IrisStatus { local: LocalStatus, model: String, claude: ClaudeStatus }
@@ -31,7 +110,9 @@ impl Drop for PullGuard { fn drop(&mut self) { PULLING.store(false, Ordering::Se
 #[tauri::command]
 pub async fn iris_status(app: AppHandle) -> IrisStatus {
     let (model, keep) = model(&app);
-    IrisStatus { local: Ollama::new(&model, keep).status(&model).await, model, claude: ClaudeStatus::Unknown }
+    let setting = app.state::<AppState>().settings.read().claude_path.clone();
+    let claude = claude_exe(&setting).map_or(ClaudeStatus::Missing, |p| ClaudeStatus::Found { path: p.to_string_lossy().into_owned() });
+    IrisStatus { local: Ollama::new(&model, keep).status(&model).await, model, claude }
 }
 
 /// Télécharge le modèle configuré ; progression sur `oniris://iris-pull`, puis `{done: total}` ou `{error}`.
@@ -58,4 +139,92 @@ pub fn unload_on_fullscreen(app: &AppHandle) {
         let (model, keep) = model(&app);
         Ollama::new(&model, keep).unload(&model).await;
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    /// `examples/fake_claude.rs`, compilé par `cargo test` à côté du binaire de test.
+    fn fake(dir: &Path, timeout_ms: u64) -> RealClaude {
+        let deps = std::env::current_exe().unwrap();
+        let p = deps.parent().unwrap().parent().unwrap().join("examples").join("fake_claude.exe");
+        assert!(p.is_file(), "faux claude absent : lancer `cargo test` (qui compile les exemples), pas `--lib` seul");
+        RealClaude { timeout: Duration::from_millis(timeout_ms), ..RealClaude::new(p, dir.join("cwd"), String::new()) }
+    }
+
+    async fn pid_of(file: &Path) -> u32 {
+        for _ in 0..100 {
+            if let Ok(s) = std::fs::read_to_string(file) { if let Ok(n) = s.parse() { return n; } }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        panic!("le faux claude n'a pas démarré");
+    }
+
+    async fn gone_within_2s(pid: u32) -> bool {
+        let p = sysinfo::Pid::from_u32(pid);
+        let mut sys = sysinfo::System::new();
+        for _ in 0..40 {
+            sys.refresh_processes(sysinfo::ProcessesToUpdate::Some(&[p]), true);
+            if sys.process(p).is_none() { return true; }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        false
+    }
+
+    #[tokio::test]
+    async fn scenario_normal_donne_le_texte_complet() {
+        let d = tempfile::tempdir().unwrap();
+        let mut got = String::new();
+        let r = fake(d.path(), 20_000).complete("sys", "normal".into(), &mut |t: &str| got.push_str(t)).await;
+        assert_eq!(r, Ok("Bonjour".into()));
+        assert_eq!(got, "Bonjour");
+        assert!(d.path().join("cwd").is_dir());
+    }
+
+    #[tokio::test]
+    async fn limite_d_usage_donne_unavailable() {
+        let d = tempfile::tempdir().unwrap();
+        let r = fake(d.path(), 20_000).complete("sys", "limite".into(), &mut |_: &str| {}).await;
+        assert!(matches!(r, Err(ClaudeError::Unavailable(_))), "{r:?}");
+    }
+
+    #[tokio::test]
+    async fn outil_interdit_tue_le_processus() {
+        let d = tempfile::tempdir().unwrap();
+        let pidf = d.path().join("pid");
+        let r = fake(d.path(), 20_000).complete("sys", format!("bash:{}", pidf.display()), &mut |_: &str| {}).await;
+        assert_eq!(r, Err(ClaudeError::ForbiddenTools(vec!["Bash".into()])));
+        assert!(gone_within_2s(pid_of(&pidf).await).await);
+    }
+
+    #[tokio::test]
+    async fn silence_au_dela_du_delai() {
+        let d = tempfile::tempdir().unwrap();
+        let pidf = d.path().join("pid");
+        let r = fake(d.path(), 500).complete("sys", format!("silence:{}", pidf.display()), &mut |_: &str| {}).await;
+        assert_eq!(r, Err(ClaudeError::Failed("délai dépassé".into())));
+        assert!(gone_within_2s(pid_of(&pidf).await).await);
+    }
+
+    #[tokio::test]
+    async fn abandon_du_futur_tue_le_processus() {
+        let d = tempfile::tempdir().unwrap();
+        let pidf = d.path().join("pid");
+        let brain = fake(d.path(), 60_000);
+        let arg = format!("silence:{}", pidf.display());
+        let task = tokio::spawn(async move { brain.complete("sys", arg, &mut |_: &str| {}).await });
+        let pid = pid_of(&pidf).await;
+        task.abort();
+        assert!(task.await.unwrap_err().is_cancelled());
+        assert!(gone_within_2s(pid).await);
+    }
+
+    #[tokio::test]
+    async fn programme_absent_donne_not_installed() {
+        let d = tempfile::tempdir().unwrap();
+        let brain = RealClaude::new(d.path().join("absent.exe"), d.path().join("cwd"), String::new());
+        assert_eq!(brain.complete("s", "p".into(), &mut |_: &str| {}).await, Err(ClaudeError::NotInstalled));
+    }
 }

@@ -69,6 +69,8 @@ fn main() {
         "mail_delete",
         "mail_send",
         "iris_status",
+        "iris_draft_reply",
+        "iris_draft_reply_local",
         "iris_pull_model",
         "iris_history",
         "iris_history_clear",

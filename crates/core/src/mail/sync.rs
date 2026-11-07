@@ -285,7 +285,7 @@ mod tests {
         }
         fn seed(&self, id: &str, date_ms: i64) {
             self.db.lock().execute(
-                "INSERT INTO mails VALUES (?1, ?2, 't', 'n', 'a', 's', '', ?3, 0, '[\"INBOX\"]', 'read', 'heuristic', NULL, NULL)",
+                "INSERT INTO mails VALUES (?1, ?2, 't', 'n', 'a', 's', '', ?3, 0, '[\"INBOX\"]', 'read', 'heuristic', NULL, NULL, 0)",
                 params![self.id, id, date_ms],
             ).unwrap();
         }

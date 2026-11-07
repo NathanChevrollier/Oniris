@@ -252,6 +252,11 @@ Migration {
         text TEXT NOT NULL,
         created_ms INTEGER NOT NULL
     ) STRICT;",
+},
+Migration {
+    version: 18,
+    // Tentatives de tri par IRIS d'un mail (deux au plus).
+    sql: "ALTER TABLE mails ADD COLUMN triage_tries INTEGER NOT NULL DEFAULT 0;",
 }];
 
 pub fn open_db(path: &Path) -> Result<Connection, CoreError> {

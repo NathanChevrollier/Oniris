@@ -357,6 +357,18 @@
           "markdownDescription": "Enables the iris_conversation_new command without any pre-configured scope."
         },
         {
+          "description": "Enables the iris_draft_reply command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-iris-draft-reply",
+          "markdownDescription": "Enables the iris_draft_reply command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the iris_draft_reply_local command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-iris-draft-reply-local",
+          "markdownDescription": "Enables the iris_draft_reply_local command without any pre-configured scope."
+        },
+        {
           "description": "Enables the iris_history command without any pre-configured scope.",
           "type": "string",
           "const": "allow-iris-history",
@@ -913,6 +925,18 @@
           "type": "string",
           "const": "deny-iris-conversation-new",
           "markdownDescription": "Denies the iris_conversation_new command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the iris_draft_reply command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-iris-draft-reply",
+          "markdownDescription": "Denies the iris_draft_reply command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the iris_draft_reply_local command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-iris-draft-reply-local",
+          "markdownDescription": "Denies the iris_draft_reply_local command without any pre-configured scope."
         },
         {
           "description": "Denies the iris_history command without any pre-configured scope.",

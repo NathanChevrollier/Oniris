@@ -9,6 +9,7 @@ pub mod ollama;
 pub mod prompt;
 pub mod quarantine;
 pub mod taint;
+pub mod triage;
 
 pub use claude::{classify, invocation, locate, parse_line, ClaudeBrain, ClaudeError, ClaudeEvent, Invocation, McpConfig, OnDelta};
 pub use exec::{unwire, wire, Executor, PlannerTool, VirtualTools};

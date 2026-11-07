@@ -75,7 +75,7 @@ it("lecteur : iframe sans scripts, CSP sans https avant « Afficher les images �
   await userEvent.click(await screen.findByText("Sujet 2"));
   const f2 = await screen.findByTitle("Message");
   expect(f2.getAttribute("srcdoc")).not.toContain("https:");
-  expect(screen.getByRole("button", { name: /Répondre avec IRIS/ })).toBeDisabled();
+  expect(screen.getByRole("button", { name: /Répondre avec IRIS/ })).toBeEnabled();
 });
 
 it("message tronqué : mention et bouton « Ouvrir dans Gmail » ; rien si complet", async () => {
@@ -118,6 +118,26 @@ it("Composer : « Envoyer » appelle send avec les champs exacts ; le brouillon 
   expect((screen.getByPlaceholderText("Ta réponse…") as HTMLTextAreaElement).value).toBe("Ok\nmerci");
   await userEvent.click(screen.getByRole("button", { name: /Envoyer/ }));
   expect(send).toHaveBeenCalledWith(1, "marc@x.fr", "Re: Devis", "Ok\nmerci", "1");
+});
+
+it("Répondre avec IRIS : le brouillon remplit le composeur, la mention est visible, Claude indisponible propose le local", async () => {
+  setup([mk("1", "todo", true, { subject: "Devis", from_addr: "marc@x.fr" })]);
+  vi.spyOn(mailIpc, "read").mockResolvedValue(body);
+  const draft = vi.spyOn(mailIpc, "draftReply").mockResolvedValueOnce("Bonjour Marc, c'est bon.");
+  await userEvent.click(await screen.findByText("Devis"));
+  expect(await screen.findByText("Le contenu de ce mail sera envoyé à Anthropic via Claude Code.")).toBeTruthy();
+  await userEvent.click(screen.getByRole("button", { name: /Répondre avec IRIS/ }));
+  expect(draft).toHaveBeenCalledWith(1, "1");
+  await waitFor(() => expect((screen.getByPlaceholderText("Ta réponse…") as HTMLTextAreaElement).value).toBe("Bonjour Marc, c'est bon."));
+  expect((screen.getByLabelText("Sujet") as HTMLInputElement).value).toBe("Re: Devis");
+
+  draft.mockRejectedValueOnce(new Error("claude_unavailable"));
+  const local = vi.spyOn(mailIpc, "draftReplyLocal").mockResolvedValue("Version locale.");
+  await userEvent.click(screen.getByRole("button", { name: /Répondre avec IRIS/ }));
+  await userEvent.click(await screen.findByRole("button", { name: "Version simple en local" }));
+  expect(local).toHaveBeenCalledWith(1, "1");
+  await waitFor(() => expect((screen.getByPlaceholderText("Ta réponse…") as HTMLTextAreaElement).value).toBe("Version locale."));
+  expect(screen.queryByRole("button", { name: "Version simple en local" })).toBeNull();
 });
 
 it("sans compte : invite et ouverture de la feuille Comptes", async () => {

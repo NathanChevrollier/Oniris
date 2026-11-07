@@ -329,7 +329,7 @@ mod tests {
         s.set(&account_key(id), "ref").unwrap();
         s.set(&account_key(id + 1), "autre").unwrap();
         for acc in [id, id + 1] {
-            c.execute("INSERT INTO mails VALUES (?1, 'm', 't', 'n', 'a', 's', '', 1, 0, '[]', 'read', 'heuristic', NULL, NULL)", [acc]).unwrap();
+            c.execute("INSERT INTO mails VALUES (?1, 'm', 't', 'n', 'a', 's', '', 1, 0, '[]', 'read', 'heuristic', NULL, NULL, 0)", [acc]).unwrap();
             c.execute("INSERT INTO mail_sync(account_id, history_id) VALUES (?1, '1')", [acc]).unwrap();
         }
         for acc in [id, id + 1] {

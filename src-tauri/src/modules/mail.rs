@@ -39,13 +39,46 @@ pub fn start(app: &AppHandle) {
 
 pub fn wake() { WAKE.notify_one(); }
 
+/// Une seule passe de tri à la fois.
+static TRIAGING: AtomicBool = AtomicBool::new(false);
+
+/// Libère `TRIAGING` même si la tâche est abandonnée ou panique.
+struct TriageGuard;
+impl Drop for TriageGuard { fn drop(&mut self) { TRIAGING.store(false, Ordering::SeqCst); } }
+
+/// Tri IRIS en tâche de fond : pas en plein écran, seulement si le modèle local est prêt, une passe à la fois.
+pub fn spawn_triage(app: &AppHandle) {
+    if crate::fullscreen::active() || TRIAGING.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let _guard = TriageGuard;
+        let st = app.state::<AppState>();
+        let (model, keep) = {
+            let s = st.settings.read();
+            (s.iris_local_model.clone(), s.iris_unload_minutes)
+        };
+        let ollama = oniris_core::iris::Ollama::new(&model, keep);
+        if ollama.status(&model).await != oniris_core::iris::LocalStatus::Ready {
+            return;
+        }
+        match oniris_core::iris::triage::triage_unless(crate::fullscreen::active(), &st.db, &ollama).await {
+            Ok(n) if n > 0 => st.events.changed(Topic::Mail),
+            Ok(_) => {}
+            Err(e) => tracing::warn!("mails : tri IRIS interrompu : {e}"),
+        }
+    });
+}
+
 /// Appelé par `windows::open_panel` (fil principal) : ne verrouille pas la base.
-pub fn on_panel_open(_app: &AppHandle) {
+pub fn on_panel_open(app: &AppHandle) {
     let now = now_ms();
     if LAST_RUNS.lock().iter().any(|&t| now - t > STALE_MS) {
         FORCE.store(true, Ordering::SeqCst);
         WAKE.notify_one();
     }
+    spawn_triage(app);
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -189,6 +222,7 @@ async fn run(app: AppHandle) {
         }
         if changed {
             st.events.changed(Topic::Mail);
+            spawn_triage(&app);
         }
         if agenda_changed {
             st.events.changed(Topic::Agenda);

@@ -6,6 +6,7 @@ use async_trait::async_trait;
 use crate::commands::{dispatch_as_user, show_confirm};
 use oniris_core::events::Topic;
 use oniris_core::iris::memory::{self, HistoryItem, Memory};
+use oniris_core::iris::quarantine::{frame, QUARANTINE};
 use oniris_core::iris::{prompt, Agent, IrisEventKind, LocalBrain, PromptCtx, Quarantine, Segment, TurnInput, Vault};
 use oniris_core::time_util::now_ms;
 use oniris_core::tools::{Brain, Origin, PendingAction, ToolOutcome};
@@ -253,6 +254,59 @@ pub async fn iris_status(app: AppHandle) -> IrisStatus {
     let setting = app.state::<AppState>().settings.read().claude_path.clone();
     let claude = claude_exe(&setting).map_or(ClaudeStatus::Missing, |p| ClaudeStatus::Found { path: p.to_string_lossy().into_owned() });
     IrisStatus { local: Ollama::new(&model, keep).status(&model).await, model, claude }
+}
+
+/// Octets du mail transmis au modèle pour un brouillon, au plus.
+const DRAFT_MAX: usize = 8 * 1024;
+
+/// Consigne fixe du brouillon ; le mail, non fiable, n'arrive que cadré.
+fn draft_system(s: &Settings) -> String {
+    format!(
+        "{}\nRédige en français, au nom de {}, une réponse au mail ci-dessous. Réponds uniquement par le texte de la réponse, sans objet ni explication. {QUARANTINE}",
+        s.iris_personality.replace("{prénom}", &s.user_name), s.user_name
+    )
+}
+
+/// Le mail lu via `mail.read` (cache du plan 4), cadré pour le modèle.
+async fn draft_prompt(app: &AppHandle, account: i64, id: String) -> Result<String, String> {
+    let out = match dispatch_as_user(app, "mail.read", json!({ "account": account, "id": id })).await {
+        ToolOutcome::Done { output, .. } => output,
+        _ => return Err("mail_unavailable".into()),
+    };
+    let text = out["text"].as_str().or_else(|| out["html"].as_str()).unwrap_or_default();
+    let st = app.state::<AppState>();
+    let head = st.db.lock().query_row(
+        "SELECT from_name, from_addr, subject FROM mails WHERE account_id = ?1 AND id = ?2", rusqlite::params![account, id],
+        |r| Ok(format!("De : {} <{}>\nSujet : {}\n\n", r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?)),
+    ).unwrap_or_default();
+    let body: String = format!("{head}{text}").chars().take(DRAFT_MAX).collect();
+    Ok(frame(&body))
+}
+
+/// Brouillon de réponse par Claude, sans outils. Le texte rendu remplit le composeur : jamais exécuté.
+#[tauri::command]
+pub async fn iris_draft_reply(app: AppHandle, account: i64, id: String) -> Result<String, String> {
+    let prompt = draft_prompt(&app, account, id).await?;
+    let s = app.state::<AppState>().settings.read().clone();
+    let claude: Arc<dyn ClaudeBrain> = match RealClaude::from_settings(&s) {
+        Some(c) => Arc::new(c),
+        None => Arc::new(NoClaude),
+    };
+    match claude.complete(&draft_system(&s), prompt, &mut |_: &str| {}).await {
+        Ok(t) => Ok(t.trim().to_string()),
+        Err(ClaudeError::Unavailable(_) | ClaudeError::NotInstalled) => Err("claude_unavailable".into()),
+        Err(_) => Err("draft_failed".into()),
+    }
+}
+
+/// « Version simple en local » : même consigne, modèle local, sans outils.
+#[tauri::command]
+pub async fn iris_draft_reply_local(app: AppHandle, account: i64, id: String) -> Result<String, String> {
+    let prompt = draft_prompt(&app, account, id).await?;
+    let s = app.state::<AppState>().settings.read().clone();
+    let schema = json!({ "type": "object", "properties": { "reply": { "type": "string" } }, "required": ["reply"] });
+    let out = Ollama::new(&s.iris_local_model, s.iris_unload_minutes).structured(&draft_system(&s), &prompt, &schema).await.map_err(|_| "draft_failed".to_string())?;
+    out["reply"].as_str().map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).ok_or_else(|| "draft_failed".into())
 }
 
 #[tauri::command]

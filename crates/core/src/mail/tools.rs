@@ -408,7 +408,7 @@ mod tests {
         let db: Db = Arc::new(Mutex::new(crate::test_util::db()));
         let account = accounts::add(&db.lock(), Provider::Google, "moi@gmail.com", 1).unwrap();
         db.lock().execute(
-            "INSERT INTO mails VALUES (?1, 'm1', 'th1', 'Jean Dupont', 'j@x.fr', 'Point budget', 'extrait', 5, 1, '[\"INBOX\",\"UNREAD\"]', 'todo', 'heuristic', NULL, NULL)",
+            "INSERT INTO mails VALUES (?1, 'm1', 'th1', 'Jean Dupont', 'j@x.fr', 'Point budget', 'extrait', 5, 1, '[\"INBOX\",\"UNREAD\"]', 'todo', 'heuristic', NULL, NULL, 0)",
             [account],
         ).unwrap();
         let url = format!("{}/token", server.uri());

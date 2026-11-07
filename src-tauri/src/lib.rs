@@ -104,6 +104,8 @@ pub fn run() {
             modules::mail::mail_delete,
             modules::mail::mail_send,
             modules::iris::iris_status,
+            modules::iris::iris_draft_reply,
+            modules::iris::iris_draft_reply_local,
             modules::iris::iris_pull_model,
             modules::iris::iris_history,
             modules::iris::iris_history_clear,

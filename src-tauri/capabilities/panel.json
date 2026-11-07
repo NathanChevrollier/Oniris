@@ -71,6 +71,8 @@
     "allow-mail-delete",
     "allow-mail-send",
     "allow-iris-status",
+    "allow-iris-draft-reply",
+    "allow-iris-draft-reply-local",
     "allow-iris-pull-model",
     "allow-iris-history",
     "allow-iris-history-clear",

@@ -18,7 +18,7 @@ pub const SUMMARY_MAX: usize = 200;
 /// Références d'un `iris.digest`, au plus.
 pub const DIGEST_MAX: usize = 20;
 const CATEGORIES: [&str; 5] = ["demande", "info", "publicite", "notification", "autre"];
-const TAGS: [&str; 6] = ["Bug", "Facture", "Rendez-vous", "Livraison", "Sécurité", "Personnel"];
+pub const TAGS: [&str; 6] = ["Bug", "Facture", "Rendez-vous", "Livraison", "Sécurité", "Personnel"];
 const YEAR_MS: i64 = 365 * 24 * 3600 * 1000;
 
 pub struct Quarantine {

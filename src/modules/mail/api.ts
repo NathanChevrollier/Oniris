@@ -58,6 +58,12 @@ export const mailIpc = {
   /** Déclenche la carte de confirmation du `ConfirmQueue`. */
   send: (account: number, to: string, subject: string, body: string, replyToId: string | null): Promise<ToolOutcome> =>
     isTauri ? invoke("mail_send", { account, to, subject, body, replyToId }) : ok(),
+  /** Brouillon de Claude (sans outils) ; rejette avec « claude_unavailable » si Claude ne répond pas. */
+  draftReply: (account: number, id: string): Promise<string> =>
+    isTauri ? invoke("iris_draft_reply", { account, id }) : Promise.resolve("Bonjour Marc,\n\nMerci, la livraison est prévue le 12.\n\nÀ bientôt."),
+  /** « Version simple en local » : même brouillon par le modèle local. */
+  draftReplyLocal: (account: number, id: string): Promise<string> =>
+    isTauri ? invoke("iris_draft_reply_local", { account, id }) : Promise.resolve("Bonjour, merci pour ton message."),
   openWeb: (account: number, id: string): Promise<ToolOutcome> => isTauri ? invoke("mail_open_web", { account, id }) : ok(),
   openLink: (url: string): Promise<ToolOutcome> => isTauri ? invoke("mail_open_link", { url }) : ok(),
 };

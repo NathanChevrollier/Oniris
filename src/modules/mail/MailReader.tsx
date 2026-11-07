@@ -20,6 +20,9 @@ export function MailReader({ mail, draft, onDraft, onClose }: { mail: MailRow; d
   const [images, setImages] = useState(false);
   const [replying, setReplying] = useState(draft !== null);
   const { run, error } = useToolAction("Action impossible, réessaie.");
+  const [drafting, setDrafting] = useState(false);
+  const [draftError, setDraftError] = useState<string | null>(null);
+  const [noClaude, setNoClaude] = useState(false);
 
   useEffect(() => {
     let live = true;
@@ -31,6 +34,22 @@ export function MailReader({ mail, draft, onDraft, onClose }: { mail: MailRow; d
     setReplying(true);
     if (!draft) onDraft({ to: mail.from_addr, subject: replySubject(mail.subject), body: "" });
   };
+  const iris = async (call: Promise<string>) => {
+    setDrafting(true);
+    setDraftError(null);
+    try {
+      const text = await call;
+      setNoClaude(false);
+      setReplying(true);
+      onDraft({ to: mail.from_addr, subject: replySubject(mail.subject), body: text });
+    } catch (e) {
+      const unavailable = String(e instanceof Error ? e.message : e).includes("claude_unavailable");
+      setNoClaude(unavailable);
+      setDraftError(unavailable ? "Claude est indisponible pour le moment." : "Brouillon impossible, réessaie.");
+    } finally {
+      setDrafting(false);
+    }
+  };
   const gone = async (call: Promise<ToolOutcome>) => { if (await run(call)) onClose(); };
 
   return (
@@ -39,13 +58,16 @@ export function MailReader({ mail, draft, onDraft, onClose }: { mail: MailRow; d
         <button type="button" className="mail-btn mail-ico" aria-label="Retour" title="Retour" onClick={onClose}><ArrowLeft size={14} /></button>
         <button type="button" className="mail-btn" onClick={startReply}><Reply size={13} /> Répondre</button>
         <span className="mail-rsp" />
-        <button type="button" className="mail-btn mail-ico" aria-label="Répondre avec IRIS" disabled title="Bientôt (IRIS)"><Sparkles size={14} /></button>
+        <button type="button" className="mail-btn" disabled={drafting} onClick={() => void iris(mailIpc.draftReply(mail.account_id, mail.id))}><Sparkles size={13} /> Répondre avec IRIS</button>
         <button type="button" className="mail-btn mail-ico" aria-label="Archiver" title="Archiver" onClick={() => void gone(mailIpc.archive(mail.account_id, mail.id))}><Archive size={14} /></button>
         <button type="button" className="mail-btn mail-ico" aria-label="Supprimer" title="Supprimer" onClick={() => void gone(mailIpc.delete(mail.account_id, mail.id))}><Trash2 size={14} /></button>
         <button type="button" className="mail-btn mail-ico" aria-label="Ouvrir dans Gmail" title="Ouvrir dans Gmail" onClick={() => void run(mailIpc.openWeb(mail.account_id, mail.id))}><ExternalLink size={14} /></button>
       </div>
       <h4 className="mail-rsubj">{mail.subject}</h4>
       <p className="mail-rfrom">{mail.from_name} &lt;{mail.from_addr}&gt;</p>
+      <p className="mail-trunc">Le contenu de ce mail sera envoyé à Anthropic via Claude Code.</p>
+      {draftError && <p className="err" role="alert">{draftError}</p>}
+      {noClaude && <button type="button" className="mail-btn" disabled={drafting} onClick={() => void iris(mailIpc.draftReplyLocal(mail.account_id, mail.id))}>Version simple en local</button>}
       {error && <p className="err" role="alert">{error}</p>}
       {failed && <p className="err" role="alert">Mail indisponible, réessaie.</p>}
       {body && (

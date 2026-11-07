@@ -187,14 +187,15 @@ where
     }
 }
 
-/// Playlist demandée par son nom : insensible à la casse et aux accents, préfixe d'abord, puis contenu.
+/// Playlist demandée par son nom : insensible à la casse et aux accents, exact d'abord, puis préfixe, puis contenu.
 pub fn match_playlist<'a>(list: &'a [Playlist], name: &str) -> Option<&'a Playlist> {
     let want = crate::when::norm(name);
     if want.is_empty() {
         return None;
     }
     let normed: Vec<String> = list.iter().map(|p| crate::when::norm(&p.name)).collect();
-    normed.iter().position(|n| n.starts_with(&want)).or_else(|| normed.iter().position(|n| n.contains(&want))).map(|i| &list[i])
+    let find = |f: &dyn Fn(&String) -> bool| normed.iter().position(f);
+    find(&|n| *n == want).or_else(|| find(&|n| n.starts_with(&want))).or_else(|| find(&|n| n.contains(&want))).map(|i| &list[i])
 }
 
 /// Volume visé : `delta` part du volume courant, borné à 0..=100.
@@ -302,6 +303,9 @@ mod tests {
         assert_eq!(match_playlist(&l, "focus").unwrap().id, "2", "préfixe avant contenu");
         assert_eq!(match_playlist(&l, "ete").unwrap().id, "3");
         assert_eq!(match_playlist(&l, "road").unwrap().id, "1");
+        let l2 = [p("1", "Focus Flow"), p("2", "Focus"), p("3", "Música")];
+        assert_eq!(match_playlist(&l2, "Focus").unwrap().id, "2", "exact avant préfixe");
+        assert_eq!(match_playlist(&l2, " musica ").unwrap().id, "3");
         assert!(match_playlist(&l, "jazz").is_none() && match_playlist(&l, "  ").is_none());
     }
 

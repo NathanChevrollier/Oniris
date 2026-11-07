@@ -71,6 +71,7 @@ fn listen(app: &AppHandle, tx: &Sender<Msg>, rx: &Receiver<Msg>) -> windows::cor
     let mut bound = bind(&mgr, tx);
     let mut throttle = Throttle::new(250);
     let mut rebind = false;
+    let mut first = true;
     loop {
         let t0 = now_ms();
         let wait = throttle.wait_ms(t0);
@@ -93,10 +94,15 @@ fn listen(app: &AppHandle, tx: &Sender<Msg>, rx: &Receiver<Msg>) -> windows::cor
             rebind = false;
         }
         let prev = NOW.lock().clone(); // verrou relâché avant la lecture (bloquante) : `music_now` tourne sur le fil principal
-        let next = bound.as_ref().and_then(|b| read(&b.session, prev).ok());
+        let next = bound.as_ref().and_then(|b| read(&b.session, prev.clone()).ok());
+        let changed = first || prev != next;
+        first = false;
         *NOW.lock() = next;
         throttle.mark(now_ms());
-        app.state::<AppState>().events.changed(Topic::Music);
+        // Un événement sans effet visible (position inchangée, même titre) ne réveille pas l'interface.
+        if changed {
+            app.state::<AppState>().events.changed(Topic::Music);
+        }
         // Attend le prochain événement.
         match rx.recv() {
             Ok(Msg::Stop) | Err(_) => break,

@@ -24,7 +24,7 @@ const setup = (mails: MailRow[], accounts: AccountView[] = [acc(1), acc(2)], onA
   render(<MailCard onAccounts={onAccounts} />);
   return onAccounts;
 };
-const body = { html: "<p>Salut</p>", text: "Salut", attachments: [], links: ["https://exemple.fr/a", "https://autre.fr/b"] };
+const body = { html: "<p>Salut</p>", text: "Salut", attachments: [], links: ["https://exemple.fr/a", "https://autre.fr/b"], truncated: false };
 
 it("onglets : filtrent et comptent les non-lus", async () => {
   setup([mk("1", "todo", true), mk("2", "todo", true), mk("3", "read", false), mk("4", "read", true), mk("5", "filtered", false)]);
@@ -76,6 +76,22 @@ it("lecteur : iframe sans scripts, CSP sans https avant « Afficher les images �
   const f2 = await screen.findByTitle("Message");
   expect(f2.getAttribute("srcdoc")).not.toContain("https:");
   expect(screen.getByRole("button", { name: /Répondre avec IRIS/ })).toBeDisabled();
+});
+
+it("message tronqué : mention et bouton « Ouvrir dans Gmail » ; rien si complet", async () => {
+  setup([mk("1", "todo", true)]);
+  const read = vi.spyOn(mailIpc, "read").mockResolvedValue({ ...body, truncated: true });
+  const open = vi.spyOn(mailIpc, "openWeb").mockResolvedValue(done);
+  await userEvent.click(await screen.findByText("Sujet 1"));
+  expect(await screen.findByText(/Message tronqué/)).toBeTruthy();
+  await userEvent.click(screen.getByText("Ouvrir dans Gmail"));
+  expect(open).toHaveBeenCalledWith(1, "1");
+  cleanup();
+  setup([mk("1", "todo", true)]);
+  read.mockResolvedValue(body);
+  await userEvent.click(await screen.findByText("Sujet 1"));
+  await screen.findByTitle("Message");
+  expect(screen.queryByText(/Message tronqué/)).toBeNull();
 });
 
 it("liens listés avec leur URL, ouverts par open_link", async () => {

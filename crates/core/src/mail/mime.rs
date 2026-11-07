@@ -173,7 +173,7 @@ pub enum MimeError {
 }
 
 /// Message RFC 822 `text/plain; charset=utf-8` (base64), encodé base64url pour `messages.send`.
-/// `in_reply_to` présent : réponse (`Re: ` une seule fois, `In-Reply-To` et `References`).
+/// `in_reply_to` présent : réponse (`In-Reply-To` et `References`) ; le sujet est donné tel quel (voir `reply_subject`).
 /// Retour à la ligne dans le sujet, destinataire autre qu'une adresse : refusé (injection d'en-tête).
 pub fn reply(from: &str, to: &str, subject: &str, body_text: &str, in_reply_to: Option<&str>, references: Option<&str>) -> Result<String, MimeError> {
     if !valid_address(to) || !valid_address(from) {
@@ -182,13 +182,14 @@ pub fn reply(from: &str, to: &str, subject: &str, body_text: &str, in_reply_to: 
     if subject.contains(['\r', '\n']) {
         return Err(MimeError::BadSubject);
     }
-    // Valeurs venues du serveur : dépliées, jamais de retour à la ligne brut.
-    let one_line = |v: &str| v.split_whitespace().collect::<Vec<_>>().join(" ");
-    let subject = if in_reply_to.is_some() { reply_subject(subject) } else { subject.trim().to_string() };
-    let mut m = format!("From: {from}\r\nTo: {to}\r\nSubject: {}\r\nMIME-Version: 1.0\r\n", encode_header(&subject));
-    if let Some(id) = in_reply_to.map(one_line).filter(|v| !v.is_empty()) {
-        let refs = references.map(one_line).filter(|v| !v.is_empty()).map_or(id.clone(), |r| format!("{r} {id}"));
-        m += &format!("In-Reply-To: {id}\r\nReferences: {refs}\r\n");
+    // Valeurs venues du serveur : ids ASCII imprimables de 250 caractères au plus, 20 derniers, un par ligne pliée.
+    let ids = |v: &str| v.split_whitespace().filter(|i| i.len() <= 250 && i.bytes().all(|b| b.is_ascii_graphic())).map(String::from).collect::<Vec<_>>();
+    let mut m = format!("From: {from}\r\nTo: {to}\r\nSubject: {}\r\nMIME-Version: 1.0\r\n", encode_header(subject.trim()));
+    if let Some(id) = in_reply_to.map(ids).and_then(|v| v.into_iter().next()) {
+        let mut refs = references.map(ids).unwrap_or_default();
+        refs.push(id.clone());
+        let refs = &refs[refs.len().saturating_sub(20)..];
+        m += &format!("In-Reply-To: {id}\r\nReferences: {}\r\n", refs.join("\r\n "));
     }
     m += "Content-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: base64\r\n\r\n";
     let body = body_text.replace("\r\n", "\n").replace('\n', "\r\n");
@@ -210,19 +211,35 @@ mod tests {
         let m = decoded(&reply("moi@gmail.com", "j@x.fr", "Été à Noël", "Bonjour,\nà demain", Some("<a@x>"), Some("<z@x>")).unwrap());
         let subject = m.lines().find(|l| l.starts_with("Subject: ")).unwrap();
         assert!(subject.contains("=?UTF-8?B?"), "{subject}");
-        assert_eq!(decode_header(&subject["Subject: ".len()..]), "Re: Été à Noël");
-        assert!(m.contains("\r\nIn-Reply-To: <a@x>\r\nReferences: <z@x> <a@x>\r\n"), "{m}");
+        assert_eq!(decode_header(&subject["Subject: ".len()..]), "Été à Noël");
+        assert!(m.contains("\r\nIn-Reply-To: <a@x>\r\nReferences: <z@x>\r\n <a@x>\r\n"), "{m}");
         assert!(m.contains("Content-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: base64\r\n\r\n"));
         let body = m.split("\r\n\r\n").nth(1).unwrap().replace("\r\n", "");
         assert_eq!(B64.decode(body).unwrap(), "Bonjour,\r\nà demain".as_bytes());
-        let m = decoded(&reply("moi@gmail.com", "j@x.fr", "RE: Point", "x", Some("<a@x>"), None).unwrap());
-        assert!(m.contains("Subject: RE: Point\r\n") && m.contains("References: <a@x>\r\n"), "pas de Re: Re:");
+        assert_eq!(reply_subject("RE: Point"), "RE: Point", "pas de Re: Re:");
+        let m = decoded(&reply("moi@gmail.com", "j@x.fr", "Point", "x", Some("<a@x>"), None).unwrap());
+        assert!(m.contains("Subject: Point\r\n") && m.contains("References: <a@x>\r\n"), "sujet tel quel");
         let m = decoded(&reply("moi@gmail.com", "j@x.fr", "Point", "x", None, None).unwrap());
-        assert!(m.contains("Subject: Point\r\n") && !m.contains("In-Reply-To"), "nouveau mail : sujet tel quel");
+        assert!(!m.contains("In-Reply-To"));
         let long = "é".repeat(100);
         let enc = encode_header(&long);
         assert!(enc.split("\r\n ").all(|w| w.len() <= 75));
         assert_eq!(decode_header(&enc.replace("\r\n", "")), long);
+    }
+
+    #[test] fn references_longue_chaine() {
+        let chain: Vec<String> = (0..60).map(|i| format!("<{i}-{}@x>", "a".repeat(240))).collect();
+        let long = format!("<{}@x>", "b".repeat(300));
+        let refs = format!("{} {long} <é@x> <ok@x>", chain.join(" "));
+        let m = decoded(&reply("moi@gmail.com", "j@x.fr", "S", "x", Some("<last@x>"), Some(&refs)).unwrap());
+        assert!(m.lines().all(|l| l.len() <= 998), "ligne trop longue");
+        let head = m.split("\r\n\r\n").next().unwrap();
+        let block = head.split("References: ").nth(1).unwrap().split("\r\nContent-Type").next().unwrap();
+        let ids: Vec<&str> = block.split("\r\n ").collect();
+        assert_eq!(ids.len(), 20, "20 derniers");
+        assert_eq!(ids[19], "<last@x>");
+        assert_eq!(ids[18], "<ok@x>");
+        assert!(!block.contains('é') && !block.contains("bbbb"), "ids non ASCII ou trop longs écartés");
     }
 
     #[test] fn injection_d_en_tete_refusee() {

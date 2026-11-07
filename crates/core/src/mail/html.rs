@@ -13,9 +13,11 @@ pub struct Sanitized {
     pub html: String,
     /// Valeurs `data-href`, dans l'ordre, sans doublon, `MAX_LINKS` au plus.
     pub links: Vec<String>,
+    /// L'entrée dépassait `MAX_INPUT` : la fin est coupée.
+    pub truncated: bool,
 }
 
-fn truncate(s: &str, max: usize) -> &str {
+pub fn truncate(s: &str, max: usize) -> &str {
     let mut end = s.len().min(max);
     while !s.is_char_boundary(end) {
         end -= 1;
@@ -79,12 +81,14 @@ fn rewrite_links(html: &str) -> Sanitized {
         out.push(c);
         rest = &rest[c.len_utf8()..];
     }
-    Sanitized { html: out, links }
+    Sanitized { html: out, links, truncated: false }
 }
 
 /// HTML non fiable vers HTML affichable (entrée tronquée à 1 Mo).
 pub fn sanitize(html: &str) -> Sanitized {
-    rewrite_links(&builder().clean(truncate(html, MAX_INPUT)).to_string())
+    let mut s = rewrite_links(&builder().clean(truncate(html, MAX_INPUT)).to_string());
+    s.truncated = html.len() > MAX_INPUT;
+    s
 }
 
 fn escape(s: &str) -> String {
@@ -93,6 +97,7 @@ fn escape(s: &str) -> String {
 
 /// Texte brut vers HTML : échappé, retours à la ligne gardés, URL http(s) cliquables (`data-href`).
 pub fn text_to_html(text: &str) -> Sanitized {
+    let full = text;
     let text = truncate(text, MAX_INPUT);
     let (mut out, mut links, mut rest) = (String::new(), Vec::new(), text);
     loop {
@@ -117,7 +122,7 @@ pub fn text_to_html(text: &str) -> Sanitized {
         rest = &tail[url.len()..];
     }
     out += &escape(rest);
-    Sanitized { html: out.replace("\r\n", "\n").replace('\n', "<br>"), links }
+    Sanitized { html: out.replace("\r\n", "\n").replace('\n', "<br>"), links, truncated: full.len() > MAX_INPUT }
 }
 
 #[cfg(test)]
@@ -170,6 +175,8 @@ mod tests {
         let s = sanitize(&big);
         assert!(s.html.len() <= MAX_INPUT + 16, "{}", s.html.len());
         assert!(s.html.starts_with("<p>éé"));
+        assert!(s.truncated && !sanitize("<p>a</p>").truncated);
+        assert!(text_to_html(&"a".repeat(MAX_INPUT + 1)).truncated && !text_to_html("a").truncated);
         assert_eq!(truncate("aé", 2), "a", "coupe sur une frontière de caractère");
     }
 

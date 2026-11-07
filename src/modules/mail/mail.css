@@ -36,6 +36,7 @@
 .mail-rfrom{margin:0;font-size:12px;color:var(--txt2);overflow-wrap:anywhere}
 .mail-frame-box{padding:6px;border-radius:16px;background:rgba(255,255,255,.05);border:1px solid var(--line);box-shadow:0 6px 18px rgba(0,0,0,.28)}
 .mail-frame{display:block;width:100%;height:170px;border:0;border-radius:10px;background:#f6f6f8}
+.mail-trunc{margin:0;font-size:12px;color:var(--txt2)}
 .mail-att{list-style:none;margin:0;padding:0;font-size:12px;color:var(--txt2)}
 .mail-links h5{margin:0 0 4px;font:600 10.5px var(--font);letter-spacing:.04em;text-transform:uppercase;color:var(--txt3)}
 .mail-links ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}

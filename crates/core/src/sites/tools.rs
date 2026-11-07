@@ -14,7 +14,7 @@ pub struct Status { pub source: Source }
 #[async_trait]
 impl Tool for Status {
     fn spec(&self) -> ToolSpec {
-        spec("sites.status", "État des sites surveillés (en ligne, lent, en panne, hors ligne) avec le dernier temps de réponse.", json!({"type":"object","properties":{}}), Permission::Free)
+        ToolSpec { sensitive_output: true, ..spec("sites.status", "État des sites surveillés (en ligne, lent, en panne, hors ligne) avec le dernier temps de réponse.", json!({"type":"object","properties":{}}), Permission::Free) }
     }
     fn describe(&self, _: &Value) -> ConfirmationText { low("Voir l'état des sites") }
     async fn run(&self, _: &Value) -> Result<ToolResult, ToolError> {
@@ -31,7 +31,7 @@ pub struct Vps { pub source: VpsSource }
 #[async_trait]
 impl Tool for Vps {
     fn spec(&self) -> ToolSpec {
-        spec("vps.status", "Charge du VPS lue par Zenytt (CPU, mémoire, disque, charge, alertes) : dernier relevé connu.", json!({"type":"object","properties":{}}), Permission::Free)
+        ToolSpec { sensitive_output: true, ..spec("vps.status", "Charge du VPS lue par Zenytt (CPU, mémoire, disque, charge, alertes) : dernier relevé connu.", json!({"type":"object","properties":{}}), Permission::Free) }
     }
     fn describe(&self, _: &Value) -> ConfirmationText { low("Voir la charge du VPS") }
     async fn run(&self, _: &Value) -> Result<ToolResult, ToolError> {
@@ -50,6 +50,7 @@ mod tests {
         use crate::sites::VpsView;
         let t = Vps { source: Arc::new(VpsStatus::default) };
         assert_eq!(t.spec().permission, Permission::Free);
+        assert!(t.spec().sensitive_output, "journal masqué");
         assert!(t.run(&json!({})).await.is_err());
         let view = VpsView { server: "vps".into(), cpu_pct: 12.5, mem_pct: 40.0, disk_pct: 61.0, load1: 0.4, alerts: 1, at_ms: 1 };
         let t = Vps { source: Arc::new(move || VpsStatus { zenytt: true, view: Some(view.clone()), error: None }) };
@@ -62,6 +63,7 @@ mod tests {
         let v = SiteView { name: "Blog".into(), url: "https://secret.example.com".into(), state: SiteState::Up, last_ms: Some(80), spark: vec![80] };
         let t = Status { source: Arc::new(move || Ok(vec![v.clone()])) };
         assert_eq!(t.spec().permission, Permission::Free);
+        assert!(t.spec().sensitive_output, "journal masqué");
         let out = t.run(&json!({})).await.unwrap().output;
         assert_eq!(out["sites"][0]["state"], "up");
         assert!(!out.to_string().contains("secret"));

@@ -453,4 +453,45 @@ mod tests {
             assert!(!log.contains(secret), "« {secret} » dans le journal");
         }
     }
+
+    #[test] fn jetons_et_secret_client_absents_du_journal_et_des_tables() {
+        use crate::accounts::complete_connect;
+        const AT: &str = "AT-SENTINEL-q81x";
+        const RT: &str = "RT-SENTINEL-m47z";
+        const CS: &str = "CS-SENTINEL-k20w";
+        let sub = tracing_subscriber::fmt().with_max_level(tracing::Level::TRACE).with_ansi(false).with_writer(|| Buf).finish();
+        let _ = tracing::subscriber::set_global_default(sub);
+        CAPTURE.with(|c| c.borrow_mut().clear());
+        let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        let db: Db = Arc::new(parking_lot::Mutex::new(crate::test_util::db()));
+        rt.block_on(async {
+            let server = MockServer::start().await;
+            Mock::given(method("POST")).and(path("/token"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"access_token": AT, "expires_in": 3600, "refresh_token": RT})))
+                .mount(&server).await;
+            Mock::given(method("GET")).and(path("/me"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"email": "moi@gmail.com"})))
+                .mount(&server).await;
+            let token_url = format!("{}/token", server.uri());
+            let cfg = ProviderConfig { token_url: token_url.clone(), ..oauth::providers::google("cid", Some(CS.into())) };
+            let configs: Configs = Arc::new({ let cfg = cfg.clone(); move |_| Some(cfg.clone()) });
+            let http = reqwest::Client::new();
+            let tokens = TokenCache::new(db.clone(), Arc::new(MemorySecrets::default()), Arc::new(NoEvents), http.clone(), configs);
+            let v = complete_connect(&db, &tokens, &NoEvents, &http, &cfg, "code", "ver", oauth::REDIRECT_URI, &format!("{}/me", server.uri())).await.unwrap();
+            // Jeton d'accès périmé : l'actualisation repasse par le point d'accès avec le secret client.
+            tokens.insert(v.id, Tokens { access: "vieux".into(), refresh: Some(RT.into()), expires_at_ms: 0 }).unwrap();
+            assert_eq!(tokens.access_token(v.id).await.unwrap(), AT);
+        });
+        let log = CAPTURE.with(|c| String::from_utf8(c.borrow().clone()).unwrap());
+        let c = db.lock();
+        for t in ["accounts", "kv", "actions"] {
+            let cols: Vec<String> = c.prepare(&format!("SELECT name FROM pragma_table_info('{t}')")).unwrap().query_map([], |r| r.get(0)).unwrap().map(Result::unwrap).collect();
+            let expr = cols.iter().map(|k| format!("coalesce(CAST({k} AS TEXT), '')")).collect::<Vec<_>>().join(" || ' ' || ");
+            let all: Option<String> = c.query_row(&format!("SELECT group_concat({expr}, ' ') FROM {t}"), [], |r| r.get(0)).unwrap();
+            let all = all.unwrap_or_default();
+            for secret in [AT, RT, CS] {
+                assert!(!all.contains(secret) && !log.contains(secret), "« {secret} » dans {t} ou le journal");
+            }
+        }
+    }
 }

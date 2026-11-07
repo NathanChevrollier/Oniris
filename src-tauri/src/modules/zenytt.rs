@@ -295,6 +295,11 @@ impl Poller {
         Some(left)
     }
 
+    /// Panneau ouvert (même sans relevé, plein écran par exemple) : le compte à rebours d'arrêt repart de zéro.
+    pub fn reopen(&mut self) {
+        self.closed_at = None;
+    }
+
     pub fn stop(&mut self) {
         self.client = None;
         self.closed_at = None;
@@ -303,6 +308,16 @@ impl Poller {
     #[cfg(test)]
     pub fn running(&self) -> bool {
         self.client.is_some()
+    }
+}
+
+/// Attente avant le prochain tour panneau ouvert. Relevé dû mais non fait (plein écran) : une période entière,
+/// pas une seconde (sinon une boucle d'une seconde pendant tout le jeu).
+fn open_wait(since_last: Option<Duration>, fullscreen: bool) -> Duration {
+    match since_last {
+        Some(t) if t < POLL => POLL.saturating_sub(t).max(Duration::from_secs(1)),
+        _ if fullscreen => POLL,
+        _ => Duration::from_secs(1),
     }
 }
 
@@ -349,6 +364,7 @@ async fn run(app: AppHandle) {
                 None
             }
             Some(exe) if open => {
+                p.reopen();
                 let due = last.is_none_or(|t| t.elapsed() >= POLL);
                 if due && !crate::fullscreen::active() {
                     let r = p.poll(exe).await;
@@ -361,7 +377,7 @@ async fn run(app: AppHandle) {
                     drop(st);
                     app.state::<AppState>().events.changed(Topic::Sites);
                 }
-                Some(POLL.saturating_sub(last.map_or(Duration::ZERO, |t| t.elapsed())).max(Duration::from_secs(1)))
+                Some(open_wait(last.map(|t| t.elapsed()), crate::fullscreen::active()))
             }
             Some(_) => p.idle(Instant::now()),
         };
@@ -473,6 +489,27 @@ mod tests {
         assert_eq!(r.unwrap_err().text(), "Zenytt s'est arrêté");
         assert!(!p.running());
         assert!(p.poll(&exe).await.is_ok(), "relancé au tour suivant");
+    }
+
+    #[test]
+    fn attente_panneau_ouvert_et_plein_ecran() {
+        let s = Duration::from_secs;
+        assert_eq!(open_wait(None, true), POLL, "relevé dû mais plein écran : une période entière");
+        assert_eq!(open_wait(Some(s(45)), true), POLL);
+        assert_eq!(open_wait(Some(s(10)), true), s(20));
+        assert_eq!(open_wait(Some(Duration::ZERO), false), POLL, "juste après un relevé");
+        assert_eq!(open_wait(Some(Duration::from_millis(29_900)), false), s(1), "au moins une seconde");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn ouverture_sans_releve_remet_le_compte_a_zero() {
+        let exe = fake();
+        let mut p = Poller::new(MCP_ARGS, Duration::from_secs(10));
+        p.poll(&exe).await.unwrap();
+        let t0 = Instant::now();
+        assert_eq!(p.idle(t0), Some(IDLE_STOP));
+        p.reopen(); // panneau rouvert en plein écran : aucun relevé
+        assert_eq!(p.idle(t0 + Duration::from_secs(9 * 60)), Some(IDLE_STOP), "le compte repart à la prochaine fermeture");
     }
 
     #[tokio::test(flavor = "multi_thread")]

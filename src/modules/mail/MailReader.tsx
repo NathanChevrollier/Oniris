@@ -52,6 +52,12 @@ export function MailReader({ mail, draft, onDraft, onClose }: { mail: MailRow; d
         <>
           {!images && <button type="button" className="mail-btn" onClick={() => setImages(true)}><ImageIcon size={13} /> Afficher les images</button>}
           <div className="mail-frame-box"><iframe className="mail-frame" title="Message" sandbox="allow-popups-to-escape-sandbox" srcDoc={doc(body.html, images)} /></div>
+          {body.truncated && (
+            <p className="mail-trunc">
+              Message tronqué{" "}
+              <button type="button" className="mail-btn" onClick={() => void run(mailIpc.openWeb(mail.account_id, mail.id))}><ExternalLink size={13} /> Ouvrir dans Gmail</button>
+            </p>
+          )}
           {body.attachments.length > 0 && (
             <ul className="mail-att">{body.attachments.map((a, i) => <li key={i}><Paperclip size={12} /> {a.filename} · {size(a.size)}</li>)}</ul>
           )}

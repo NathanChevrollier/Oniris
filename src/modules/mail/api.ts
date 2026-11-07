@@ -10,7 +10,7 @@ export type MailRow = {
 
 export type Attachment = { filename: string; mime_type: string; size: number; attachment_id: string | null };
 /** Sortie de `mail.read` : HTML déjà assaini, liens extraits (jamais cliquables dans l'iframe). */
-export type MailBody = { html: string; text: string; attachments: Attachment[]; links: string[] };
+export type MailBody = { html: string; text: string; attachments: Attachment[]; links: string[]; truncated: boolean };
 
 const MIN = 60_000;
 const m = (id: string, account_id: number, from_name: string, from_addr: string, subject: string, snippet: string, ago: number,
@@ -34,6 +34,7 @@ const fakeBody: MailBody = {
   text: "Bonjour,\n\nLe devis me convient. Peux-tu confirmer la date de livraison ?\n\nMarc",
   attachments: [{ filename: "devis.pdf", mime_type: "application/pdf", size: 84_000, attachment_id: "x" }],
   links: ["https://dupont.example/devis/2026-11"],
+  truncated: false,
 };
 
 const ok = (): Promise<ToolOutcome> => Promise.resolve({ Done: { action_id: 0, output: {} } });

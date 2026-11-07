@@ -15,8 +15,9 @@ pub struct ToolBroker {
     clock: Clock,
     tools: HashMap<String, Arc<dyn Tool>>,
     /// Vrais arguments des actions en attente dont le journal n'a qu'une forme masquée (mémoire seulement :
-    /// après un redémarrage, l'action approuvée échoue au lieu de s'exécuter avec le masque).
-    masked: parking_lot::Mutex<HashMap<i64, Value>>,
+    /// après un redémarrage, l'action approuvée échoue au lieu de s'exécuter avec le masque). `(expiration, arguments)` :
+    /// purgé avec les actions expirées.
+    masked: parking_lot::Mutex<HashMap<i64, (u64, Value)>>,
 }
 
 impl ToolBroker {
@@ -65,7 +66,7 @@ impl ToolBroker {
             return match ins {
                 Ok(id) => {
                     if logged != call.args {
-                        self.masked.lock().insert(id, call.args.clone());
+                        self.masked.lock().insert(id, (expires, call.args.clone()));
                     }
                     ToolOutcome::NeedsConfirmation(PendingAction {
                     action_id: id, tool: call.tool, text, provenance: call.provenance, expires_at_ms: expires,
@@ -115,7 +116,7 @@ impl ToolBroker {
         self.expire_stale();
         let fail = |e: ToolError| ToolOutcome::Failed { action_id, error: e.to_string() };
         // Retirés quelle que soit l'issue : une action ne se résout qu'une fois.
-        let masked = self.masked.lock().remove(&action_id);
+        let masked = self.masked.lock().remove(&action_id).map(|(_, a)| a);
         let row = {
             let c = self.db.lock();
             let claimed = if approved {
@@ -170,7 +171,9 @@ impl ToolBroker {
     }
 
     pub fn expire_stale(&self) {
-        journal::expire(&self.db.lock(), (self.clock)());
+        let now = (self.clock)();
+        journal::expire(&self.db.lock(), now);
+        self.masked.lock().retain(|_, (expires, _)| *expires >= now);
     }
 
     /// À appeler une fois au démarrage, avant tout appel d'outil.
@@ -203,6 +206,9 @@ mod tests {
             let st: String = self.db.lock().query_row("SELECT status FROM actions ORDER BY id DESC LIMIT 1", [], |r| r.get(0)).unwrap();
             self.during.lock().push(st);
             Ok(ToolResult { output: a.clone(), undo: self.undoable.then(|| json!({"u": 1})) })
+        }
+        fn journal_args(&self, a: &Value) -> Value {
+            if a.get("secret").is_some() { json!({"redacted": true}) } else { a.clone() }
         }
         async fn undo(&self, _: &Value) -> Result<(), ToolError> {
             if self.undoable { Ok(()) } else { Err(ToolError::NotUndoable) }
@@ -308,6 +314,21 @@ mod tests {
             ToolOutcome::Failed { action_id: id, error: ToolError::Expired.to_string() }
         );
         assert_eq!(f.runs.load(Ordering::SeqCst), 0);
+        assert_eq!(status(&f, id), "expired");
+    }
+
+    #[tokio::test]
+    async fn arguments_masques_purges_a_l_expiration() {
+        let f = fx(Permission::Confirm, false);
+        let mut c = call(Provenance::User);
+        c.args = json!({"secret": "s"});
+        let id = pending(f.broker.call(c).await).action_id;
+        assert_eq!(f.broker.masked.lock().len(), 1);
+        f.broker.expire_stale();
+        assert_eq!(f.broker.masked.lock().len(), 1, "encore valide");
+        f.now.store(PENDING_TTL_MS + 1, Ordering::SeqCst);
+        f.broker.expire_stale();
+        assert!(f.broker.masked.lock().is_empty(), "expiré : purgé");
         assert_eq!(status(&f, id), "expired");
     }
 

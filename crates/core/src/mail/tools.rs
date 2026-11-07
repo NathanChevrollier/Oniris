@@ -213,9 +213,10 @@ impl Tool for MailTool {
             }
             Kind::Send => {
                 let from = a["account"].as_i64().and_then(|acc| self.ctx.address(acc).ok()).unwrap_or_else(|| "compte inconnu".into());
-                let subject = if a["reply_to_id"].is_string() { mime::reply_subject(&s("subject")) } else { s("subject") };
+                let subject = send_subject(&s("subject"), a["reply_to_id"].is_string());
+                let too_long = s("body").chars().count() > SEND_MAX;
                 ConfirmationText {
-                    summary: format!("Envoyer un mail à {}", s("to")),
+                    summary: if too_long { "Texte trop long : l'envoi sera refusé".into() } else { format!("Envoyer un mail à {}", s("to")) },
                     details: format!("Compte : {from}\nÀ : {}\nSujet : {subject}\n\n{}", s("to"), s("body")),
                     risk: Risk::High,
                 }
@@ -235,6 +236,7 @@ impl Tool for MailTool {
             }
             Kind::Read => {
                 let MsgArgs { account, id } = parse(a)?;
+                ctx.address(account)?;
                 let key = (account, id.clone());
                 let out = match ctx.cached(&key) {
                     Some(v) => v,
@@ -245,7 +247,8 @@ impl Tool for MailTool {
                             (Some(h), _) => html::sanitize(h),
                             (None, t) => html::text_to_html(t.as_deref().unwrap_or_default()),
                         };
-                        let v = json!({ "html": rendered.html, "text": m.text, "attachments": m.attachments, "links": rendered.links });
+                        let text = m.text.as_deref().map(|t| html::truncate(t, html::MAX_INPUT));
+                        let v = json!({ "html": rendered.html, "text": text, "attachments": m.attachments, "links": rendered.links, "truncated": rendered.truncated });
                         ctx.remember(key, v.clone());
                         v
                     }
@@ -290,6 +293,7 @@ impl Tool for MailTool {
                 }
                 let from = ctx.address(account)?;
                 // Validé avant toute requête (jeton compris).
+                let subject = send_subject(&subject, reply_to_id.is_some());
                 mime::reply(&from, &to, &subject, &body, None, None).map_err(bad)?;
                 let token = ctx.token(account).await?;
                 let (thread, raw) = match reply_to_id {
@@ -356,6 +360,11 @@ impl Tool for MailTool {
         }
         a
     }
+}
+
+/// Sujet réellement envoyé (carte de confirmation comprise) : `Re: ` ajouté une fois pour une réponse.
+fn send_subject(subject: &str, reply: bool) -> String {
+    if reply { mime::reply_subject(subject) } else { subject.trim().to_string() }
 }
 
 /// `https://mail.google.com/mail/u/<adresse encodée>/#all/<fil>` ; fil non alphanumérique : `None`.
@@ -482,7 +491,7 @@ mod tests {
         assert_eq!(v["threadId"], "th1");
         let raw = String::from_utf8(mime::b64url(v["raw"].as_str().unwrap()).unwrap()).unwrap();
         assert!(raw.starts_with("From: moi@gmail.com\r\nTo: j@x.fr\r\nSubject: Re: Point budget\r\n"), "{raw}");
-        assert!(raw.contains("In-Reply-To: <orig@x>\r\nReferences: <r0@x> <orig@x>\r\n"), "{raw}");
+        assert!(raw.contains("In-Reply-To: <orig@x>\r\nReferences: <r0@x>\r\n <orig@x>\r\n"), "{raw}");
         server.verify().await;
     }
 
@@ -538,6 +547,62 @@ mod tests {
         e.broker.undo(id).await.unwrap();
         assert!(e.unread());
         server.verify().await;
+    }
+
+    #[tokio::test] async fn lecture_tronquee_signalee_et_texte_borne() {
+        use base64::Engine;
+        let big = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode("a".repeat(html::MAX_INPUT + 10));
+        let small = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode("court");
+        let server = MockServer::start().await;
+        for (id, data) in [("m1", big), ("m2", small)] {
+            Mock::given(method("GET")).and(msg(id)).and(query_param("format", "full"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(json!({"id": id, "threadId": "t", "payload": {"mimeType": "text/plain", "body": {"data": data}}})))
+                .mount(&server).await;
+        }
+        Mock::given(method("POST")).respond_with(ok()).mount(&server).await;
+        let e = env(&server);
+        let (_, out) = done(e.call("mail.read", json!({"account": e.account, "id": "m1"})).await);
+        assert_eq!(out["truncated"], true);
+        assert_eq!(out["text"].as_str().unwrap().len(), html::MAX_INPUT, "texte borné comme le HTML");
+        let (_, out) = done(e.call("mail.read", json!({"account": e.account, "id": "m2"})).await);
+        assert_eq!((&out["truncated"], &out["text"]), (&json!(false), &json!("court")));
+    }
+
+    #[tokio::test] async fn compte_retire_ne_sert_plus_son_corps_en_cache() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET")).and(msg("m1")).and(query_param("format", "full"))
+            .respond_with(ResponseTemplate::new(200).set_body_raw(include_str!("../../tests/fixtures/gmail/full_18c1c.json"), "application/json"))
+            .mount(&server).await;
+        Mock::given(method("POST")).respond_with(ok()).mount(&server).await;
+        let e = env(&server);
+        let a = json!({"account": e.account, "id": "m1"});
+        done(e.call("mail.read", a.clone()).await);
+        accounts::remove(&e.db.lock(), &MemorySecrets::default(), e.account).unwrap();
+        assert!(matches!(e.call("mail.read", a).await, ToolOutcome::Failed { .. }), "plus de corps pour un compte retiré");
+    }
+
+    #[tokio::test] async fn reponse_sans_message_id_garde_le_meme_sujet_que_la_carte() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET")).and(msg("m1")).and(query_param("format", "metadata"))
+            .respond_with(ResponseTemplate::new(200).set_body_raw(r#"{"id":"m1","threadId":"th1","payload":{"headers":[]}}"#, "application/json"))
+            .mount(&server).await;
+        Mock::given(method("POST")).and(path("/gmail/v1/users/me/messages/send")).respond_with(ok()).expect(1).mount(&server).await;
+        let e = env(&server);
+        let p = pending(e.call("mail.send", json!({"account": e.account, "to": "j@x.fr", "subject": " Point ", "body": "x", "reply_to_id": "m1"})).await);
+        assert!(p.text.details.contains("Sujet : Re: Point\n"), "{}", p.text.details);
+        done(e.broker.resolve(p.action_id, true).await);
+        let sent = server.received_requests().await.unwrap().into_iter().find(|r| r.url.path().ends_with("/send")).unwrap();
+        let v: Value = serde_json::from_slice(&sent.body).unwrap();
+        let raw = String::from_utf8(mime::b64url(v["raw"].as_str().unwrap()).unwrap()).unwrap();
+        assert!(raw.contains("Subject: Re: Point\r\n") && !raw.contains("In-Reply-To"), "{raw}");
+    }
+
+    #[tokio::test] async fn envoi_trop_long_annonce_le_refus() {
+        let server = MockServer::start().await;
+        let e = env(&server);
+        let p = pending(e.call("mail.send", json!({"account": e.account, "to": "j@x.fr", "subject": "S", "body": "a".repeat(SEND_MAX + 1)})).await);
+        assert_eq!(p.text.summary, "Texte trop long : l'envoi sera refusé");
+        assert!(matches!(e.broker.resolve(p.action_id, true).await, ToolOutcome::Failed { .. }));
     }
 
     #[test] fn cache_lru_de_vingt() {

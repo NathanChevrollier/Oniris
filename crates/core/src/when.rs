@@ -58,16 +58,17 @@ pub(crate) fn norm(s: &str) -> String {
         .chars()
         .map(|c| match c {
             'é' | 'è' | 'ê' | 'ë' => 'e',
-            'à' | 'â' | 'ä' => 'a',
-            'î' | 'ï' => 'i',
-            'ô' | 'ö' => 'o',
-            'ù' | 'û' | 'ü' => 'u',
+            'à' | 'â' | 'ä' | 'á' => 'a',
+            'î' | 'ï' | 'í' | 'ì' => 'i',
+            'ô' | 'ö' | 'ó' | 'ò' => 'o',
+            'ù' | 'û' | 'ü' | 'ú' => 'u',
             'ç' => 'c',
+            'ñ' => 'n',
             '’' => '\'',
             c => c,
         })
         .collect();
-    s.trim_end_matches([',', '.', ';', '!', '?']).to_string()
+    s.replace('œ', "oe").trim().trim_end_matches([',', '.', ';', '!', '?']).trim_end().to_string()
 }
 
 fn num(s: &str) -> Option<u32> {

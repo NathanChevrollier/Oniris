@@ -130,7 +130,12 @@ pub struct Settings {
     pub sites: Vec<Site>,
     /// Chemin de Zenytt.exe (serveur MCP de la charge du VPS) : vide = détection automatique.
     pub zenytt_path: String,
+    /// Commandes PowerShell d'IRIS exécutées sans carte (préfixes de jetons) : 50 au plus, ASCII, 100 caractères.
+    pub iris_shell_allowlist: Vec<String>,
 }
+
+/// Commandes en lecture seule (aucun de leurs arguments sûrs n'écrit).
+const DEFAULT_SHELL_ALLOWLIST: [&str; 4] = ["git status", "Get-ChildItem", "Get-Location", "Get-Date"];
 
 impl Default for Settings {
     fn default() -> Self {
@@ -160,6 +165,7 @@ impl Default for Settings {
             mail_poll_minutes: 3,
             sites: Vec::new(),
             zenytt_path: String::new(),
+            iris_shell_allowlist: DEFAULT_SHELL_ALLOWLIST.map(String::from).to_vec(),
         }
     }
 }
@@ -326,6 +332,15 @@ impl Settings {
             errs.push(e);
             self.zenytt_path = d.zenytt_path.clone();
         }
+        for e in &mut self.iris_shell_allowlist {
+            *e = e.split_whitespace().collect::<Vec<_>>().join(" ");
+        }
+        if self.iris_shell_allowlist.len() > 50
+            || self.iris_shell_allowlist.iter().any(|e| e.is_empty() || e.len() > 100 || !crate::general::shell::allowlisted(e, std::slice::from_ref(e)))
+        {
+            errs.push("commandes sans confirmation : 50 au plus, ASCII sans caractère de contrôle du shell".into());
+            self.iris_shell_allowlist = d.iris_shell_allowlist.clone();
+        }
         if let Err(e) = check_hotkey(&self.hotkey) {
             errs.push(e);
             self.hotkey = d.hotkey;
@@ -389,6 +404,14 @@ mod tests {
         assert_eq!(s.timeline_end_hour, 23);
         assert_eq!((s.focus_minutes, s.break_minutes), (25, 5));
         assert_eq!((s.clipboard_enabled, s.clipboard_retention_days, s.clipboard_max_items), (true, 7, 200));
+    }
+    #[test] fn liste_blanche_shell_validee() {
+        let with = |l: &[&str]| Settings { iris_shell_allowlist: l.iter().map(|x| x.to_string()).collect(), ..Settings::default() }.validate();
+        assert!(with(&["git status", "npm run build"]).is_ok());
+        assert!(with(&["git status; rm x"]).is_err());
+        assert!(with(&[""]).is_err());
+        assert!(with(&["é"]).is_err());
+        assert!(with(&vec!["git status"; 51]).is_err());
     }
     #[test] fn raccourci_partiel_garde_le_reste() {
         let s: Settings = serde_json::from_str(r#"{"user_name":"Nathan","hotkey":{"alt":true}}"#).unwrap();

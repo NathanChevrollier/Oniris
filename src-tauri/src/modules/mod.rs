@@ -5,6 +5,7 @@ pub mod apps;
 pub mod clipboard;
 pub mod favicons;
 pub mod favorites;
+pub mod general;
 pub mod indexer;
 pub mod mail;
 pub mod music;

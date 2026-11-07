@@ -50,6 +50,8 @@ export type Settings = {
   sites: Site[];
   /** Chemin de Zenytt.exe (charge du VPS) : vide = détection automatique ; absolu, en .exe, 260 caractères au plus. */
   zenytt_path: string;
+  /** Commandes PowerShell d'IRIS sans confirmation (préfixes de jetons) : 50 au plus, ASCII, 100 caractères. */
+  iris_shell_allowlist: string[];
 };
 
 const RESUME_NORMAL = "Reprends là où tu en étais sur ce projet. Appuie-toi sur le plan de développement et l'historique git. Commence par me dire où on en est.";
@@ -81,6 +83,7 @@ export const DEFAULT_SETTINGS: Settings = {
   mail_poll_minutes: 3,
   sites: [],
   zenytt_path: "",
+  iris_shell_allowlist: ["git status", "Get-ChildItem", "Get-Location", "Get-Date"],
 };
 
 /** Paramètres courants : chargés au montage, puis suivis via `oniris://settings`. */

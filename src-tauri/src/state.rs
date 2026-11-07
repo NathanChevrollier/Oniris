@@ -115,6 +115,10 @@ impl AppState {
         tools.push(Arc::new(oniris_core::sites::tools::Status { source: sites }));
         let handle = app.clone();
         tools.push(Arc::new(oniris_core::sites::tools::Vps { source: Arc::new(move || crate::modules::zenytt::status(&handle)) }));
+        let handle = app.clone();
+        let allowlist: oniris_core::general::shell::Allowlist = Arc::new(move || handle.state::<AppState>().settings.read().iris_shell_allowlist.clone());
+        let shell: Arc<dyn oniris_core::general::shell::ShellExec> = Arc::new(crate::modules::general::RealShell);
+        tools.extend(oniris_core::general::shell::all(&shell, allowlist, dirs::home_dir().ok_or("dossier utilisateur introuvable")?));
         let broker = Arc::new(ToolBroker::new(db.clone(), clock, tools)?);
         broker.mark_interrupted();
         broker.expire_stale();

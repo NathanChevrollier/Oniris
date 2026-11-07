@@ -2,6 +2,7 @@ mod commands;
 mod events;
 mod fullscreen;
 mod hotkey;
+mod job;
 mod launch;
 mod logging;
 mod modules;

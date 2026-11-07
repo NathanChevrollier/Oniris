@@ -1,7 +1,7 @@
 use crate::hotkey::HotkeyConfig;
 use crate::state::AppState;
 use crate::{fullscreen, windows};
-use oniris_core::tools::{JournalEntry, Origin, Provenance, ToolBroker, ToolCall, ToolOutcome};
+use oniris_core::tools::{JournalEntry, Origin, PendingAction, Provenance, ToolBroker, ToolCall, ToolOutcome};
 use oniris_core::{save_settings, Settings};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -73,10 +73,15 @@ pub async fn dispatch_tool_call(app: &AppHandle, call: ToolCall) -> ToolOutcome 
     let broker: Arc<ToolBroker> = app.state::<AppState>().broker.clone();
     let outcome = broker.call(call).await;
     if let ToolOutcome::NeedsConfirmation(p) = &outcome {
-        let _ = windows::open_panel(app);
-        let _ = app.emit_to("panel", "oniris://confirm", p);
+        show_confirm(app, p);
     }
     outcome
+}
+
+/// Action en attente : ouvre le panneau et lui envoie `oniris://confirm`.
+pub fn show_confirm(app: &AppHandle, p: &PendingAction) {
+    let _ = windows::open_panel(app);
+    let _ = app.emit_to("panel", "oniris://confirm", p);
 }
 
 /// Appel d'outil demandé par l'utilisateur depuis l'interface (origine et provenance « User »).

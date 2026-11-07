@@ -110,6 +110,8 @@ pub fn run() {
             modules::iris::iris_memories,
             modules::iris::iris_memory_delete,
             modules::iris::iris_conversation_new,
+            modules::iris::iris_ask,
+            modules::iris::iris_cancel,
             modules::mail::mail_open_web,
             modules::mail::mail_open_link,
             modules::mail::mail_status,

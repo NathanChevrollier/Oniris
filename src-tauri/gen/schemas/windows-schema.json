@@ -339,6 +339,18 @@
           "markdownDescription": "Enables the index_status command without any pre-configured scope."
         },
         {
+          "description": "Enables the iris_ask command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-iris-ask",
+          "markdownDescription": "Enables the iris_ask command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the iris_cancel command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-iris-cancel",
+          "markdownDescription": "Enables the iris_cancel command without any pre-configured scope."
+        },
+        {
           "description": "Enables the iris_conversation_new command without any pre-configured scope.",
           "type": "string",
           "const": "allow-iris-conversation-new",
@@ -883,6 +895,18 @@
           "type": "string",
           "const": "deny-index-status",
           "markdownDescription": "Denies the index_status command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the iris_ask command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-iris-ask",
+          "markdownDescription": "Denies the iris_ask command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the iris_cancel command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-iris-cancel",
+          "markdownDescription": "Denies the iris_cancel command without any pre-configured scope."
         },
         {
           "description": "Denies the iris_conversation_new command without any pre-configured scope.",

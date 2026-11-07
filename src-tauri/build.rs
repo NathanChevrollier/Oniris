@@ -75,6 +75,8 @@ fn main() {
         "iris_memories",
         "iris_memory_delete",
         "iris_conversation_new",
+        "iris_ask",
+        "iris_cancel",
         "mail_open_web",
         "mail_open_link",
         "mail_status",

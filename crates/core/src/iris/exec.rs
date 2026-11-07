@@ -90,7 +90,7 @@ impl Executor {
             ToolOutcome::Done { output, .. } => json!({ "ok": cap(if untrusted { self.project(&tool, &base, &output) } else { output }) }),
             ToolOutcome::NeedsConfirmation(p) => {
                 (self.on_pending)(&p);
-                json!({ "status": "pending", "message": PENDING_MSG })
+                json!({ "status": "pending", "action_id": p.action_id, "message": PENDING_MSG })
             }
             ToolOutcome::Rejected { .. } => json!({ "status": "rejected" }),
             ToolOutcome::Failed { error, .. } if tainted_err => json!({ "error": project(&Value::String(error), &base, &mut self.vault.lock()) }),
@@ -159,7 +159,7 @@ mod tests {
         let f = fx(vec![("files.run", false, json!({}), None)]);
         let r = f.ex.vault.lock().put("mail:1/abc", "calc.exe".into());
         let out = f.ex.call(&wire("files.run"), json!({"command": r})).await;
-        assert_eq!(out, json!({"status": "pending", "message": "En attente de la confirmation de l'utilisateur ; ne réessaie pas."}));
+        assert_eq!(out, json!({"status": "pending", "action_id": f.pendings.lock()[0].action_id, "message": "En attente de la confirmation de l'utilisateur ; ne réessaie pas."}));
         assert_eq!(f.runs.load(Ordering::SeqCst), 0);
         assert_eq!(f.pendings.lock().len(), 1);
         let j = &f.ex.broker.journal(1)[0];
@@ -250,7 +250,7 @@ mod tests {
         let names = [
             "accounts.list", "agenda.create_event", "agenda.delete_event", "agenda.list", "agenda.move_event", "apps.launch",
             "calendar.list", "clipboard.search", "favorites.add", "favorites.delete", "favorites.open", "files.open", "files.run",
-            "focus.start", "mail.archive", "mail.delete", "mail.list", "mail.mark_read", "mail.open_link", "mail.open_web",
+            "focus.start", "iris.ask_claude", "iris.digest", "iris.inspect", "mail.archive", "mail.delete", "mail.list", "mail.mark_read", "mail.open_link", "mail.open_web",
             "mail.read", "mail.send", "music.devices", "music.next", "music.play_playlist", "music.play_search", "music.previous",
             "music.queue", "music.seek", "music.toggle", "music.transfer", "music.volume", "notes.create", "notes.delete",
             "notes.pin", "notes.search", "notes.to_reminder", "projects.list", "projects.resume", "projects.status",

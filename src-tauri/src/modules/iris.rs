@@ -1,20 +1,22 @@
-//! IRIS : état du cerveau local (Ollama), téléchargement de son modèle et lancement de Claude Code sans outils natifs.
-//! Le journal ne porte aucun texte utilisateur.
+//! IRIS : tours de conversation (`iris_ask`, événements `oniris://iris`), état du cerveau local (Ollama),
+//! téléchargement de son modèle et lancement de Claude Code sans outils natifs. Le journal ne porte aucun texte utilisateur.
 use crate::job;
 use crate::state::AppState;
 use async_trait::async_trait;
-use crate::commands::dispatch_as_user;
+use crate::commands::{dispatch_as_user, show_confirm};
 use oniris_core::events::Topic;
 use oniris_core::iris::memory::{self, HistoryItem, Memory};
+use oniris_core::iris::{prompt, Agent, IrisEventKind, LocalBrain, PromptCtx, Quarantine, Segment, TurnInput, Vault};
 use oniris_core::time_util::now_ms;
-use oniris_core::tools::ToolOutcome;
+use oniris_core::tools::{Brain, Origin, PendingAction, ToolOutcome};
+use parking_lot::Mutex;
 use serde_json::json;
 use oniris_core::iris::{classify, invocation, locate, parse_line, ClaudeBrain, ClaudeError, ClaudeEvent, Executor, LocalStatus, McpConfig, OnDelta, Ollama};
 use oniris_core::Settings;
 use serde::Serialize;
 use std::path::PathBuf;
 use std::process::Stdio;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
@@ -31,10 +33,8 @@ fn claude_exe(setting: &str) -> Option<PathBuf> {
 }
 
 /// Lance `claude -p` ; fermer le `Job` (fin, erreur ou abandon du futur) tue le processus et ses descendants.
-#[allow(dead_code)] // câblé par l'agent (tâche ultérieure)
 pub struct RealClaude { pub program: PathBuf, pub cwd: PathBuf, pub model: String, pub timeout: Duration }
 
-#[allow(dead_code)] // idem
 impl RealClaude {
     pub fn new(program: PathBuf, cwd: PathBuf, model: String) -> Self {
         Self { program, cwd, model, timeout: Duration::from_secs(180) }
@@ -113,6 +113,119 @@ impl ClaudeBrain for RealClaude {
         let cfg = McpConfig { pipe: session.pipe.clone(), token: session.token.clone(), relay_exe };
         self.run(system, prompt, Some(&cfg), on_delta).await
     }
+}
+
+/// claude.exe introuvable : chaque appel répond `NotInstalled`.
+struct NoClaude;
+
+#[async_trait]
+impl ClaudeBrain for NoClaude {
+    async fn complete(&self, _: &str, _: String, _: OnDelta<'_>) -> Result<String, ClaudeError> { Err(ClaudeError::NotInstalled) }
+    async fn plan(&self, _: &str, _: String, _: Arc<Executor>, _: OnDelta<'_>) -> Result<String, ClaudeError> { Err(ClaudeError::NotInstalled) }
+}
+
+/// Événement d'un tour sur `oniris://iris`.
+#[derive(Serialize, Clone)]
+struct IrisEvent { turn: u32, #[serde(flatten)] kind: IrisEventKind }
+
+/// Messages gardés pour le contexte : 6 échanges utilisateur / IRIS.
+const CONTEXT_MESSAGES: usize = 12;
+/// Octets d'un message, au plus.
+const ASK_MAX: usize = 8 * 1024;
+
+static NEXT_TURN: AtomicU32 = AtomicU32::new(0);
+/// Le tour en cours (un seul à la fois).
+static TURN: Mutex<Option<(u32, tauri::async_runtime::JoinHandle<()>)>> = parking_lot::const_mutex(None);
+/// Coffre de la conversation en cours : une nouvelle conversation repart d'un coffre vide.
+static VAULT: Mutex<Option<(i64, Arc<Mutex<Vault>>)>> = parking_lot::const_mutex(None);
+
+fn vault_for(conv: i64) -> Arc<Mutex<Vault>> {
+    let mut v = VAULT.lock();
+    match &*v {
+        Some((c, vault)) if *c == conv => vault.clone(),
+        _ => {
+            let fresh: Arc<Mutex<Vault>> = Default::default();
+            *v = Some((conv, fresh.clone()));
+            fresh
+        }
+    }
+}
+
+/// Lance un tour et rend son numéro ; le tour précédent, s'il court encore, est abandonné.
+#[tauri::command]
+pub async fn iris_ask(app: AppHandle, text: String, force_claude: bool) -> Result<u32, String> {
+    let text = text.trim().to_string();
+    if text.is_empty() || text.len() > ASK_MAX {
+        return Err("message vide ou trop long".into());
+    }
+    let turn = NEXT_TURN.fetch_add(1, Ordering::SeqCst) + 1;
+    let mut cur = TURN.lock();
+    if let Some((_, old)) = cur.take() {
+        old.abort();
+    }
+    let task = tauri::async_runtime::spawn(async move {
+        if let Err(e) = run_turn(&app, turn, text, force_claude).await {
+            tracing::warn!("oniris: tour d'IRIS interrompu ({e})");
+            let kind = IrisEventKind::Error { kind: "failed", message: "IRIS n'a pas pu traiter ce message.".into(), offer_local: false };
+            let _ = app.emit("oniris://iris", IrisEvent { turn, kind });
+        }
+    });
+    *cur = Some((turn, task));
+    Ok(turn)
+}
+
+/// Abandonne le tour s'il est encore le tour en cours (Claude Code et son tube MCP s'arrêtent avec lui).
+#[tauri::command]
+pub async fn iris_cancel(turn: u32) {
+    let mut cur = TURN.lock();
+    if cur.as_ref().is_some_and(|(t, _)| *t == turn) {
+        if let Some((_, task)) = cur.take() {
+            task.abort();
+        }
+    }
+}
+
+/// Cerveaux construits d'après les réglages du moment ; exécuteur sur le coffre de la conversation.
+async fn run_turn(app: &AppHandle, turn: u32, text: String, force_claude: bool) -> Result<(), String> {
+    let st = app.state::<AppState>();
+    let s = st.settings.read().clone();
+    let now = now_ms();
+    let (conv, history, memories) = {
+        let c = st.db.lock();
+        let conv = memory::conversation(&c, now).map_err(|e| e.to_string())?;
+        let history = memory::context(&c, conv, CONTEXT_MESSAGES).map_err(|e| e.to_string())?;
+        let memories: Vec<String> = memory::list(&c).map_err(|e| e.to_string())?.into_iter().map(|m| m.text).collect();
+        (conv, history, memories)
+    };
+    let vault = vault_for(conv);
+    let local: Arc<dyn LocalBrain> = Arc::new(Ollama::new(&s.iris_local_model, s.iris_unload_minutes));
+    let claude: Arc<dyn ClaudeBrain> = match RealClaude::from_settings(&s) {
+        Some(c) => Arc::new(c),
+        None => Arc::new(NoClaude),
+    };
+    let handle = app.clone();
+    let exec = Arc::new(Executor {
+        broker: st.broker.clone(),
+        vault: vault.clone(),
+        origin: Origin::Assistant { brain: Brain::Local },
+        on_pending: Arc::new(move |p: &PendingAction| show_confirm(&handle, p)),
+        virtuals: Some(Arc::new(Quarantine { local: local.clone(), claude: claude.clone(), vault, now_ms })),
+    });
+    let system = prompt::system(&s.iris_personality, &s.user_name, chrono::Local::now(), &memories, Brain::Local);
+    let agent = Agent { local, claude, model: s.iris_local_model.clone(), keep_alive_min: s.iris_unload_minutes };
+    let emitter = app.clone();
+    let sink = move |kind: IrisEventKind| {
+        let _ = emitter.emit("oniris://iris", IrisEvent { turn, kind });
+    };
+    let end = agent.turn(TurnInput { text: text.clone(), force_claude }, exec, PromptCtx { system, history }, &sink).await;
+    let shown: String = end.shown.iter().map(|s| match s { Segment::Text { text } | Segment::Untrusted { text, .. } => text.as_str() }).collect();
+    {
+        let c = st.db.lock();
+        memory::record(&c, conv, "user", None, &text, &text, now).map_err(|e| e.to_string())?;
+        memory::record(&c, conv, "iris", Some(end.brain.as_str()), &end.planner_text, &shown, now_ms()).map_err(|e| e.to_string())?;
+    }
+    st.events.changed(Topic::Iris);
+    Ok(())
 }
 
 #[derive(Serialize)]
@@ -328,5 +441,71 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         let brain = RealClaude::new(d.path().join("absent.exe"), d.path().join("cwd"), String::new());
         assert_eq!(brain.complete("s", "p".into(), &mut |_: &str| {}).await, Err(ClaudeError::NotInstalled));
+    }
+
+    /// Source jamais appelée : seuls les noms des outils sont lus.
+    fn never<T>() -> Arc<dyn Fn() -> T + Send + Sync> { Arc::new(|| unreachable!("jamais appelé")) }
+
+    /// Noms d'outils enregistrés : mêmes constructeurs que `AppState::open` (qui exige une `AppHandle`), plus les outils virtuels.
+    fn registered_names(dir: &Path) -> Vec<String> {
+        use oniris_core::{accounts, agenda, apps, calendar, clipboard, events, favorites, general, mail, music, notes, projects, reminders, secrets, sites, system, timers, weather};
+        use oniris_core::iris::VirtualTools;
+        use oniris_core::tools::Tool;
+        let mut c = oniris_core::open_db(&dir.join("t.db")).unwrap();
+        oniris_core::migrate(&mut c, oniris_core::CORE_MIGRATIONS).unwrap();
+        let db = Arc::new(Mutex::new(c));
+        let ev: Arc<dyn events::Events> = Arc::new(events::NoEvents);
+        let opener: Arc<dyn oniris_core::launch::Opener> = Arc::new(crate::launch::RealOpener);
+        let inventory = Arc::new(apps::Inventory::default());
+        let http = reqwest::Client::new();
+        let secrets: Arc<dyn secrets::SecretStore> = Arc::new(crate::secrets_win::WinCredentials);
+        let tokens = Arc::new(accounts::TokenCache::new(db.clone(), secrets, ev.clone(), http.clone(), Arc::new(|_| None)));
+        let media: Arc<dyn music::MediaControl> = Arc::new(crate::modules::smtc::Smtc);
+        let web = music::tools::Web::new(db.clone(), ev.clone(), tokens.clone(), music::spotify::Client::new(http.clone()));
+        let shell: Arc<dyn general::shell::ShellExec> = Arc::new(crate::modules::general::RealShell);
+        let recycler: Arc<dyn general::recycle::Recycler> = Arc::new(crate::modules::general::ShellRecycler);
+        let win: Arc<dyn general::windows::WindowControl> = Arc::new(crate::modules::general::Win32Windows);
+        let source: projects::tools::Source = never();
+        let mut tools: Vec<Arc<dyn Tool>> = vec![];
+        tools.extend(agenda::tools::all(&db, &ev));
+        tools.extend(reminders::tools::all(&db, &ev));
+        tools.extend(notes::tools::all(&db, &ev));
+        tools.extend(timers::tools::all(&db, &ev));
+        tools.extend(clipboard::tools::all(&db));
+        tools.extend(system::tools::all(&never()));
+        tools.extend(weather::tools::all(&db));
+        tools.extend(apps::tools::all(&opener, never(), &inventory));
+        tools.extend(favorites::tools::all(&db, &ev, &opener));
+        tools.extend(memory::all(&db, &ev));
+        tools.extend(projects::tools::all(&source));
+        tools.push(Arc::new(projects::tools::Resume { source, env: never(), opener: opener.clone() }));
+        tools.extend(accounts::tools::all(&db));
+        tools.extend(mail::tools::all(&db, &ev, &tokens, mail::gmail::Client::new(http), &opener));
+        tools.extend(calendar::all(&db));
+        tools.extend(music::tools::all(&media, &web));
+        tools.push(Arc::new(sites::tools::Status { source: never() }));
+        tools.push(Arc::new(sites::tools::Vps { source: never() }));
+        tools.extend(general::shell::all(&shell, never(), dir.to_path_buf(), Arc::new(|| false)));
+        tools.extend(general::files::all(&recycler, never(), general::files::protected_dirs()));
+        tools.extend(general::windows::all(&win, &inventory));
+        let local: Arc<dyn LocalBrain> = Arc::new(Ollama::new("m", 5));
+        let q = Quarantine { local, claude: Arc::new(NoClaude), vault: Default::default(), now_ms };
+        tools.iter().map(|t| t.spec().name).chain(q.specs().into_iter().map(|s| s.name)).collect()
+    }
+
+    #[test]
+    fn noms_reels_aller_retour_et_outils_du_raccourci_enregistres() {
+        let d = tempfile::tempdir().unwrap();
+        let names = registered_names(d.path());
+        assert!(names.len() > 60, "{}", names.len());
+        for n in &names {
+            assert!(!n.contains("__") && !n.contains("_.") && !n.contains("._"), "{n}");
+            let w = oniris_core::iris::wire(n);
+            assert!(w.len() <= 64 && w.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-'), "{w}");
+            assert_eq!(oniris_core::iris::unwire(&w), *n);
+        }
+        for t in oniris_core::iris::fastpath::TOOLS {
+            assert!(names.iter().any(|n| n == t), "{t} n'est pas enregistré");
+        }
     }
 }

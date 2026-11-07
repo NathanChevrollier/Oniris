@@ -77,6 +77,8 @@
     "allow-iris-memories",
     "allow-iris-memory-delete",
     "allow-iris-conversation-new",
+    "allow-iris-ask",
+    "allow-iris-cancel",
     "allow-mail-open-web",
     "allow-mail-open-link",
     "allow-mail-status",

@@ -55,6 +55,10 @@ impl RealClaude {
             while let Ok(Some(line)) = lines.next_line().await {
                 let ev = parse_line(&line);
                 // Échec fermé : rien n'est accepté avant un Init valide qui annonce les outils.
+                // Une erreur avant l'Init (limite, non connecté) reste classée : aucun outil n'a pu tourner.
+                if let (false, Some(e @ ClaudeEvent::Result { is_error: true, .. })) = (inited, &ev) {
+                    return Err(classify("", Some(e), None));
+                }
                 if !inited && matches!(ev, Some(ClaudeEvent::Delta(_) | ClaudeEvent::Result { .. })) {
                     return Err(ClaudeError::Failed("Claude a démarré sans annonce d'outils".into()));
                 }
@@ -214,6 +218,15 @@ mod tests {
             assert_eq!(r, Err(ClaudeError::Failed("Claude a démarré sans annonce d'outils".into())), "{sc}");
             assert!(gone_within_2s(pid_of(&pidf).await).await);
         }
+    }
+
+    #[tokio::test]
+    async fn erreur_de_limite_avant_init_reste_unavailable() {
+        let d = tempfile::tempdir().unwrap();
+        let pidf = d.path().join("pid");
+        let r = fake(d.path(), 20_000).complete("sys", format!("limitesansinit:{}", pidf.display()), &mut |_: &str| {}).await;
+        assert!(matches!(r, Err(ClaudeError::Unavailable(_))), "{r:?}");
+        assert!(gone_within_2s(pid_of(&pidf).await).await);
     }
 
     #[tokio::test]

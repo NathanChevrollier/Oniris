@@ -1,5 +1,5 @@
 //! Faux `claude -p` des tests de `modules::iris` : le scénario et le fichier de PID viennent du prompt (stdin),
-//! `scénario:fichier_pid`. Scénarios : normal, sansoutils (init sans `tools`), sansinit (aucun init), limite, bash (init avec l'outil Bash), silence (init puis 10 s de rien).
+//! `scénario:fichier_pid`. Scénarios : normal, sansoutils (init sans `tools`), sansinit (aucun init), limitesansinit (erreur de limite sans init, puis silence), limite, bash (init avec l'outil Bash), silence (init puis 10 s de rien).
 //! Aucun réseau, aucun vrai Claude.
 use std::io::{Read, Write};
 
@@ -18,7 +18,7 @@ fn main() {
     let tools = if scenario == "bash" { r#"["mcp__oniris__a","Bash"]"# } else { "[]" };
     match scenario {
         "sansoutils" => out(r#"{"type":"system","subtype":"init"}"#),
-        "sansinit" => {}
+        "sansinit" | "limitesansinit" => {}
         _ => out(&format!(r#"{{"type":"system","subtype":"init","tools":{tools}}}"#)),
     }
     let delta = |t: &str| format!(r#"{{"type":"stream_event","event":{{"type":"content_block_delta","index":0,"delta":{{"type":"text_delta","text":"{t}"}}}}}}"#);
@@ -31,6 +31,10 @@ fn main() {
         "limite" => {
             out(r#"{"type":"result","subtype":"error_during_execution","is_error":true,"result":"Claude AI usage limit reached|1760000000"}"#);
             std::process::exit(1);
+        }
+        "limitesansinit" => {
+            out(r#"{"type":"result","subtype":"success","is_error":true,"result":"Claude usage limit reached"}"#);
+            std::thread::sleep(std::time::Duration::from_secs(10));
         }
         _ => std::thread::sleep(std::time::Duration::from_secs(10)),
     }

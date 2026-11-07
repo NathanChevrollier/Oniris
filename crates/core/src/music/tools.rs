@@ -6,7 +6,7 @@ use super::MediaControl;
 use crate::accounts::{self, Status, TokenCache};
 use crate::events::{Events, Topic};
 use crate::oauth::{OAuthError, Provider};
-use crate::tools::helpers::{bad, failed, low, parse, spec};
+use crate::tools::helpers::{bad, failed, low, parse, spec, untrusted};
 use crate::tools::{ConfirmationText, Permission, Tool, ToolError, ToolResult, ToolSpec};
 use crate::{kv, time_util::now_ms, Db};
 use async_trait::async_trait;
@@ -139,6 +139,10 @@ impl Web {
     }
 
     async fn play(&self, target: impl Fn() -> PlayTarget) -> Result<(), ToolError> {
+        match target() {
+            PlayTarget::Context(u) => check_uri(&u)?,
+            PlayTarget::Tracks(us) => us.iter().try_for_each(|u| check_uri(u))?,
+        }
         let (c, target) = (&self.client, &target);
         self.run(|t| async move { with_device(c, &t, || c.play(&t, None, target())).await }).await
     }
@@ -164,6 +168,14 @@ struct VolumeArgs { percent: Option<i32>, delta: Option<i32> }
 struct QueueArgs { query: String }
 #[derive(Deserialize)]
 struct DeviceArgs { device_id: String }
+
+/// URI acceptée : `spotify:(track|album|playlist|artist):` suivi de 22 caractères alphanumériques.
+fn check_uri(uri: &str) -> Result<(), ToolError> {
+    let ok = uri.strip_prefix("spotify:").and_then(|r| r.split_once(':')).is_some_and(|(kind, id)| {
+        ["track", "album", "playlist", "artist"].contains(&kind) && id.len() == 22 && id.bytes().all(|b| b.is_ascii_alphanumeric())
+    });
+    if ok { Ok(()) } else { Err(bad("URI Spotify invalide")) }
+}
 
 /// Un identifiant Spotify ne contient que des caractères alphanumériques.
 fn valid_id(id: &str) -> bool { !id.is_empty() && id.len() <= 64 && id.chars().all(|c| c.is_ascii_alphanumeric()) }
@@ -206,9 +218,17 @@ impl Tool for WebTool {
     fn spec(&self) -> ToolSpec {
         let (name, desc, _, schema) = self.texts();
         // Les sorties portent des noms de playlists, titres ou appareils : pas dans le journal.
-        ToolSpec { sensitive_output: !matches!(self.action, WebAction::Volume | WebAction::Transfer), ..spec(name, desc, schema, Permission::Free) }
+        let s = ToolSpec { sensitive_output: !matches!(self.action, WebAction::Volume | WebAction::Transfer), ..spec(name, desc, schema, Permission::Free) };
+        if s.sensitive_output { untrusted(s) } else { s }
     }
     fn describe(&self, _: &Value) -> ConfirmationText { low(self.texts().2) }
+    // Une recherche est un contenu de l'utilisateur : le journal n'en garde que la taille.
+    fn journal_args(&self, a: &Value) -> Value {
+        match self.action {
+            WebAction::PlaySearch | WebAction::Queue => json!({ "query_chars": a["query"].as_str().map_or(0, |q| q.chars().count()) }),
+            _ => a.clone(),
+        }
+    }
     async fn run(&self, args: &Value) -> Result<ToolResult, ToolError> {
         let w = &self.web;
         let c = &w.client;
@@ -244,6 +264,7 @@ impl Tool for WebTool {
             WebAction::Queue => {
                 let hit = w.first(&parse::<QueueArgs>(args)?.query, "track").await?;
                 let uri = &hit.uri;
+                check_uri(uri)?;
                 w.run(|t| async move { with_device(c, &t, || c.queue(&t, uri)).await }).await?;
                 json!({ "name": hit.name })
             }
@@ -441,7 +462,7 @@ mod tests {
     async fn play_playlist_par_nom_focus_trouve_focus_deep_work() {
         let server = MockServer::start().await;
         playlists_mocks(&server).await;
-        Mock::given(method("PUT")).and(path("/me/player/play")).and(body_partial_json(json!({"context_uri": "spotify:playlist:pl1"}))).respond_with(ResponseTemplate::new(204)).expect(1).mount(&server).await;
+        Mock::given(method("PUT")).and(path("/me/player/play")).and(body_partial_json(json!({"context_uri": "spotify:playlist:pl1xxxxxxxxxxxxxxxxxxx"}))).respond_with(ResponseTemplate::new(204)).expect(1).mount(&server).await;
         let e = env(&server, true, false).await;
         let ToolOutcome::Done { output, .. } = e.call("music.play_playlist", json!({"name": "focus"})).await else { panic!() };
         assert_eq!(output["name"], "Focus Deep Work");
@@ -452,11 +473,30 @@ mod tests {
     async fn play_search_artiste_joue_son_contexte() {
         let server = MockServer::start().await;
         Mock::given(path("/search")).and(query_param("type", "artist")).and(query_param("limit", "1")).respond_with(ok("search")).mount(&server).await;
-        Mock::given(method("PUT")).and(path("/me/player/play")).and(body_partial_json(json!({"context_uri": "spotify:artist:a1"}))).respond_with(ResponseTemplate::new(204)).expect(1).mount(&server).await;
+        Mock::given(method("PUT")).and(path("/me/player/play")).and(body_partial_json(json!({"context_uri": "spotify:artist:a1xxxxxxxxxxxxxxxxxxxx"}))).respond_with(ResponseTemplate::new(204)).expect(1).mount(&server).await;
         let e = env(&server, true, false).await;
         assert!(matches!(e.call("music.play_search", json!({"query": "a", "kind": "artist"})).await, ToolOutcome::Done { .. }));
         assert!(matches!(e.call("music.play_search", json!({"query": "a", "kind": "album"})).await, ToolOutcome::Failed { .. }));
         server.verify().await;
+    }
+
+    #[test]
+    fn uri_spotify_strictes() {
+        assert!(check_uri("spotify:track:6rqhFgbbKwnb9MLmUQDhG6").is_ok());
+        for u in ["spotify:track:abc", "spotify:user:6rqhFgbbKwnb9MLmUQDhG6", "spotify:track:6rqhFgbbKwnb9MLmUQDhG6x", "http://x", "spotify:track:6rqhFgbbKwnb9MLmUQDhG!"] {
+            assert!(check_uri(u).is_err(), "{u}");
+        }
+    }
+
+    #[tokio::test]
+    async fn recherche_journalisee_sans_le_texte() {
+        let server = MockServer::start().await;
+        Mock::given(path("/search")).respond_with(ok("search")).mount(&server).await;
+        Mock::given(method("PUT")).and(path("/me/player/play")).respond_with(ResponseTemplate::new(204)).mount(&server).await;
+        let e = env(&server, true, false).await;
+        let ToolOutcome::Done { action_id, .. } = e.call("music.play_search", json!({"query": "secretxyz"})).await else { panic!() };
+        let args: String = e.db.lock().query_row("SELECT args FROM actions WHERE id=?", [action_id], |r| r.get(0)).unwrap();
+        assert_eq!(args, r#"{"query_chars":9}"#);
     }
 
     #[tokio::test]
@@ -507,8 +547,8 @@ mod tests {
         let before = server.received_requests().await.unwrap().len();
         e.web.refresh_if_stale().await;
         assert_eq!(server.received_requests().await.unwrap().len(), before, "cache : pas de nouvelle requête");
-        e.web.set_favorites(&["pl3".into(), "inconnue".into(), "pl3".into(), "pl1".into()]).unwrap();
-        assert_eq!(e.web.favorites().iter().map(|p| p.id.as_str()).collect::<Vec<_>>(), ["pl3", "pl1"]);
+        e.web.set_favorites(&["pl3".into(), "inconnue".into(), "pl3".into(), "pl1xxxxxxxxxxxxxxxxxxx".into()]).unwrap();
+        assert_eq!(e.web.favorites().iter().map(|p| p.id.as_str()).collect::<Vec<_>>(), ["pl3", "pl1xxxxxxxxxxxxxxxxxxx"]);
         let nine: Vec<String> = (0..9).map(|i| format!("p{i}")).collect();
         assert!(e.web.set_favorites(&nine).is_err());
     }

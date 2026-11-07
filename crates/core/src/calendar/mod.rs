@@ -7,7 +7,7 @@ use crate::agenda::{between, Event};
 use crate::kv;
 use crate::mail::sync::SyncError;
 use crate::oauth::OAuthError;
-use crate::tools::helpers::{failed, low, parse, spec};
+use crate::tools::helpers::{failed, low, parse, spec, untrusted};
 use crate::tools::{ConfirmationText, Permission, Tool, ToolError, ToolResult, ToolSpec};
 use crate::Db;
 use async_trait::async_trait;
@@ -173,9 +173,9 @@ struct ListArgs { from_ms: i64, to_ms: i64 }
 impl Tool for ListEvents {
     fn spec(&self) -> ToolSpec {
         // Titres des agendas Google : le journal ne garde que le nombre d'éléments.
-        ToolSpec { sensitive_output: true, ..spec("calendar.list", "Liste les événements locaux et des agendas Google qui chevauchent [from_ms, to_ms[ (lecture seule).",
+        untrusted(ToolSpec { sensitive_output: true, ..spec("calendar.list", "Liste les événements locaux et des agendas Google qui chevauchent [from_ms, to_ms[ (lecture seule).",
             json!({"type":"object","required":["from_ms","to_ms"],"properties":{"from_ms":{"type":"integer"},"to_ms":{"type":"integer"}}}),
-            Permission::Free) }
+            Permission::Free) })
     }
     fn describe(&self, _: &Value) -> ConfirmationText { low("Lire les agendas") }
     async fn run(&self, args: &Value) -> Result<ToolResult, ToolError> {

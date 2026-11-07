@@ -220,7 +220,7 @@ mod tests {
         Mock::given(method("GET")).and(path("/me/playlists")).and(query_param("offset", "0")).respond_with(ok("playlists_p1")).mount(&server).await;
         Mock::given(method("GET")).and(path("/me/playlists")).and(query_param("offset", "2")).respond_with(ok("playlists_p2")).mount(&server).await;
         let l = client(&server).my_playlists("t", 2).await.unwrap();
-        assert_eq!(l.iter().map(|p| (p.id.as_str(), p.owner_is_me, p.image.is_some())).collect::<Vec<_>>(), [("pl1", true, true), ("pl2", false, false), ("pl3", true, false)]);
+        assert_eq!(l.iter().map(|p| (p.id.as_str(), p.owner_is_me, p.image.is_some())).collect::<Vec<_>>(), [("pl1xxxxxxxxxxxxxxxxxxx", true, true), ("pl2", false, false), ("pl3", true, false)]);
     }
 
     #[tokio::test]
@@ -249,7 +249,7 @@ mod tests {
         Mock::given(method("PUT")).and(path("/me/player")).respond_with(ResponseTemplate::new(204)).expect(1).mount(&server).await;
         Mock::given(method("PUT")).and(path("/me/player/play")).respond_with(ResponseTemplate::new(204)).expect(1).mount(&server).await;
         let c = client(&server);
-        with_device(&c, "t", || c.play("t", None, PlayTarget::Context("spotify:playlist:pl1".into()))).await.unwrap();
+        with_device(&c, "t", || c.play("t", None, PlayTarget::Context("spotify:playlist:pl1xxxxxxxxxxxxxxxxxxx".into()))).await.unwrap();
         server.verify().await;
     }
 

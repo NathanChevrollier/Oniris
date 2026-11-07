@@ -1,6 +1,6 @@
 //! Outil `sites.status` (libre) : état des sites surveillés.
 use super::{SiteView, VpsStatus};
-use crate::tools::helpers::{low, spec};
+use crate::tools::helpers::{low, spec, untrusted};
 use crate::tools::{ConfirmationText, Permission, Tool, ToolError, ToolResult, ToolSpec};
 use async_trait::async_trait;
 use serde_json::{json, Value};
@@ -14,7 +14,7 @@ pub struct Status { pub source: Source }
 #[async_trait]
 impl Tool for Status {
     fn spec(&self) -> ToolSpec {
-        ToolSpec { sensitive_output: true, ..spec("sites.status", "État des sites surveillés (en ligne, lent, en panne, hors ligne) avec le dernier temps de réponse.", json!({"type":"object","properties":{}}), Permission::Free) }
+        untrusted(ToolSpec { sensitive_output: true, ..spec("sites.status", "État des sites surveillés (en ligne, lent, en panne, hors ligne) avec le dernier temps de réponse.", json!({"type":"object","properties":{}}), Permission::Free) })
     }
     fn describe(&self, _: &Value) -> ConfirmationText { low("Voir l'état des sites") }
     async fn run(&self, _: &Value) -> Result<ToolResult, ToolError> {
@@ -31,7 +31,7 @@ pub struct Vps { pub source: VpsSource }
 #[async_trait]
 impl Tool for Vps {
     fn spec(&self) -> ToolSpec {
-        ToolSpec { sensitive_output: true, ..spec("vps.status", "Charge du VPS lue par Zenytt (CPU, mémoire, disque, charge, alertes) : dernier relevé connu.", json!({"type":"object","properties":{}}), Permission::Free) }
+        untrusted(ToolSpec { sensitive_output: true, ..spec("vps.status", "Charge du VPS lue par Zenytt (CPU, mémoire, disque, charge, alertes) : dernier relevé connu.", json!({"type":"object","properties":{}}), Permission::Free) })
     }
     fn describe(&self, _: &Value) -> ConfirmationText { low("Voir la charge du VPS") }
     async fn run(&self, _: &Value) -> Result<ToolResult, ToolError> {

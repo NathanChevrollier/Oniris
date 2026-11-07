@@ -6,7 +6,7 @@ use crate::accounts::{self, TokenCache};
 use crate::events::{Events, Topic};
 use crate::launch::{safe_url, Opener};
 use crate::oauth::{OAuthError, Provider};
-use crate::tools::helpers::{bad, failed, low, parse, spec};
+use crate::tools::helpers::{bad, failed, low, parse, spec, untrusted};
 use crate::tools::{ConfirmationText, Permission, Risk, Tool, ToolError, ToolResult, ToolSpec};
 use crate::Db;
 use async_trait::async_trait;
@@ -181,11 +181,12 @@ impl Tool for MailTool {
     fn spec(&self) -> ToolSpec {
         let msg = || obj(json!({"account": {"type": "integer"}, "id": {"type": "string"}}), &["account", "id"]);
         let sensitive = |s: ToolSpec| ToolSpec { sensitive_output: true, ..s };
+        let untrusted_sensitive = |s: ToolSpec| untrusted(ToolSpec { sensitive_output: true, ..s });
         match self.kind {
-            Kind::List => sensitive(spec("mail.list", "Mails récents de la boîte de réception (cache local) : expéditeur, sujet, extrait, tri.",
+            Kind::List => untrusted_sensitive(spec("mail.list", "Mails récents de la boîte de réception (cache local) : expéditeur, sujet, extrait, tri.",
                 obj(json!({"bucket": {"enum": ["todo", "read", "filtered"]}, "account": {"type": "integer"}, "limit": {"type": "integer", "maximum": LIST_MAX}}), &[]),
                 Permission::Free)),
-            Kind::Read => sensitive(spec("mail.read", "Lit un mail (HTML nettoyé, texte, pièces jointes, liens) et le marque comme lu.", msg(), Permission::Free)),
+            Kind::Read => untrusted_sensitive(spec("mail.read", "Lit un mail (HTML nettoyé, texte, pièces jointes, liens) et le marque comme lu.", msg(), Permission::Free)),
             Kind::MarkRead => spec("mail.mark_read", "Marque un mail comme lu ou non lu.",
                 obj(json!({"account": {"type": "integer"}, "id": {"type": "string"}, "read": {"type": "boolean"}}), &["account", "id", "read"]), Permission::Free),
             Kind::Archive => spec("mail.archive", "Archive un mail (le retire de la boîte de réception).", msg(), Permission::Free),
@@ -350,15 +351,12 @@ impl Tool for MailTool {
     }
 
     fn journal_args(&self, a: &Value) -> Value {
-        let mut a = a.clone();
         if let Kind::Send = self.kind {
-            for k in ["subject", "body"] {
-                if let Some(s) = a.get(k).and_then(Value::as_str) {
-                    a[k] = json!({ "redacted": true, "chars": s.chars().count() });
-                }
-            }
+            // Ni destinataire, ni sujet, ni corps en base : seulement des tailles.
+            let n = |k: &str| a.get(k).and_then(Value::as_str).map_or(0, |s| s.chars().count());
+            return json!({ "account": a.get("account"), "reply_to_id": a.get("reply_to_id"), "subject_chars": n("subject"), "body_chars": n("body") });
         }
-        a
+        a.clone()
     }
 }
 
@@ -456,7 +454,7 @@ mod tests {
         assert_eq!(p.text.risk, Risk::High);
         assert_eq!(p.text.details, format!("Compte : moi@gmail.com\nÀ : j@x.fr\nSujet : Réunion\n\n{BODY}"), "texte intégral");
         let logged = e.column("args", p.action_id);
-        assert!(!logged.contains("Bonjour") && !logged.contains("Réunion") && logged.contains("redacted"), "corps jamais en base : {logged}");
+        assert!(!logged.contains("Bonjour") && !logged.contains("Réunion") && !logged.contains("j@x.fr") && logged.contains("body_chars"), "corps jamais en base : {logged}");
         assert_eq!(e.broker.resolve(p.action_id, false).await, ToolOutcome::Rejected { action_id: p.action_id });
         // Injection d'en-tête : refusée à l'exécution, avant toute requête.
         for (to, subject) in [("j@x.fr\r\nBcc: z@y.fr", "a"), ("j@x.fr", "a\r\nBcc: z@y.fr"), ("Jean <j@x.fr>", "a")] {

@@ -20,8 +20,11 @@ pub fn parse<T: for<'a> Deserialize<'a>>(a: &Value) -> Result<T, ToolError> {
 
 /// Construit un `ToolSpec` (sortie journalisée ; `ToolSpec { sensitive_output: true, ..spec(..) }` sinon).
 pub fn spec(name: &str, description: &str, args_schema: Value, permission: Permission) -> ToolSpec {
-    ToolSpec { name: name.into(), description: description.into(), args_schema, permission, sensitive_output: false }
+    ToolSpec { name: name.into(), description: description.into(), args_schema, permission, sensitive_output: false, untrusted_output: false }
 }
+
+/// Marque la sortie de l'outil comme non fiable (contenu d'un tiers).
+pub fn untrusted(s: ToolSpec) -> ToolSpec { ToolSpec { untrusted_output: true, ..s } }
 
 /// Texte de confirmation sans détail et à risque faible (outils libres : jamais affiché).
 pub fn low(summary: &str) -> ConfirmationText {

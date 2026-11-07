@@ -29,6 +29,9 @@ pub struct ToolSpec {
     /// Sortie à ne jamais journaliser (contenu utilisateur) : le journal n'en garde que `{redacted, count}`.
     #[serde(default)]
     pub sensitive_output: bool,
+    /// Sortie qui peut porter du texte d'un tiers (mail, agenda, titres…) : l'agent la traite comme non fiable.
+    #[serde(default)]
+    pub untrusted_output: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -66,6 +69,10 @@ pub trait Tool: Send + Sync {
     fn spec(&self) -> ToolSpec;
     fn describe(&self, args: &Value) -> ConfirmationText;
     async fn run(&self, args: &Value) -> Result<ToolResult, ToolError>;
+    /// Prévérification avant toute carte ou exécution (refus immédiat, journalisé `failed`). Refaite à la décision.
+    fn check(&self, _args: &Value) -> Result<(), ToolError> { Ok(()) }
+    /// Confirmation requise pour ces arguments (par défaut : selon la permission de l'outil).
+    fn needs_confirm(&self, _args: &Value) -> bool { self.spec().permission == Permission::Confirm }
     async fn undo(&self, _undo: &Value) -> Result<(), ToolError> { Err(ToolError::NotUndoable) }
     /// Arguments écrits au journal (`actions.args`). Un outil qui reçoit un contenu à ne pas garder en base
     /// (corps d'un mail) en rend une forme masquée ; le courtier garde alors les vrais arguments en mémoire

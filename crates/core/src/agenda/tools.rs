@@ -2,7 +2,7 @@
 use super::{between, get, insert, set_deleted, update_times, Event, NewEvent};
 use crate::events::{Events, Topic};
 use crate::time_util::local_day_bounds;
-use crate::tools::helpers::{bad, failed, low, parse, spec, IdArgs};
+use crate::tools::helpers::{bad, failed, low, parse, spec, untrusted, IdArgs};
 use crate::tools::{ConfirmationText, Permission, Risk, Tool, ToolError, ToolResult, ToolSpec};
 use crate::when::{at_default_hour, parse_when};
 use async_trait::async_trait;
@@ -49,6 +49,8 @@ impl CreateArgs {
 
 #[derive(Deserialize)]
 struct MoveArgs { id: i64, start_ms: i64, end_ms: Option<i64> }
+#[derive(Deserialize)]
+struct DeleteArgs { id: i64, key: Option<String> }
 #[derive(Deserialize)]
 struct ListArgs { from_ms: i64, to_ms: i64 }
 
@@ -108,7 +110,14 @@ impl Tool for MoveEvent {
 impl Tool for DeleteEvent {
     fn spec(&self) -> ToolSpec {
         spec("agenda.delete_event", "Supprime un événement : { id }. Demande confirmation.",
-            json!({"type":"object","required":["id"],"properties":{"id":{"type":"integer"}}}), Permission::Confirm)
+            json!({"type":"object","required":["id"],"properties":{"id":{"type":"integer"},"key":{"type":"string"}}}), Permission::Confirm)
+    }
+    fn check(&self, args: &Value) -> Result<(), ToolError> {
+        let a: DeleteArgs = parse(args)?;
+        // Les événements Google ont l'id 0 et une clé `g:…` ; un événement marqué lecture seule est refusé aussi.
+        let readonly = a.id == 0 || a.key.as_deref().is_some_and(|k| k.starts_with("g:"))
+            || get(&self.db.lock(), a.id).ok().flatten().is_some_and(|e| e.readonly);
+        if readonly { Err(failed("Événement Google en lecture seule")) } else { Ok(()) }
     }
     fn describe(&self, args: &Value) -> ConfirmationText {
         let title = parse::<IdArgs>(args).ok()
@@ -137,9 +146,9 @@ impl Tool for DeleteEvent {
 impl Tool for ListEvents {
     fn spec(&self) -> ToolSpec {
         // Contient aussi les titres des agendas Google : le journal ne garde que le nombre d'éléments.
-        ToolSpec { sensitive_output: true, ..spec("agenda.list", "Liste les événements qui chevauchent [from_ms, to_ms[.",
+        untrusted(ToolSpec { sensitive_output: true, ..spec("agenda.list", "Liste les événements qui chevauchent [from_ms, to_ms[.",
             json!({"type":"object","required":["from_ms","to_ms"],"properties":{"from_ms":{"type":"integer"},"to_ms":{"type":"integer"}}}),
-            Permission::Free) }
+            Permission::Free) })
     }
     fn describe(&self, _: &Value) -> ConfirmationText { low("Lire l'agenda") }
     async fn run(&self, args: &Value) -> Result<ToolResult, ToolError> {
@@ -238,6 +247,15 @@ mod tests {
         assert!(rows(&db).is_empty());
         broker.undo(action_id).await.unwrap();
         assert_eq!(rows(&db).len(), 1);
+    }
+
+    #[tokio::test]
+    async fn delete_d_un_evenement_google_echoue_sans_carte() {
+        let (db, _c, broker) = setup();
+        let o = broker.call(call("agenda.delete_event", json!({"id": 0, "key": "g:1:cal:abc"}))).await;
+        let ToolOutcome::Failed { error, .. } = o else { panic!("{o:?}") };
+        assert!(error.contains("Événement Google en lecture seule"), "{error}");
+        assert!(rows(&db).is_empty());
     }
 
     #[tokio::test]

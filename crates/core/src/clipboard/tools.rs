@@ -1,6 +1,6 @@
 //! Outil de l'historique du presse-papiers : recherche en lecture seule, textes seulement (jamais d'image).
 use super::search;
-use crate::tools::helpers::{failed, low, parse, spec};
+use crate::tools::helpers::{failed, low, parse, spec, untrusted};
 use crate::tools::{ConfirmationText, Permission, Tool, ToolError, ToolResult, ToolSpec};
 use async_trait::async_trait;
 use serde::Deserialize;
@@ -21,8 +21,8 @@ const SNIPPET_CHARS: usize = 200;
 impl Tool for Search {
     fn spec(&self) -> ToolSpec {
         // Sortie sensible : le texte copié ne doit pas survivre dans le journal des actions.
-        ToolSpec { sensitive_output: true, ..spec("clipboard.search", "Cherche dans l'historique du presse-papiers : { query }. Textes seulement (200 premiers caractères).",
-            json!({"type":"object","required":["query"],"properties":{"query":{"type":"string"}}}), Permission::Free) }
+        untrusted(ToolSpec { sensitive_output: true, ..spec("clipboard.search", "Cherche dans l'historique du presse-papiers : { query }. Textes seulement (200 premiers caractères).",
+            json!({"type":"object","required":["query"],"properties":{"query":{"type":"string"}}}), Permission::Free) })
     }
     fn describe(&self, _: &Value) -> ConfirmationText { low("Chercher dans le presse-papiers") }
     async fn run(&self, args: &Value) -> Result<ToolResult, ToolError> {

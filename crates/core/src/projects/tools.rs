@@ -15,9 +15,9 @@ pub type Source = Arc<dyn Fn() -> Vec<Project> + Send + Sync>;
 pub struct List { pub source: Source }
 pub struct Status { pub source: Source }
 
-/// Contenu utilisateur (noms, titres de session) : sortie non journalisée.
+/// Contenu utilisateur (noms, titres de session) : sortie non journalisée et non fiable.
 fn sensitive(s: ToolSpec) -> ToolSpec {
-    ToolSpec { sensitive_output: true, ..s }
+    ToolSpec { sensitive_output: true, untrusted_output: true, ..s }
 }
 
 #[async_trait]

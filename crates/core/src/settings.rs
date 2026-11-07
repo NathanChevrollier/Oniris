@@ -84,9 +84,10 @@ pub fn merge_domains(sites: &mut Vec<Site>, domains: &[String]) -> usize {
     sites.len() - before
 }
 
-/// Chemin de Zenytt.exe : vide (détection automatique) ou absolu, en `.exe`, 260 caractères au plus.
+/// Chemin d'un exécutable (Zenytt, Claude) : vide (détection automatique) ou absolu, en `.exe`, 260 caractères au plus,
+/// jamais réseau (UNC `\\srv\…`) ni préfixé `\\?\`.
 fn check_exe_path(p: &str) -> Result<(), String> {
-    if p.is_empty() || (p.chars().count() <= 260 && std::path::Path::new(p).is_absolute() && p.to_ascii_lowercase().ends_with(".exe")) {
+    if p.is_empty() || (p.chars().count() <= 260 && !p.starts_with(r"\\") && !p.starts_with("//") && std::path::Path::new(p).is_absolute() && p.to_ascii_lowercase().ends_with(".exe")) {
         Ok(())
     } else {
         Err("chemin de Zenytt : absolu, en .exe, 260 caractères au plus".into())
@@ -490,6 +491,8 @@ mod tests {
         assert!(with(r"C:\Users\x\AppData\Local\Zenytt\Zenytt.EXE").is_ok());
         assert!(with("Zenytt.exe").is_err());
         assert!(with(r"C:\Zenytt\Zenytt.bat").is_err());
+        assert!(with(r"\\srv\z.exe").is_err());
+        assert!(with(r"\\?\C:\Z\Zenytt.exe").is_err());
         assert!(with(&format!(r"C:\{}.exe", "a".repeat(260))).is_err());
         let mut s = Settings { zenytt_path: r"  C:\Z\Zenytt.exe ".into(), ..Settings::default() };
         assert!(s.fix().is_empty());

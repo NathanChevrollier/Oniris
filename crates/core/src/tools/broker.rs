@@ -38,6 +38,10 @@ impl ToolBroker {
         self.tools.values().map(|t| t.spec()).collect()
     }
 
+    pub fn spec(&self, name: &str) -> Option<ToolSpec> {
+        self.tools.get(name).map(|t| t.spec())
+    }
+
     fn failed(&self, tool: &str, c: &ToolCall, e: ToolError) -> ToolOutcome {
         let err = e.to_string();
         let id = journal::insert(&self.db.lock(), NewRow {
@@ -52,7 +56,10 @@ impl ToolBroker {
         let Some(tool) = self.tools.get(&call.tool) else {
             return self.failed(&call.tool, &call, ToolError::UnknownTool(call.tool.clone()));
         };
-        let confirm = tool.spec().permission == Permission::Confirm
+        if let Err(e) = tool.check(&call.args) {
+            return self.failed(&call.tool, &call, e);
+        }
+        let confirm = tool.needs_confirm(&call.args)
             || matches!(call.provenance, Provenance::Untrusted { .. });
         let now = (self.clock)();
         let logged = tool.journal_args(&call.args);
@@ -141,7 +148,11 @@ impl ToolBroker {
         let Some(row) = row else { return fail(ToolError::NotPending) };
         let (sensitive, outcome) = match self.tools.get(&row.tool) {
             None => (false, Err(ToolError::UnknownTool(row.tool.clone()))),
-            Some(t) => (t.spec().sensitive_output, t.run(masked.as_ref().unwrap_or(&row.args)).await),
+            Some(t) => {
+                let args = masked.as_ref().unwrap_or(&row.args);
+                // L'état a pu changer depuis la carte : on refait la prévérification.
+                (t.spec().sensitive_output, match t.check(args) { Ok(()) => t.run(args).await, Err(e) => Err(e) })
+            }
         };
         self.finish_run(action_id, sensitive, outcome)
     }
@@ -196,7 +207,7 @@ mod tests {
     #[async_trait]
     impl Tool for Echo {
         fn spec(&self) -> ToolSpec {
-            ToolSpec { name: "echo".into(), description: "echo".into(), args_schema: json!({}), permission: self.perm, sensitive_output: self.sensitive }
+            ToolSpec { name: "echo".into(), description: "echo".into(), args_schema: json!({}), permission: self.perm, sensitive_output: self.sensitive, untrusted_output: false }
         }
         fn describe(&self, a: &Value) -> ConfirmationText {
             ConfirmationText { summary: "Echo".into(), details: a.to_string(), risk: Risk::Low }
@@ -206,6 +217,12 @@ mod tests {
             let st: String = self.db.lock().query_row("SELECT status FROM actions ORDER BY id DESC LIMIT 1", [], |r| r.get(0)).unwrap();
             self.during.lock().push(st);
             Ok(ToolResult { output: a.clone(), undo: self.undoable.then(|| json!({"u": 1})) })
+        }
+        fn check(&self, a: &Value) -> Result<(), ToolError> {
+            if a.get("bad").is_some() { Err(ToolError::Failed("refusé".into())) } else { Ok(()) }
+        }
+        fn needs_confirm(&self, a: &Value) -> bool {
+            if a.get("safe").is_some() { a["safe"] != json!(true) } else { self.perm == Permission::Confirm }
         }
         fn journal_args(&self, a: &Value) -> Value {
             if a.get("secret").is_some() { json!({"redacted": true}) } else { a.clone() }
@@ -399,5 +416,47 @@ mod tests {
         ).unwrap();
         f.broker.mark_interrupted();
         assert_eq!(status(&f, 1), "interrupted");
+    }
+
+    #[tokio::test]
+    async fn check_en_echec_journalise_failed_sans_carte_ni_execution() {
+        let f = fx(Permission::Confirm, false);
+        let mut c = call(Provenance::User);
+        c.args = json!({"bad": 1});
+        let ToolOutcome::Failed { action_id, error } = f.broker.call(c).await else { panic!() };
+        assert!(error.contains("refusé"));
+        assert_eq!(status(&f, action_id), "failed");
+        assert_eq!(f.runs.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn confirmation_dynamique_et_provenance_non_fiable() {
+        let f = fx(Permission::Confirm, false);
+        let mut c = call(Provenance::User);
+        c.args = json!({"safe": true});
+        assert!(matches!(f.broker.call(c.clone()).await, ToolOutcome::Done { .. }));
+        c.args = json!({"safe": false});
+        pending(f.broker.call(c.clone()).await);
+        c.args = json!({"safe": true});
+        c.provenance = Provenance::Untrusted { source: "mail:1".into() };
+        pending(f.broker.call(c).await);
+        assert_eq!(f.runs.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn resolve_refait_check() {
+        let f = fx(Permission::Confirm, false);
+        let id = pending(f.broker.call(call(Provenance::User)).await).action_id;
+        // L'état change entre la carte et la décision : on réécrit les arguments journalisés.
+        f.db.lock().execute("UPDATE actions SET args='{\"bad\":1}' WHERE id=?", [id]).unwrap();
+        assert!(matches!(f.broker.resolve(id, true).await, ToolOutcome::Failed { .. }));
+        assert_eq!(f.runs.load(Ordering::SeqCst), 0);
+        assert_eq!(status(&f, id), "failed");
+    }
+
+    #[test]
+    fn spec_par_nom() {
+        let f = fx(Permission::Free, false);
+        assert!(f.broker.spec("echo").is_some() && f.broker.spec("nope").is_none());
     }
 }

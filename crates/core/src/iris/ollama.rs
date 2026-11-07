@@ -54,7 +54,7 @@ pub trait LocalBrain: Send + Sync {
     async fn structured(&self, system: &str, content: &str, schema: &Value) -> Result<Value, BrainError>;
 }
 
-pub struct Ollama { http: reqwest::Client, base: String, model: String, total: Duration, idle: Duration }
+pub struct Ollama { http: reqwest::Client, base: String, model: String, keep_alive_min: u8, total: Duration, idle: Duration }
 
 fn net(e: reqwest::Error) -> BrainError {
     if e.is_timeout() { BrainError::Timeout } else if e.is_connect() { BrainError::Unavailable } else { BrainError::Bad("réseau".into()) }
@@ -82,12 +82,12 @@ fn tool_calls_of(msg: &Value, out: &mut Vec<ToolCallMsg>) {
 }
 
 impl Ollama {
-    pub fn new(model: &str) -> Self { Self::with_base(DEFAULT_BASE, model, TOTAL, IDLE) }
+    pub fn new(model: &str, keep_alive_min: u8) -> Self { Self::with_base(DEFAULT_BASE, model, keep_alive_min, TOTAL, IDLE) }
 
     /// Adresse et délais injectables (tests).
-    pub fn with_base(base: &str, model: &str, total: Duration, idle: Duration) -> Self {
+    pub fn with_base(base: &str, model: &str, keep_alive_min: u8, total: Duration, idle: Duration) -> Self {
         let http = reqwest::Client::builder().no_proxy().build().unwrap_or_default();
-        Self { http, base: base.trim_end_matches('/').into(), model: model.into(), total, idle }
+        Self { http, base: base.trim_end_matches('/').into(), model: model.into(), keep_alive_min, total, idle }
     }
 
     /// Erreur HTTP : 404 « not found » = modèle absent.
@@ -151,7 +151,7 @@ impl Ollama {
             "stream": false,
             "think": false,
             "format": schema,
-            "keep_alive": "5m",
+            "keep_alive": format!("{}m", self.keep_alive_min),
             "options": { "temperature": 0.2, "num_ctx": NUM_CTX },
         });
         let resp = Self::check(self.http.post(format!("{}/api/chat", self.base)).json(&body).send().await.map_err(net)?).await?;
@@ -176,7 +176,8 @@ impl Ollama {
 
     /// Télécharge le modèle ; `on_progress(téléchargé, total)` à chaque ligne qui en porte un.
     pub async fn pull(&self, model: &str, mut on_progress: impl FnMut(u64, u64)) -> Result<(), BrainError> {
-        let resp = self.http.post(format!("{}/api/pull", self.base)).json(&json!({ "model": model, "stream": true })).send().await.map_err(net)?;
+        let send = self.http.post(format!("{}/api/pull", self.base)).json(&json!({ "model": model, "stream": true })).send();
+        let resp = tokio::time::timeout(PULL_IDLE, send).await.map_err(|_| BrainError::Timeout)?.map_err(net)?;
         Self::each_line(Self::check(resp).await?, PULL_IDLE, |v| {
             if let (Some(done), Some(total)) = (v["completed"].as_u64(), v["total"].as_u64()) { on_progress(done, total); }
             Ok(())
@@ -214,7 +215,7 @@ mod tests {
     fn req(tools: Vec<PlannerTool>) -> ChatRequest {
         ChatRequest { model: "qwen3:8b".into(), messages: vec![Msg { role: Role::User, content: "salut".into(), tool_calls: vec![] }], tools, keep_alive_min: 5 }
     }
-    fn client(s: &MockServer) -> Ollama { Ollama::with_base(&s.uri(), "qwen3:8b", Duration::from_secs(5), Duration::from_secs(5)) }
+    fn client(s: &MockServer) -> Ollama { Ollama::with_base(&s.uri(), "qwen3:8b", 7, Duration::from_secs(5), Duration::from_secs(5)) }
     fn ndjson(lines: &[Value]) -> ResponseTemplate {
         ResponseTemplate::new(200).set_body_string(lines.iter().map(|l| format!("{l}\n")).collect::<String>())
     }
@@ -249,7 +250,7 @@ mod tests {
     #[tokio::test]
     async fn port_ferme() {
         let port = { let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap(); l.local_addr().unwrap().port() };
-        let o = Ollama::with_base(&format!("http://127.0.0.1:{port}"), "m", Duration::from_secs(5), Duration::from_secs(5));
+        let o = Ollama::with_base(&format!("http://127.0.0.1:{port}"), "m", 5, Duration::from_secs(5), Duration::from_secs(5));
         assert_eq!(o.chat(req(vec![]), &mut |_| {}).await.unwrap_err(), BrainError::Unavailable);
         assert_eq!(o.status("m").await, LocalStatus::Down);
         o.unload("m").await; // sans erreur
@@ -268,7 +269,7 @@ mod tests {
             sock.write_all(head.as_bytes()).await.unwrap();
             tokio::time::sleep(Duration::from_secs(3)).await; // puis plus rien
         });
-        let o = Ollama::with_base(&base, "m", Duration::from_secs(5), Duration::from_millis(200));
+        let o = Ollama::with_base(&base, "m", 5, Duration::from_secs(5), Duration::from_millis(200));
         let mut got = Vec::new();
         assert_eq!(o.chat(req(vec![]), &mut |d| got.push(d.to_string())).await.unwrap_err(), BrainError::Timeout);
         assert_eq!(got, ["a"]);
@@ -278,7 +279,7 @@ mod tests {
     async fn delai_total() {
         let s = MockServer::start().await;
         Mock::given(method("POST")).respond_with(ndjson(&[json!({ "done": true })]).set_delay(Duration::from_secs(2))).mount(&s).await;
-        let o = Ollama::with_base(&s.uri(), "m", Duration::from_millis(200), Duration::from_secs(5));
+        let o = Ollama::with_base(&s.uri(), "m", 5, Duration::from_millis(200), Duration::from_secs(5));
         assert_eq!(o.chat(req(vec![]), &mut |_| {}).await.unwrap_err(), BrainError::Timeout);
     }
 
@@ -286,7 +287,7 @@ mod tests {
     async fn structure_envoie_le_format() {
         let s = MockServer::start().await;
         let schema = json!({ "type": "object", "properties": { "n": { "type": "integer" } } });
-        Mock::given(method("POST")).and(path("/api/chat")).and(body_partial_json(json!({ "format": schema, "stream": false, "think": false })))
+        Mock::given(method("POST")).and(path("/api/chat")).and(body_partial_json(json!({ "format": schema, "stream": false, "think": false, "keep_alive": "7m" })))
             .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "message": { "content": "{\"n\":3}" }, "done": true })))
             .mount(&s).await;
         assert_eq!(client(&s).structured("sys", "x", &schema).await.unwrap(), json!({ "n": 3 }));
@@ -301,7 +302,7 @@ mod tests {
         assert_eq!(o.status("qwen3:8b").await, LocalStatus::Ready);
         assert_eq!(o.status("autre:1b").await, LocalStatus::NoModel);
         let port = { let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap(); l.local_addr().unwrap().port() };
-        let down = Ollama::with_base(&format!("http://127.0.0.1:{port}"), "m", TOTAL, IDLE);
+        let down = Ollama::with_base(&format!("http://127.0.0.1:{port}"), "m", 5, TOTAL, IDLE);
         assert_eq!(down.status("m").await, LocalStatus::Down);
     }
 
@@ -314,6 +315,15 @@ mod tests {
         let mut seen = Vec::new();
         client(&s).pull("qwen3:8b", |d, t| seen.push((d, t))).await.unwrap();
         assert_eq!(seen, [(40, 100), (100, 100)]);
+    }
+
+    #[tokio::test]
+    async fn pull_erreur_en_cours_de_flux() {
+        let s = MockServer::start().await;
+        Mock::given(method("POST")).and(path("/api/pull"))
+            .respond_with(ndjson(&[json!({ "status": "pulling", "total": 100, "completed": 10 }), json!({ "error": "disque plein" })]))
+            .mount(&s).await;
+        assert!(matches!(client(&s).pull("qwen3:8b", |_, _| {}).await, Err(BrainError::Bad(_))));
     }
 
     #[tokio::test]

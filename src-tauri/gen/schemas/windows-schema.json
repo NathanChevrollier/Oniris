@@ -339,6 +339,36 @@
           "markdownDescription": "Enables the index_status command without any pre-configured scope."
         },
         {
+          "description": "Enables the iris_conversation_new command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-iris-conversation-new",
+          "markdownDescription": "Enables the iris_conversation_new command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the iris_history command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-iris-history",
+          "markdownDescription": "Enables the iris_history command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the iris_history_clear command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-iris-history-clear",
+          "markdownDescription": "Enables the iris_history_clear command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the iris_memories command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-iris-memories",
+          "markdownDescription": "Enables the iris_memories command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the iris_memory_delete command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-iris-memory-delete",
+          "markdownDescription": "Enables the iris_memory_delete command without any pre-configured scope."
+        },
+        {
           "description": "Enables the iris_pull_model command without any pre-configured scope.",
           "type": "string",
           "const": "allow-iris-pull-model",
@@ -853,6 +883,36 @@
           "type": "string",
           "const": "deny-index-status",
           "markdownDescription": "Denies the index_status command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the iris_conversation_new command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-iris-conversation-new",
+          "markdownDescription": "Denies the iris_conversation_new command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the iris_history command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-iris-history",
+          "markdownDescription": "Denies the iris_history command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the iris_history_clear command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-iris-history-clear",
+          "markdownDescription": "Denies the iris_history_clear command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the iris_memories command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-iris-memories",
+          "markdownDescription": "Denies the iris_memories command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the iris_memory_delete command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-iris-memory-delete",
+          "markdownDescription": "Denies the iris_memory_delete command without any pre-configured scope."
         },
         {
           "description": "Denies the iris_pull_model command without any pre-configured scope.",

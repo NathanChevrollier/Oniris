@@ -2,7 +2,9 @@
 //! rangées dans un coffre et remplacées par des références `{{uN}}`, résolues seulement à l'exécution.
 pub mod claude;
 pub mod exec;
+pub mod memory;
 pub mod ollama;
+pub mod prompt;
 pub mod taint;
 
 pub use claude::{classify, invocation, locate, parse_line, ClaudeBrain, ClaudeError, ClaudeEvent, Invocation, McpConfig, OnDelta};

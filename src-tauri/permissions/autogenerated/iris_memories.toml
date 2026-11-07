@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-iris-memories"
+description = "Enables the iris_memories command without any pre-configured scope."
+commands.allow = ["iris_memories"]
+
+[[permission]]
+identifier = "deny-iris-memories"
+description = "Denies the iris_memories command without any pre-configured scope."
+commands.deny = ["iris_memories"]

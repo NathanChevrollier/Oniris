@@ -93,6 +93,7 @@ impl AppState {
         });
         tools.extend(oniris_core::apps::tools::all(&opener, roots, &apps));
         tools.extend(oniris_core::favorites::tools::all(&db, &events, &opener));
+        tools.extend(oniris_core::iris::memory::all(&db, &events));
         let handle = app.clone();
         let projects: oniris_core::projects::tools::Source = Arc::new(move || handle.state::<AppState>().projects.read().list.clone());
         tools.extend(oniris_core::projects::tools::all(&projects));

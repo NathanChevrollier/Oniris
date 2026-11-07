@@ -62,6 +62,8 @@ export type Settings = {
   iris_local_model: string;
   /** Minutes avant que le modèle local quitte la mémoire : 1 à 60. */
   iris_unload_minutes: number;
+  /** Personnalité d'IRIS (`{prénom}` est remplacé) : 1 à 1000 caractères. */
+  iris_personality: string;
 };
 
 const RESUME_NORMAL = "Reprends là où tu en étais sur ce projet. Appuie-toi sur le plan de développement et l'historique git. Commence par me dire où on en est.";
@@ -99,6 +101,7 @@ export const DEFAULT_SETTINGS: Settings = {
   iris_work_dirs: [],
   iris_local_model: "qwen3:8b",
   iris_unload_minutes: 5,
+  iris_personality: "Tu es IRIS, l'assistante d'Oniris. Tu tutoies {prénom} et l'appelles par son prénom. Ton ton est chaleureux, concis, avec une pointe d'humour discrète ; jamais servile, jamais bavarde. Une ou deux phrases suffisent pour une action simple.",
 };
 
 /** Paramètres courants : chargés au montage, puis suivis via `oniris://settings`. */

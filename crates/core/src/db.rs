@@ -227,6 +227,31 @@ Migration {
     ) STRICT;
     CREATE INDEX probes_site_at ON probes(site, at_ms);
     CREATE INDEX probes_at ON probes(at_ms);",
+},
+Migration {
+    version: 17,
+    // IRIS : conversations, messages (`planner_text` = ce que voit le planificateur, `shown_text` = ce que voit l'utilisateur)
+    // et préférences retenues explicitement.
+    sql: "CREATE TABLE conversations (
+        id INTEGER PRIMARY KEY,
+        started_ms INTEGER NOT NULL,
+        last_ms INTEGER NOT NULL
+    ) STRICT;
+    CREATE TABLE messages (
+        id INTEGER PRIMARY KEY,
+        conversation_id INTEGER NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+        ts_ms INTEGER NOT NULL,
+        role TEXT NOT NULL CHECK (role IN ('user', 'iris')),
+        brain TEXT CHECK (brain IN ('local', 'claude', 'fast')),
+        planner_text TEXT NOT NULL,
+        shown_text TEXT NOT NULL
+    ) STRICT;
+    CREATE INDEX messages_conversation ON messages(conversation_id, id);
+    CREATE TABLE memories (
+        id INTEGER PRIMARY KEY,
+        text TEXT NOT NULL,
+        created_ms INTEGER NOT NULL
+    ) STRICT;",
 }];
 
 pub fn open_db(path: &Path) -> Result<Connection, CoreError> {

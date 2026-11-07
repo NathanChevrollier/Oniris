@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-iris-conversation-new"
+description = "Enables the iris_conversation_new command without any pre-configured scope."
+commands.allow = ["iris_conversation_new"]
+
+[[permission]]
+identifier = "deny-iris-conversation-new"
+description = "Denies the iris_conversation_new command without any pre-configured scope."
+commands.deny = ["iris_conversation_new"]

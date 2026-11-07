@@ -3,6 +3,12 @@
 use crate::job;
 use crate::state::AppState;
 use async_trait::async_trait;
+use crate::commands::dispatch_as_user;
+use oniris_core::events::Topic;
+use oniris_core::iris::memory::{self, HistoryItem, Memory};
+use oniris_core::time_util::now_ms;
+use oniris_core::tools::ToolOutcome;
+use serde_json::json;
 use oniris_core::iris::{classify, invocation, locate, parse_line, ClaudeBrain, ClaudeError, ClaudeEvent, Executor, LocalStatus, McpConfig, OnDelta, Ollama};
 use oniris_core::Settings;
 use serde::Serialize;
@@ -133,6 +139,36 @@ pub async fn iris_status(app: AppHandle) -> IrisStatus {
     let setting = app.state::<AppState>().settings.read().claude_path.clone();
     let claude = claude_exe(&setting).map_or(ClaudeStatus::Missing, |p| ClaudeStatus::Found { path: p.to_string_lossy().into_owned() });
     IrisStatus { local: Ollama::new(&model, keep).status(&model).await, model, claude }
+}
+
+#[tauri::command]
+pub async fn iris_history(state: tauri::State<'_, AppState>, limit: usize) -> Result<Vec<HistoryItem>, String> {
+    memory::history(&state.db.lock(), limit.min(500)).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn iris_history_clear(state: tauri::State<'_, AppState>) -> Result<(), String> {
+    memory::clear(&state.db.lock()).map_err(|e| e.to_string())?;
+    state.events.changed(Topic::Iris);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn iris_memories(state: tauri::State<'_, AppState>) -> Result<Vec<Memory>, String> {
+    memory::list(&state.db.lock()).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn iris_memory_delete(app: AppHandle, id: i64) -> ToolOutcome {
+    dispatch_as_user(&app, "memory.forget", json!({ "id": id })).await
+}
+
+/// Ferme la conversation en cours : le prochain message ouvre un nouveau fil.
+#[tauri::command]
+pub async fn iris_conversation_new(state: tauri::State<'_, AppState>) -> Result<i64, String> {
+    let id = memory::new_conversation(&state.db.lock(), now_ms()).map_err(|e| e.to_string())?;
+    state.events.changed(Topic::Iris);
+    Ok(id)
 }
 
 /// Télécharge le modèle configuré ; progression sur `oniris://iris-pull`, puis `{done: total}` ou `{error}`.

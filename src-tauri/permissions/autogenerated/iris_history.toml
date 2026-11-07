@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-iris-history"
+description = "Enables the iris_history command without any pre-configured scope."
+commands.allow = ["iris_history"]
+
+[[permission]]
+identifier = "deny-iris-history"
+description = "Denies the iris_history command without any pre-configured scope."
+commands.deny = ["iris_history"]

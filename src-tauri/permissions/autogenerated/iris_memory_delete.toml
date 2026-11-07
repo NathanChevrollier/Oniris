@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-iris-memory-delete"
+description = "Enables the iris_memory_delete command without any pre-configured scope."
+commands.allow = ["iris_memory_delete"]
+
+[[permission]]
+identifier = "deny-iris-memory-delete"
+description = "Denies the iris_memory_delete command without any pre-configured scope."
+commands.deny = ["iris_memory_delete"]

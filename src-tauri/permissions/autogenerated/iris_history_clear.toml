@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-iris-history-clear"
+description = "Enables the iris_history_clear command without any pre-configured scope."
+commands.allow = ["iris_history_clear"]
+
+[[permission]]
+identifier = "deny-iris-history-clear"
+description = "Denies the iris_history_clear command without any pre-configured scope."
+commands.deny = ["iris_history_clear"]

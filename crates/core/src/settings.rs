@@ -143,6 +143,8 @@ pub struct Settings {
     pub iris_local_model: String,
     /// Minutes avant que le modèle local quitte la mémoire, 1..=60.
     pub iris_unload_minutes: u8,
+    /// Personnalité d'IRIS (`{prénom}` est remplacé) : non vide, 1000 caractères au plus.
+    pub iris_personality: String,
 }
 
 /// Commandes en lecture seule (aucun de leurs arguments sûrs n'écrit).
@@ -182,6 +184,7 @@ impl Default for Settings {
             iris_work_dirs: Vec::new(),
             iris_local_model: "qwen3:8b".into(),
             iris_unload_minutes: 5,
+            iris_personality: crate::iris::prompt::PERSONALITY.into(),
         }
     }
 }
@@ -392,6 +395,11 @@ impl Settings {
             errs.push("déchargement du modèle : 1 à 60 minutes".into());
             self.iris_unload_minutes = d.iris_unload_minutes;
         }
+        self.iris_personality = self.iris_personality.trim().to_string();
+        if self.iris_personality.is_empty() || self.iris_personality.chars().count() > 1000 {
+            errs.push("personnalité d'IRIS : 1 à 1000 caractères".into());
+            self.iris_personality = d.iris_personality.clone();
+        }
         if let Err(e) = check_hotkey(&self.hotkey) {
             errs.push(e);
             self.hotkey = d.hotkey;
@@ -471,6 +479,12 @@ mod tests {
         assert!(m("QWEN 3").is_err() && m("").is_err() && m(&"a".repeat(101)).is_err());
         assert!(u(1).is_ok() && u(60).is_ok());
         assert!(u(0).is_err() && u(61).is_err());
+    }
+    #[test] fn personnalite_non_vide_et_bornee() {
+        let p = |v: &str| Settings { iris_personality: v.into(), ..Settings::default() }.validate();
+        assert!(p("Sois bref.").is_ok() && p(&"é".repeat(1000)).is_ok());
+        assert!(p("").is_err() && p("  
+ ").is_err() && p(&"a".repeat(1001)).is_err());
     }
     #[test] fn dossiers_de_travail_valides() {
         let with = |l: &[&str]| Settings { iris_work_dirs: l.iter().map(|x| x.to_string()).collect(), ..Settings::default() }.validate();

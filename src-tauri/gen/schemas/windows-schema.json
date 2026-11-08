@@ -747,6 +747,18 @@
           "markdownDescription": "Enables the tool_undo command without any pre-configured scope."
         },
         {
+          "description": "Enables the voice_install command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-voice-install",
+          "markdownDescription": "Enables the voice_install command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the voice_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-voice-status",
+          "markdownDescription": "Enables the voice_status command without any pre-configured scope."
+        },
+        {
           "description": "Enables the vps_status command without any pre-configured scope.",
           "type": "string",
           "const": "allow-vps-status",
@@ -1327,6 +1339,18 @@
           "type": "string",
           "const": "deny-tool-undo",
           "markdownDescription": "Denies the tool_undo command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the voice_install command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-voice-install",
+          "markdownDescription": "Denies the voice_install command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the voice_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-voice-status",
+          "markdownDescription": "Denies the voice_status command without any pre-configured scope."
         },
         {
           "description": "Denies the vps_status command without any pre-configured scope.",

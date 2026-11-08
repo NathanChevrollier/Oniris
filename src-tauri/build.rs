@@ -97,6 +97,8 @@ fn main() {
         "music_volume",
         "music_queue",
         "music_transfer",
+        "voice_status",
+        "voice_install",
         "perf_frame",
         "perf_open_cycles",
     ]);

@@ -64,6 +64,16 @@ export type Settings = {
   iris_unload_minutes: number;
   /** Personnalité d'IRIS (`{prénom}` est remplacé) : 1 à 2000 caractères. */
   iris_personality: string;
+  /** Modèle de transcription : "small" ou "turbo". */
+  voice_stt_model: "small" | "turbo";
+  /** IRIS répond à voix haute. */
+  voice_tts: boolean;
+  /** Volume de la voix : 0 à 100. */
+  voice_volume: number;
+  /** Minutes d'inactivité avant l'arrêt de Whisper : 1 à 30. */
+  voice_unload_minutes: number;
+  /** Nom du micro : vide = périphérique par défaut ; 200 caractères au plus. */
+  voice_input_device: string;
 };
 
 const RESUME_NORMAL = "Reprends là où tu en étais sur ce projet. Appuie-toi sur le plan de développement et l'historique git. Commence par me dire où on en est.";
@@ -102,6 +112,11 @@ export const DEFAULT_SETTINGS: Settings = {
   iris_local_model: "qwen3:8b",
   iris_unload_minutes: 5,
   iris_personality: "Tu es IRIS, l'assistante d'Oniris. Tu tutoies {prénom} et l'appelles par son prénom. Ton ton est chaleureux, concis, avec une pointe d'humour discrète ; jamais servile, jamais bavarde. Une ou deux phrases suffisent pour une action simple.",
+  voice_stt_model: "small",
+  voice_tts: true,
+  voice_volume: 80,
+  voice_unload_minutes: 3,
+  voice_input_device: "",
 };
 
 /** Paramètres courants : chargés au montage, puis suivis via `oniris://settings`. */

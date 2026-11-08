@@ -83,6 +83,8 @@
     "allow-iris-conversation-new",
     "allow-iris-ask",
     "allow-iris-cancel",
+    "allow-voice-status",
+    "allow-voice-install",
     "allow-mail-open-web",
     "allow-mail-open-link",
     "allow-mail-status",

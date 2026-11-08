@@ -116,6 +116,8 @@ pub fn run() {
             modules::iris::iris_conversation_new,
             modules::iris::iris_ask,
             modules::iris::iris_cancel,
+            modules::voice::install::voice_status,
+            modules::voice::install::voice_install,
             modules::mail::mail_open_web,
             modules::mail::mail_open_link,
             modules::mail::mail_status,
@@ -209,6 +211,7 @@ mod tests {
             ("smtc.rs", include_str!("modules/smtc.rs")),
             ("system.rs", include_str!("modules/system.rs")),
             ("timers.rs", include_str!("modules/timers.rs")),
+            ("voice/install.rs", include_str!("modules/voice/install.rs")),
             ("weather.rs", include_str!("modules/weather.rs")),
             ("zenytt.rs", include_str!("modules/zenytt.rs")),
         ];

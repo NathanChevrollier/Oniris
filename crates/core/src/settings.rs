@@ -145,6 +145,16 @@ pub struct Settings {
     pub iris_unload_minutes: u8,
     /// Personnalité d'IRIS (`{prénom}` est remplacé) : non vide, 2000 caractères au plus.
     pub iris_personality: String,
+    /// Modèle de transcription : `small` (rapide) ou `turbo` (meilleur, plus lourd).
+    pub voice_stt_model: String,
+    /// IRIS répond à voix haute.
+    pub voice_tts: bool,
+    /// Volume de la voix, 0..=100.
+    pub voice_volume: u8,
+    /// Minutes d'inactivité avant l'arrêt de Whisper, 1..=30.
+    pub voice_unload_minutes: u8,
+    /// Nom du micro : vide = périphérique par défaut ; 200 caractères au plus.
+    pub voice_input_device: String,
 }
 
 /// Commandes en lecture seule (aucun de leurs arguments sûrs n'écrit).
@@ -185,6 +195,11 @@ impl Default for Settings {
             iris_local_model: "qwen3:8b".into(),
             iris_unload_minutes: 5,
             iris_personality: crate::iris::prompt::PERSONALITY.into(),
+            voice_stt_model: "small".into(),
+            voice_tts: true,
+            voice_volume: 80,
+            voice_unload_minutes: 3,
+            voice_input_device: String::new(),
         }
     }
 }
@@ -400,6 +415,23 @@ impl Settings {
             errs.push("personnalité d'IRIS : 1 à 2000 caractères".into());
             self.iris_personality = d.iris_personality.clone();
         }
+        if !matches!(self.voice_stt_model.as_str(), "small" | "turbo") {
+            errs.push("modèle de transcription : small ou turbo".into());
+            self.voice_stt_model = d.voice_stt_model.clone();
+        }
+        if self.voice_volume > 100 {
+            errs.push("volume de la voix : 0 à 100".into());
+            self.voice_volume = d.voice_volume;
+        }
+        if !(1..=30).contains(&self.voice_unload_minutes) {
+            errs.push("arrêt de la transcription : 1 à 30 minutes".into());
+            self.voice_unload_minutes = d.voice_unload_minutes;
+        }
+        self.voice_input_device = self.voice_input_device.trim().to_string();
+        if self.voice_input_device.chars().count() > 200 {
+            errs.push("micro : 200 caractères au plus".into());
+            self.voice_input_device = d.voice_input_device.clone();
+        }
         if let Err(e) = check_hotkey(&self.hotkey) {
             errs.push(e);
             self.hotkey = d.hotkey;
@@ -479,6 +511,15 @@ mod tests {
         assert!(m("QWEN 3").is_err() && m("").is_err() && m(&"a".repeat(101)).is_err());
         assert!(u(1).is_ok() && u(60).is_ok());
         assert!(u(0).is_err() && u(61).is_err());
+    }
+    #[test] fn reglages_de_la_voix() {
+        let d = Settings::default();
+        assert_eq!((d.voice_stt_model.as_str(), d.voice_tts, d.voice_volume, d.voice_unload_minutes, d.voice_input_device.as_str()), ("small", true, 80, 3, ""));
+        let v = |f: fn(&mut Settings)| { let mut s = Settings::default(); f(&mut s); s.validate() };
+        assert!(v(|s| s.voice_volume = 100).is_ok() && v(|s| s.voice_volume = 101).is_err());
+        assert!(v(|s| s.voice_stt_model = "turbo".into()).is_ok() && v(|s| s.voice_stt_model = "medium".into()).is_err());
+        assert!(v(|s| s.voice_unload_minutes = 30).is_ok() && v(|s| s.voice_unload_minutes = 0).is_err() && v(|s| s.voice_unload_minutes = 31).is_err());
+        assert!(v(|s| s.voice_input_device = "é".repeat(200)).is_ok() && v(|s| s.voice_input_device = "a".repeat(201)).is_err());
     }
     #[test] fn personnalite_non_vide_et_bornee() {
         let p = |v: &str| Settings { iris_personality: v.into(), ..Settings::default() }.validate();

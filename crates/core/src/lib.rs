@@ -22,6 +22,7 @@ pub mod sites;
 pub mod secrets;
 pub mod system;
 pub mod timers;
+pub mod voice;
 mod settings;
 pub mod time_util;
 pub mod tools;

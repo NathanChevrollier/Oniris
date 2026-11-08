@@ -20,5 +20,6 @@ pub mod smtc;
 pub mod notes;
 pub mod timers;
 pub mod system;
+pub mod voice;
 pub mod weather;
 pub mod zenytt;

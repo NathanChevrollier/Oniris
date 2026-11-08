@@ -1,6 +1,5 @@
 //! Capture du micro (cpal/WASAPI) derrière un trait. Le flux vit sur son propre thread (`Stream` n'est pas `Send`)
 //! et n'est ouvert que le temps de l'enregistrement. Journal : jamais de nom de périphérique.
-#![allow(dead_code)] // consommé par le pipeline vocal (tâche suivante) ; à retirer alors
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{ErrorKind, FromSample, Sample, SizedSample};
 use oniris_core::voice::audio;

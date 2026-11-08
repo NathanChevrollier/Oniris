@@ -7,7 +7,7 @@ use crate::commands::{dispatch_as_user, show_confirm};
 use oniris_core::events::Topic;
 use oniris_core::iris::memory::{self, HistoryItem, Memory};
 use oniris_core::iris::quarantine::{frame, QUARANTINE};
-use oniris_core::iris::{prompt, Agent, IrisEventKind, LocalBrain, PromptCtx, Quarantine, Segment, TurnInput, Vault};
+use oniris_core::iris::{prompt, Agent, IrisEventKind, LocalBrain, PromptCtx, Quarantine, Segment, TurnEnd, TurnInput, Vault};
 use oniris_core::time_util::now_ms;
 use oniris_core::tools::{Brain, Origin, PendingAction, ToolOutcome};
 use parking_lot::Mutex;
@@ -19,7 +19,7 @@ use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
@@ -117,7 +117,7 @@ impl ClaudeBrain for RealClaude {
 }
 
 /// claude.exe introuvable : chaque appel répond `NotInstalled`.
-struct NoClaude;
+pub(crate) struct NoClaude;
 
 #[async_trait]
 impl ClaudeBrain for NoClaude {
@@ -160,27 +160,60 @@ fn conversation_vault(c: &rusqlite::Connection, now: i64, slot: &mut Option<(i64
     Ok((conv, fresh))
 }
 
+/// Fin d'un tour, pour le pipeline vocal : réponse rendue, confirmation demandée, instant du premier outil.
+pub struct TurnResult { pub shown: Vec<Segment>, pub pending: bool, pub first_tool: Option<Instant> }
+
 /// Lance un tour et rend son numéro ; le tour précédent, s'il court encore, est abandonné.
 #[tauri::command]
 pub async fn iris_ask(app: AppHandle, text: String, force_claude: bool, local_only: bool) -> Result<u32, String> {
+    start_turn(app, text, force_claude, local_only).map(|(turn, _)| turn)
+}
+
+/// Tour vocal : le même qu'`iris_ask(text, false, false)` ; `None` s'il a échoué ou a été abandonné.
+pub async fn voice_turn(app: &AppHandle, text: String) -> Option<TurnResult> {
+    start_turn(app.clone(), text, false, false).ok()?.1.await.ok()?.ok()
+}
+
+fn start_turn(app: AppHandle, text: String, force_claude: bool, local_only: bool) -> Result<(u32, tokio::sync::oneshot::Receiver<Result<TurnResult, String>>), String> {
     let text = text.trim().to_string();
     if text.is_empty() || text.len() > ASK_MAX {
         return Err("message vide ou trop long".into());
     }
     let turn = NEXT_TURN.fetch_add(1, Ordering::SeqCst) + 1;
+    let (done, rx) = tokio::sync::oneshot::channel();
     let mut cur = TURN.lock();
     if let Some((_, old)) = cur.take() {
         old.abort();
     }
     let task = tauri::async_runtime::spawn(async move {
-        if let Err(e) = run_turn(&app, turn, text, force_claude, local_only).await {
+        let r = run_turn(&app, turn, text, force_claude, local_only).await;
+        if let Err(e) = &r {
             tracing::warn!("oniris: tour d'IRIS interrompu ({e})");
             let kind = IrisEventKind::Error { kind: "failed", message: "IRIS n'a pas pu traiter ce message.".into(), offer_local: false };
             let _ = app.emit("oniris://iris", IrisEvent { turn, kind });
         }
+        let _ = done.send(r);
     });
     *cur = Some((turn, task));
-    Ok(turn)
+    Ok((turn, rx))
+}
+
+/// Joue le tour en relayant ses événements à `emit` ; note s'il a demandé une confirmation et quand le premier outil a tourné.
+pub(crate) async fn play(agent: &Agent, input: TurnInput, exec: Arc<Executor>, ctx: PromptCtx, emit: impl Fn(IrisEventKind) + Send + Sync + 'static) -> (TurnEnd, bool, Option<Instant>) {
+    let pending = Arc::new(AtomicBool::new(false));
+    let first_tool: Arc<Mutex<Option<Instant>>> = Arc::default();
+    let (p, f) = (pending.clone(), first_tool.clone());
+    let sink = move |kind: IrisEventKind| {
+        match &kind {
+            IrisEventKind::Pending { .. } => p.store(true, Ordering::SeqCst),
+            IrisEventKind::ToolUsed { .. } => { f.lock().get_or_insert_with(Instant::now); }
+            _ => {}
+        }
+        emit(kind);
+    };
+    let end = agent.turn(input, exec, ctx, &sink).await;
+    let first_tool = *first_tool.lock();
+    (end, pending.load(Ordering::SeqCst), first_tool)
 }
 
 /// Abandonne le tour s'il est encore le tour en cours (Claude Code et son tube MCP s'arrêtent avec lui).
@@ -195,7 +228,7 @@ pub async fn iris_cancel(turn: u32) {
 }
 
 /// Cerveaux construits d'après les réglages du moment ; exécuteur sur le coffre de la conversation.
-async fn run_turn(app: &AppHandle, turn: u32, text: String, force_claude: bool, local_only: bool) -> Result<(), String> {
+async fn run_turn(app: &AppHandle, turn: u32, text: String, force_claude: bool, local_only: bool) -> Result<TurnResult, String> {
     let st = app.state::<AppState>();
     let s = st.settings.read().clone();
     let now = now_ms();
@@ -221,10 +254,10 @@ async fn run_turn(app: &AppHandle, turn: u32, text: String, force_claude: bool, 
     let claude_system = prompt::system(&s.iris_personality, &s.user_name, at, &memories, Brain::Claude);
     let agent = Agent { local, claude, model: s.iris_local_model.clone(), keep_alive_min: s.iris_unload_minutes };
     let emitter = app.clone();
-    let sink = move |kind: IrisEventKind| {
+    let emit = move |kind: IrisEventKind| {
         let _ = emitter.emit("oniris://iris", IrisEvent { turn, kind });
     };
-    let end = agent.turn(TurnInput { text: text.clone(), force_claude, local_only }, exec, PromptCtx { system, claude_system, history }, &sink).await;
+    let (end, pending, first_tool) = play(&agent, TurnInput { text: text.clone(), force_claude, local_only }, exec, PromptCtx { system, claude_system, history }, emit).await;
     unload_if_fullscreen(app).await;
     let shown: String = end.shown.iter().map(|s| match s { Segment::Text { text } | Segment::Untrusted { text, .. } => text.as_str() }).collect();
     {
@@ -233,7 +266,7 @@ async fn run_turn(app: &AppHandle, turn: u32, text: String, force_claude: bool, 
         memory::record(&c, conv, "iris", Some(end.brain.as_str()), &end.planner_text, &shown, now_ms()).map_err(|e| e.to_string())?;
     }
     st.events.changed(Topic::Iris);
-    Ok(())
+    Ok(TurnResult { shown: end.shown, pending, first_tool })
 }
 
 #[derive(Serialize)]

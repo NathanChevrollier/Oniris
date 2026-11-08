@@ -1,6 +1,5 @@
 //! Sortie audio (cpal/WASAPI) derrière un trait injectable. Le flux vit sur son propre thread (`Stream` n'est pas `Send`) ;
 //! lâcher le `Sink` coupe le son aussitôt. Journal : jamais de nom de périphérique.
-#![allow(dead_code)] // consommé par le pipeline vocal (tâche suivante) ; à retirer alors
 use super::piper::TtsError;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{FromSample, SizedSample};

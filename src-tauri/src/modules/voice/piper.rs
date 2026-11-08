@@ -1,6 +1,5 @@
 //! Voix d'IRIS : `piper.exe --output-raw` (une phrase par ligne sur stdin, PCM 16 bits mono sur stdout) joué par une
 //! sortie injectable. Une seule voix à la fois ; `stop()` coupe en quelques ms. Journal : longueurs et durées, jamais le texte.
-#![allow(dead_code)] // consommé par le pipeline vocal (tâche suivante) ; à retirer alors
 use super::playback::{AudioOut, Sink};
 use crate::job;
 use oniris_core::voice::speech::sentences;
@@ -37,6 +36,13 @@ pub struct SpeakHandle {
 }
 
 impl SpeakHandle {
+    /// Lecture dont la fin est signalée par l'envoi de `true` sur l'émetteur rendu.
+    pub fn new() -> (Self, watch::Sender<bool>) {
+        let (cancel, _) = watch::channel(false);
+        let (done_tx, done) = watch::channel(false);
+        (Self { cancel: Arc::new(cancel), done }, done_tx)
+    }
+
     pub fn stop(&self) {
         self.cancel.send_replace(true);
     }
@@ -48,6 +54,8 @@ impl SpeakHandle {
 
 pub trait Speaker: Send + Sync {
     fn speak(&self, text: &str, volume: u8) -> Result<SpeakHandle, TtsError>;
+    /// Coupe la voix en cours, s'il y en a une.
+    fn stop(&self);
 }
 
 pub struct PiperSpeaker {
@@ -61,13 +69,6 @@ pub struct PiperSpeaker {
 impl PiperSpeaker {
     pub fn new(dir: PathBuf, out: Arc<dyn AudioOut>) -> Self {
         Self { dir, out, current: Mutex::new(None) }
-    }
-
-    /// Coupe la voix en cours, s'il y en a une.
-    pub fn stop(&self) {
-        if let Some(h) = self.current.lock().take() {
-            h.stop();
-        }
     }
 }
 
@@ -87,6 +88,12 @@ fn sample_rate(json: &std::path::Path) -> u32 {
 }
 
 impl Speaker for PiperSpeaker {
+    fn stop(&self) {
+        if let Some(h) = self.current.lock().take() {
+            h.stop();
+        }
+    }
+
     fn speak(&self, text: &str, volume: u8) -> Result<SpeakHandle, TtsError> {
         self.stop();
         let exe = self.dir.join("piper").join("piper.exe");
@@ -103,9 +110,8 @@ impl Speaker for PiperSpeaker {
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::null());
         let (child, job) = job::spawn(cmd).map_err(|e| TtsError::Start(e.to_string()))?;
-        let (cancel_tx, mut cancel_rx) = watch::channel(false);
-        let (done_tx, done_rx) = watch::channel(false);
-        let handle = SpeakHandle { cancel: Arc::new(cancel_tx), done: done_rx };
+        let (handle, done_tx) = SpeakHandle::new();
+        let mut cancel_rx = handle.cancel.subscribe();
         *self.current.lock() = Some(handle.clone());
         let chars = text.chars().count();
         tokio::spawn(async move {

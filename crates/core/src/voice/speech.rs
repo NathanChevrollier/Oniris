@@ -3,6 +3,8 @@ use crate::iris::taint::Segment;
 
 /// Au-delà, IRIS renvoie vers le panneau plutôt que de tout lire.
 const MAX_CHARS: usize = 300;
+/// Début de la phrase dite à la place d'une réponse trop longue.
+pub const TO_PANEL: &str = "Je t'ai mis la réponse dans le panneau";
 
 /// Abréviations après lesquelles un point ne finit pas la phrase (minuscules, sans le point).
 const ABBREVIATIONS: [&str; 10] = ["m", "mm", "mme", "mlle", "dr", "pr", "st", "etc", "cf", "ex"];
@@ -21,7 +23,7 @@ pub fn speakable(segments: &[Segment], user_name: &str) -> Option<String> {
         return None;
     }
     if text.chars().count() > MAX_CHARS {
-        return Some(format!("Je t'ai mis la réponse dans le panneau, {user_name}."));
+        return Some(format!("{TO_PANEL}, {user_name}."));
     }
     Some(text)
 }

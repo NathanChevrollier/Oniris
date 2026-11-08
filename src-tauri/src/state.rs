@@ -17,8 +17,10 @@ pub struct AppState {
     /// cible du collage depuis l'historique du presse-papiers.
     pub prev_foreground: AtomicIsize,
     pub hide_pill_in_fullscreen: AtomicBool,
-    /// État de « Mettre la voix en pause » (sans effet avant le plan 6).
+    /// État de « Mettre la voix en pause » : le push-to-talk n'ouvre plus le micro.
     pub voice_paused: AtomicBool,
+    /// Seule voix d'IRIS (une à la fois) : le pipeline vocal la coupe sur un nouvel appui ou Échap.
+    pub speaker: Arc<crate::modules::voice::piper::PiperSpeaker>,
     /// Seule connexion du processus.
     pub db: Db,
     /// Client HTTP partagé (météo) : délai 8 s, agent générique. `None` s'il n'a pas pu être construit :
@@ -111,6 +113,7 @@ impl AppState {
             panel_open: AtomicBool::new(false),
             prev_foreground: AtomicIsize::new(0),
             voice_paused: AtomicBool::new(false),
+            speaker: Arc::new(crate::modules::voice::piper::PiperSpeaker::new(crate::modules::voice::install::voice_dir(), Arc::new(crate::modules::voice::playback::CpalOut))),
             hide_pill_in_fullscreen: AtomicBool::new(s.hide_pill_in_fullscreen),
             hotkey: Arc::new(RwLock::new(HotkeyConfig::from_setting(&s.hotkey, s.hold_threshold_ms as u64))),
             events,

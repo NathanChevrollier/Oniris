@@ -12,8 +12,8 @@ use ::windows::Win32::System::Threading::{
 };
 use ::windows::Win32::UI::Input::KeyboardAndMouse::{
     GetAsyncKeyState, SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYBD_EVENT_FLAGS,
-    KEYEVENTF_KEYUP, VIRTUAL_KEY, VK_CONTROL, VK_LMENU, VK_LWIN, VK_MENU, VK_RMENU, VK_RWIN,
-    VK_SHIFT,
+    KEYEVENTF_KEYUP, VIRTUAL_KEY, VK_CONTROL, VK_ESCAPE, VK_LMENU, VK_LWIN, VK_MENU, VK_RMENU,
+    VK_RWIN, VK_SHIFT,
 };
 use ::windows::Win32::UI::WindowsAndMessaging::{
     CallNextHookEx, GetMessageW, KillTimer, SetTimer, SetWindowsHookExW, UnhookWindowsHookEx,
@@ -25,6 +25,8 @@ use std::cell::RefCell;
 use std::sync::mpsc::{channel, Sender};
 use std::sync::{Arc, OnceLock};
 use std::time::Instant;
+use crate::modules::voice::pipeline::{self, Input};
+use std::sync::atomic::Ordering;
 use tauri::{AppHandle, Emitter};
 
 /// Marque (dwExtraInfo) de nos propres frappes injectées : notre crochet les ignore. Les entrées injectées par
@@ -176,6 +178,10 @@ impl Hook {
     }
 
     fn on_key(&mut self, vk: u16, down: bool) -> Decision {
+        // Échap pendant que IRIS parle : coupe la voix, sans avaler la touche.
+        if down && vk == VK_ESCAPE.0 && pipeline::SPEAKING.load(Ordering::SeqCst) {
+            pipeline::send(Input::Escape);
+        }
         let cfg = *self.cfg.read();
         let d = decide(
             &mut self.chord,
@@ -255,8 +261,14 @@ fn dispatch(app: &AppHandle, action: HotkeyAction) {
     };
     let result = match action {
         HotkeyAction::TogglePanel => crate::windows::toggle_panel(app),
-        HotkeyAction::PttStart => ptt("start"),
-        HotkeyAction::PttEnd => ptt("end"),
+        HotkeyAction::PttStart => {
+            pipeline::send(Input::Start);
+            ptt("start")
+        }
+        HotkeyAction::PttEnd => {
+            pipeline::send(Input::End);
+            ptt("end")
+        }
     };
     if let Err(e) = result {
         tracing::error!("Oniris : action du raccourci impossible : {e}");

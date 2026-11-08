@@ -28,7 +28,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
                 }
             }
             "pause" => {
-                // Sans effet avant le plan 6 : on ne fait que mémoriser l'état.
+                // Relu par le pipeline vocal à chaque appui.
                 let on = pause.is_checked().unwrap_or(false);
                 app.state::<AppState>().voice_paused.store(on, Ordering::SeqCst);
             }

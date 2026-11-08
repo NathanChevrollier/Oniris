@@ -175,6 +175,7 @@ pub fn run() {
             tauri::async_runtime::spawn_blocking(move || modules::indexer::start(&h));
             tray::build(app.handle())?;
             tray::sync_autostart(app.handle(), autostart);
+            modules::voice::pipeline::start(app.handle());
             hotkey::start_hook(app.handle().clone(), hotkey_cfg);
             fullscreen::start_watcher(app.handle().clone());
             Ok(())

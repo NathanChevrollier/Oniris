@@ -175,7 +175,7 @@ impl Sampler {
             vram_total_mb: g.and(self.vram_total_mb),
             oniris_mb: self.oniris_mb,
             local_ai: NOT_INSTALLED.into(),
-            voice: NOT_INSTALLED.into(),
+            voice: crate::modules::voice::pipeline::status_label().into(),
         }
     }
 }

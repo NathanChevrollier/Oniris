@@ -1,6 +1,5 @@
 //! `whisper-server` local : démarrage paresseux, arrêt après inactivité ou tout de suite en plein écran.
 //! Journal : durées seulement, jamais de texte transcrit ni de chemin.
-#![allow(dead_code)] // utilisé par le pipeline vocal (tâche suivante)
 use crate::job::{self, Job};
 use oniris_core::voice::stt::SttError;
 use parking_lot::Mutex;
@@ -75,11 +74,7 @@ impl WhisperProcess {
     }
 
     /// Fin d'une transcription : plein écran actif, on libère la mémoire tout de suite.
-    pub async fn finish(&self) {
-        self.finish_with(crate::fullscreen::active()).await;
-    }
-
-    async fn finish_with(&self, fullscreen: bool) {
+    pub async fn finish(&self, fullscreen: bool) {
         if fullscreen {
             self.stop().await
         } else {
@@ -223,9 +218,9 @@ mod tests {
         let w = Arc::new(WhisperProcess::default());
         w.ensure(d.path(), &model, Duration::from_secs(60)).await.unwrap();
         let pid = pid_of(&pidf);
-        w.finish_with(false).await;
+        w.finish(false).await;
         assert!(!gone_now(pid));
-        w.finish_with(true).await;
+        w.finish(true).await;
         assert!(gone(pid).await);
     }
 }

@@ -69,7 +69,7 @@ it("statut : le vrai cerveau, y compris le raccourci", () => {
   expect(screen.getByRole("status")).toHaveTextContent("Réfléchit · éclair");
 });
 
-it("claude_unavailable : les deux boutons, « local » relance sans forcer Claude", async () => {
+it("claude_unavailable : les deux boutons, « local » relance en local seulement", async () => {
   const send = vi.spyOn(irisIpc, "ask").mockResolvedValue(1);
   render(<IrisReply />);
   act(() => ask("Résume", true));
@@ -78,7 +78,7 @@ it("claude_unavailable : les deux boutons, « local » relance sans forcer Claud
   expect(screen.getByRole("alert")).toHaveTextContent("Claude est indisponible.");
   expect(screen.getByRole("button", { name: "Réessayer plus tard" })).toBeInTheDocument();
   await userEvent.click(screen.getByRole("button", { name: "Version simple en local" }));
-  expect(send).toHaveBeenLastCalledWith("Résume", false);
+  expect(send).toHaveBeenLastCalledWith("Résume", false, true);
   expect(useIris.getState().error).toBeNull();
 });
 

@@ -154,7 +154,7 @@ fn conversation_vault(c: &rusqlite::Connection, now: i64, slot: &mut Option<(i64
 
 /// Lance un tour et rend son numéro ; le tour précédent, s'il court encore, est abandonné.
 #[tauri::command]
-pub async fn iris_ask(app: AppHandle, text: String, force_claude: bool) -> Result<u32, String> {
+pub async fn iris_ask(app: AppHandle, text: String, force_claude: bool, local_only: bool) -> Result<u32, String> {
     let text = text.trim().to_string();
     if text.is_empty() || text.len() > ASK_MAX {
         return Err("message vide ou trop long".into());
@@ -165,7 +165,7 @@ pub async fn iris_ask(app: AppHandle, text: String, force_claude: bool) -> Resul
         old.abort();
     }
     let task = tauri::async_runtime::spawn(async move {
-        if let Err(e) = run_turn(&app, turn, text, force_claude).await {
+        if let Err(e) = run_turn(&app, turn, text, force_claude, local_only).await {
             tracing::warn!("oniris: tour d'IRIS interrompu ({e})");
             let kind = IrisEventKind::Error { kind: "failed", message: "IRIS n'a pas pu traiter ce message.".into(), offer_local: false };
             let _ = app.emit("oniris://iris", IrisEvent { turn, kind });
@@ -187,7 +187,7 @@ pub async fn iris_cancel(turn: u32) {
 }
 
 /// Cerveaux construits d'après les réglages du moment ; exécuteur sur le coffre de la conversation.
-async fn run_turn(app: &AppHandle, turn: u32, text: String, force_claude: bool) -> Result<(), String> {
+async fn run_turn(app: &AppHandle, turn: u32, text: String, force_claude: bool, local_only: bool) -> Result<(), String> {
     let st = app.state::<AppState>();
     let s = st.settings.read().clone();
     let now = now_ms();
@@ -219,7 +219,8 @@ async fn run_turn(app: &AppHandle, turn: u32, text: String, force_claude: bool) 
     let sink = move |kind: IrisEventKind| {
         let _ = emitter.emit("oniris://iris", IrisEvent { turn, kind });
     };
-    let end = agent.turn(TurnInput { text: text.clone(), force_claude }, exec, PromptCtx { system, claude_system, history }, &sink).await;
+    let end = agent.turn(TurnInput { text: text.clone(), force_claude, local_only }, exec, PromptCtx { system, claude_system, history }, &sink).await;
+    unload_if_fullscreen(app).await;
     let shown: String = end.shown.iter().map(|s| match s { Segment::Text { text } | Segment::Untrusted { text, .. } => text.as_str() }).collect();
     {
         let c = st.db.lock();
@@ -305,7 +306,9 @@ pub async fn iris_draft_reply_local(app: AppHandle, account: i64, id: String) ->
     let prompt = draft_prompt(&app, account, id).await?;
     let s = app.state::<AppState>().settings.read().clone();
     let schema = json!({ "type": "object", "properties": { "reply": { "type": "string" } }, "required": ["reply"] });
-    let out = Ollama::new(&s.iris_local_model, s.iris_unload_minutes).structured(&draft_system(&s), &prompt, &schema).await.map_err(|_| "draft_failed".to_string())?;
+    let out = Ollama::new(&s.iris_local_model, s.iris_unload_minutes).structured(&draft_system(&s), &prompt, &schema).await;
+    unload_if_fullscreen(&app).await;
+    let out = out.map_err(|_| "draft_failed".to_string())?;
     out["reply"].as_str().map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).ok_or_else(|| "draft_failed".into())
 }
 
@@ -356,13 +359,24 @@ pub async fn iris_pull_model(app: AppHandle) -> Result<(), String> {
     }
 }
 
-/// Entrée en plein écran : libère la mémoire du modèle, hors du fil du détecteur.
+/// Entrée en plein écran : libère la mémoire du modèle, hors du fil du détecteur. Une requête en cours
+/// (60 s au plus) recharge le modèle avec son propre `keep_alive` : second déchargement après 65 s.
 pub fn unload_on_fullscreen(app: &AppHandle) {
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
         let (model, keep) = model(&app);
         Ollama::new(&model, keep).unload(&model).await;
+        tokio::time::sleep(Duration::from_secs(65)).await;
+        unload_if_fullscreen(&app).await;
     });
+}
+
+/// Fin d'un travail du modèle local : en plein écran, on libère la mémoire tout de suite.
+pub async fn unload_if_fullscreen(app: &AppHandle) {
+    if crate::fullscreen::active() {
+        let (model, keep) = model(app);
+        Ollama::new(&model, keep).unload(&model).await;
+    }
 }
 
 #[cfg(test)]

@@ -63,7 +63,9 @@ pub fn spawn_triage(app: &AppHandle) {
         if ollama.status(&model).await != oniris_core::iris::LocalStatus::Ready {
             return;
         }
-        match oniris_core::iris::triage::triage_unless(crate::fullscreen::active(), &st.db, &ollama).await {
+        let r = oniris_core::iris::triage::triage_pending(&st.db, &ollama, &crate::fullscreen::active).await;
+        crate::modules::iris::unload_if_fullscreen(&app).await;
+        match r {
             Ok(n) if n > 0 => st.events.changed(Topic::Mail),
             Ok(_) => {}
             Err(e) => tracing::warn!("mails : tri IRIS interrompu : {e}"),

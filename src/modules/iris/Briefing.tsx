@@ -20,10 +20,10 @@ export function SegmentText({ s }: { s: BriefingData["segments"][number] }) {
 /** Briefing de l'en-tête : le dernier connu s'affiche tout de suite, le nouveau le remplace quand il arrive. */
 export function Briefing() {
   const { data } = useTopic<BriefingData | null>("iris", irisBriefingIpc.get, null);
-  const [error, setError] = useState(false);
-  const act = (i: number) => {
-    setError(false);
-    irisBriefingIpc.act(i).catch(() => setError(true));
+  const [error, setError] = useState<string | null>(null);
+  const act = (i: number, atMs: number) => {
+    setError(null);
+    irisBriefingIpc.act(i, atMs).catch((e) => setError(e === "briefing_stale" ? "Briefing mis à jour, réessaie." : "Action impossible, réessaie."));
   };
   return (
     <div className="brief">
@@ -32,10 +32,10 @@ export function Briefing() {
         <p>{data ? data.segments.map((s, i) => <SegmentText key={i} s={s} />) : "IRIS prépare ton briefing…"}</p>
         {data && data.suggestions.length > 0 && (
           <div className="iris-chips">
-            {data.suggestions.map((s, i) => <button key={i} type="button" className="iris-chip" onClick={() => act(i)}>{s.label}</button>)}
+            {data.suggestions.map((s, i) => <button key={i} type="button" className="iris-chip" onClick={() => act(i, data.at_ms)}>{s.label}</button>)}
           </div>
         )}
-        {error && <p className="err" role="alert">Action impossible, réessaie.</p>}
+        {error && <p className="err" role="alert">{error}</p>}
       </div>
     </div>
   );

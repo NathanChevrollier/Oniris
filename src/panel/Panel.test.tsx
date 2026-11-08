@@ -85,7 +85,7 @@ it("la barre de commande prend le focus à chaque ouverture et envoie le texte �
   fireEvent.change(input, { target: { value: "  Mets ma playlist  " } });
   await act(async () => {}); // réponse (vide) de la recherche
   fireEvent.keyDown(input, { key: "Enter" });
-  expect(invokeMock).toHaveBeenCalledWith("iris_ask", { text: "Mets ma playlist", forceClaude: false });
+  expect(invokeMock).toHaveBeenCalledWith("iris_ask", { text: "Mets ma playlist", forceClaude: false, localOnly: false });
   expect(input).toHaveValue("");
 });
 
@@ -141,4 +141,17 @@ it("une confirmation en attente s'affiche au-dessus de la grille", () => {
   const { container } = render(<Panel />);
   const confirm = screen.getByText("Supprimer x");
   expect(confirm.compareDocumentPosition(container.querySelector(".grid")!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+});
+
+it("une confirmation qui arrive ferme la feuille ouverte pour rester cliquable", async () => {
+  const user = userEvent.setup();
+  const { container } = render(<Panel />);
+  await user.click(screen.getByRole("button", { name: "Journal" }));
+  expect(screen.getByRole("dialog", { name: "Journal" })).toBeInTheDocument();
+  expect(container.querySelector(".inner")).toHaveAttribute("inert");
+  const p: PendingAction = { action_id: 8, tool: "t", text: { summary: "Supprimer y", details: "d", risk: "Low" }, provenance: "User", expires_at_ms: 0 };
+  act(() => usePanelStore.getState().enqueue(p));
+  expect(screen.queryByRole("dialog", { name: "Journal" })).toBeNull();
+  expect(container.querySelector(".inner")).not.toHaveAttribute("inert");
+  expect(screen.getByText("Supprimer y")).toBeInTheDocument();
 });

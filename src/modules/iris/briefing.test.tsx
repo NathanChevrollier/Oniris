@@ -28,7 +28,15 @@ it("le clic sur une suggestion appelle iris_briefing_act avec son rang", async (
   const act = vi.spyOn(irisBriefingIpc, "act").mockResolvedValue();
   render(<Briefing />);
   await userEvent.click(await screen.findByRole("button", { name: "Voir les mails à traiter" }));
-  expect(act).toHaveBeenCalledWith(1);
+  expect(act).toHaveBeenCalledWith(1, data.at_ms);
+});
+
+it("briefing remplacé entre-temps : message dédié", async () => {
+  vi.spyOn(irisBriefingIpc, "get").mockResolvedValue(data);
+  vi.spyOn(irisBriefingIpc, "act").mockRejectedValue("briefing_stale");
+  render(<Briefing />);
+  await userEvent.click(await screen.findByRole("button", { name: "Lancer un focus" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("Briefing mis à jour, réessaie.");
 });
 
 it("action en échec : message, sans planter", async () => {

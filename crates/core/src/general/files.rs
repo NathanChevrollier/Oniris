@@ -307,7 +307,18 @@ impl Tool for FilesCreate {
         create_check(&self.0, a)
     }
     fn describe(&self, a: &Value) -> ConfirmationText {
-        ConfirmationText { summary: "Créer un fichier".into(), details: self.0.shown(a["path"].as_str().unwrap_or_default()), risk: Risk::Low }
+        let mut details = self.0.shown(a["path"].as_str().unwrap_or_default());
+        // La carte montre ce qui sera écrit : aperçu des 2000 premiers caractères.
+        if let Some(c) = a["content"].as_str().filter(|c| !c.is_empty()) {
+            let n = c.chars().count();
+            details += &format!("
+
+{}", c.chars().take(2000).collect::<String>());
+            if n > 2000 {
+                details += &format!(" … ({n} caractères)");
+            }
+        }
+        ConfirmationText { summary: "Créer un fichier".into(), details, risk: Risk::Low }
     }
     async fn run(&self, a: &Value) -> Result<ToolResult, ToolError> {
         blocking(&self.0, a, create_run).await
@@ -749,6 +760,18 @@ mod tests {
         assert!(e.work.path().join("b.txt").exists());
         e.broker.undo(action_id).await.unwrap();
         assert!(a.exists());
+    }
+
+    #[test]
+    fn create_la_carte_montre_un_apercu_du_contenu() {
+        let bin = Arc::new(Bin { dir: tempfile::tempdir().unwrap(), n: Mutex::new(0), restored: Mutex::new(vec![]) });
+        let tool = FilesCreate(Arc::new(Files { recycler: bin, work_dirs: Arc::new(Vec::new), protected: vec![] }));
+        let d = tool.describe(&json!({"path": "C:/x.txt", "content": "bonjour"})).details;
+        assert!(d.ends_with("
+
+bonjour"), "{d}");
+        let d = tool.describe(&json!({"path": "C:/x.txt", "content": "é".repeat(2001)})).details;
+        assert!(d.ends_with(&format!("{} … (2001 caractères)", "é".repeat(2000))), "{d}");
     }
 
     #[tokio::test]

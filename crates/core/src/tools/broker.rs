@@ -42,10 +42,10 @@ impl ToolBroker {
         self.tools.get(name).map(|t| t.spec())
     }
 
-    fn failed(&self, tool: &str, c: &ToolCall, e: ToolError) -> ToolOutcome {
+    fn failed(&self, tool: &str, c: &ToolCall, args: &Value, e: ToolError) -> ToolOutcome {
         let err = e.to_string();
         let id = journal::insert(&self.db.lock(), NewRow {
-            ts: (self.clock)(), tool, args: &c.args, origin: &c.origin, prov: &c.provenance,
+            ts: (self.clock)(), tool, args, origin: &c.origin, prov: &c.provenance,
             status: "failed", result: Some(&json!({ "error": err })), undo: None, expires: None,
         })
         .unwrap_or(-1);
@@ -54,17 +54,21 @@ impl ToolBroker {
 
     pub async fn call(&self, call: ToolCall) -> ToolOutcome {
         let Some(tool) = self.tools.get(&call.tool) else {
-            return self.failed(&call.tool, &call, ToolError::UnknownTool(call.tool.clone()));
+            return self.failed(&call.tool, &call, &call.args, ToolError::UnknownTool(call.tool.clone()));
         };
         if let Err(e) = tool.check(&call.args) {
-            return self.failed(&call.tool, &call, e);
+            return self.failed(&call.tool, &call, &tool.journal_args(&call.args), e);
         }
         let confirm = tool.needs_confirm(&call.args)
             || matches!(call.provenance, Provenance::Untrusted { .. });
         let now = (self.clock)();
         let logged = tool.journal_args(&call.args);
         if confirm {
-            let text = tool.describe(&call.args);
+            let mut text = tool.describe(&call.args);
+            // La carte montre toujours ce qui sera fait (carte éphémère : rien de plus n'est journalisé).
+            if text.details.is_empty() {
+                text.details = serde_json::to_string_pretty(&call.args).unwrap_or_default();
+            }
             let expires = now + PENDING_TTL_MS;
             let ins = journal::insert(&self.db.lock(), NewRow {
                 ts: now, tool: &call.tool, args: &logged, origin: &call.origin, prov: &call.provenance,
@@ -210,6 +214,7 @@ mod tests {
             ToolSpec { name: "echo".into(), description: "echo".into(), args_schema: json!({}), permission: self.perm, sensitive_output: self.sensitive, untrusted_output: false }
         }
         fn describe(&self, a: &Value) -> ConfirmationText {
+            if a.get("quiet").is_some() { return crate::tools::helpers::low("Echo"); }
             ConfirmationText { summary: "Echo".into(), details: a.to_string(), risk: Risk::Low }
         }
         async fn run(&self, a: &Value) -> Result<ToolResult, ToolError> {
@@ -458,5 +463,24 @@ mod tests {
     fn spec_par_nom() {
         let f = fx(Permission::Free, false);
         assert!(f.broker.spec("echo").is_some() && f.broker.spec("nope").is_none());
+    }
+
+    #[tokio::test]
+    async fn carte_sans_detail_montre_les_arguments() {
+        let f = fx(Permission::Free, false);
+        let mut c = call(Provenance::Untrusted { source: "mail:1".into() });
+        c.args = json!({"quiet": true, "texte": "bonjour"});
+        let p = pending(f.broker.call(c.clone()).await);
+        assert_eq!(p.text.details, serde_json::to_string_pretty(&c.args).unwrap());
+    }
+
+    #[tokio::test]
+    async fn echec_de_check_journalise_les_arguments_masques() {
+        let f = fx(Permission::Free, false);
+        let mut c = call(Provenance::User);
+        c.args = json!({"bad": 1, "secret": "s3cr3t"});
+        let ToolOutcome::Failed { action_id, .. } = f.broker.call(c).await else { panic!() };
+        let args: String = f.db.lock().query_row("SELECT args FROM actions WHERE id=?", [action_id], |r| r.get(0)).unwrap();
+        assert_eq!(serde_json::from_str::<Value>(&args).unwrap(), json!({"redacted": true}));
     }
 }

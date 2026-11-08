@@ -25,7 +25,8 @@ const fake = (): BriefingData => ({
 export const irisBriefingIpc = {
   /** Briefing en mémoire (aucun calcul) ; `null` tant qu'aucun n'existe. */
   get: (): Promise<BriefingData | null> => isTauri ? invoke("iris_briefing") : Promise.resolve(fake()),
-  act: (index: number): Promise<void> => isTauri ? invoke("iris_briefing_act", { index }) : Promise.resolve(),
+  /** `atMs` : le briefing affiché ; refusé (`briefing_stale`) s'il a été remplacé. */
+  act: (index: number, atMs: number): Promise<void> => isTauri ? invoke("iris_briefing_act", { index, atMs }) : Promise.resolve(),
 };
 
 export type Brain = "fast" | "local" | "claude";
@@ -44,7 +45,8 @@ export type HistoryItem = { conversation_id: number; ts_ms: number; role: string
 export type Memory = { id: number; text: string; created_ms: number };
 
 export const irisIpc = {
-  ask: (text: string, forceClaude: boolean): Promise<number> => invoke("iris_ask", { text, forceClaude }),
+  /** `localOnly` : « Version simple en local », jamais relayé à Claude. */
+  ask: (text: string, forceClaude: boolean, localOnly = false): Promise<number> => invoke("iris_ask", { text, forceClaude, localOnly }),
   cancel: (turn: number): Promise<void> => invoke("iris_cancel", { turn }),
   status: (): Promise<IrisStatus> => invoke("iris_status"),
   history: (limit: number): Promise<HistoryItem[]> => invoke("iris_history", { limit }),

@@ -42,10 +42,10 @@ export function apply(ev: IrisEvent) {
 }
 
 /** Envoie un message à IRIS ; le tour précédent est abandonné par Rust. */
-export function ask(text: string, forceClaude: boolean) {
+export function ask(text: string, forceClaude: boolean, localOnly = false) {
   useIris.setState((s) => ({ ...EMPTY, floor: s.turn, user: text, state: "thinking" }));
   const prev = unresolved ? asking : null;
-  const p = irisIpc.ask(text, forceClaude);
+  const p = irisIpc.ask(text, forceClaude, localOnly);
   asking = p;
   unresolved = true;
   const settle = () => { if (asking === p) unresolved = false; };

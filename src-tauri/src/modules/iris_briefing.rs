@@ -70,7 +70,9 @@ async fn refresh(app: &AppHandle) {
     if ollama.status(&model).await != LocalStatus::Ready || !gate(app) {
         return;
     }
-    let Some(polished) = briefing::polish(&ollama as &dyn LocalBrain, &stored.text, &personality).await else { return };
+    let polished = briefing::polish(&ollama as &dyn LocalBrain, &stored.text, &personality).await;
+    crate::modules::iris::unload_if_fullscreen(app).await;
+    let Some(polished) = polished else { return };
     let updated = {
         let mut cur = CURRENT.lock();
         match cur.as_mut().filter(|c| c.at_ms == stored.at_ms) {
@@ -88,10 +90,15 @@ pub async fn iris_briefing() -> Option<Briefing> {
     CURRENT.lock().as_ref().map(Stored::view)
 }
 
-/// Exécute l'action proposée `index` (choisie par le code, jamais par un modèle).
+/// Exécute l'action proposée `index` (choisie par le code, jamais par un modèle) du briefing `at_ms` :
+/// un briefing remplacé entre-temps refuse, l'index viserait une autre action.
 #[tauri::command]
-pub async fn iris_briefing_act(app: AppHandle, index: usize) -> Result<(), String> {
-    let s = CURRENT.lock().as_ref().and_then(|b| b.suggestions.get(index).cloned()).ok_or("action_unknown")?;
+pub async fn iris_briefing_act(app: AppHandle, index: usize, at_ms: i64) -> Result<(), String> {
+    let s = {
+        let cur = CURRENT.lock();
+        let b = cur.as_ref().filter(|b| b.at_ms == at_ms).ok_or("briefing_stale")?;
+        b.suggestions.get(index).cloned().ok_or("action_unknown")?
+    };
     let outcome = match s {
         Suggestion::ReplyMail { account, id, .. } => return open_mail(&app, Some((account, id)), true),
         Suggestion::OpenTodo { .. } => return open_mail(&app, None, false),

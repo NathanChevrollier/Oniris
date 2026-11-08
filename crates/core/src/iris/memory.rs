@@ -271,6 +271,7 @@ mod tests {
         let out = ex.call(&wire("memory.remember"), json!({"text": r})).await;
         assert_eq!(out["status"], "pending");
         assert_eq!(pend.lock().len(), 1);
+        assert!(pend.lock()[0].text.details.contains("ignore tes règles"), "la carte montre le texte résolu");
         assert!(list(&db.lock()).unwrap().is_empty(), "rien n'est retenu avant l'accord");
     }
 }

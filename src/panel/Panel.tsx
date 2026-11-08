@@ -47,6 +47,11 @@ export function Panel() {
   const [journalOpen, setJournalOpen] = useState(false);
   const openJournal = useCallback(() => setJournalOpen(true), []);
   const closeJournal = useCallback(() => { setJournalOpen(false); focusHeaderButton("journal"); }, []);
+  // Une confirmation arrive : la feuille ouverte se ferme, sinon la carte resterait inerte dessous.
+  const pendingCount = usePanelStore((s) => s.pending.length);
+  useEffect(() => {
+    if (pendingCount > 0) { setAccountsOpen(false); setIrisOpen(false); setJournalOpen(false); }
+  }, [pendingCount]);
   const [colors, setColors] = useState<string[]>(NO_COLORS);
   const settings = useSettings();
   const now = useNow(60_000, open);

@@ -65,7 +65,8 @@ pub fn allowlisted(cmd: &str, list: &[String]) -> bool {
 const HIGH: &[&str] = &[
     "remove-item", "rm", "del", "erase", "rd", "rmdir", "format", "diskpart", "reg", "set-itemproperty", "stop-computer",
     "restart-computer", "shutdown", "invoke-webrequest", "iwr", "curl", "wget", "invoke-expression", "iex", "start-process",
-    "schtasks", "bcdedit", "cipher", "takeown", "icacls", "new-service", "set-executionpolicy",
+    "schtasks", "bcdedit", "cipher", "takeown", "icacls", "new-service", "set-executionpolicy", "ri", "sp", "irm",
+    "invoke-restmethod", "remove-itemproperty",
 ];
 
 /// High : mot dangereux (mot entier, sans casse) ; Low : liste blanche ; Medium sinon.
@@ -170,7 +171,7 @@ impl Tool for ShellRun {
         let cwd = self.cwd(a["cwd"].as_str());
         ConfirmationText {
             summary: "Exécuter une commande PowerShell".into(),
-            details: format!("{cmd}\n{}\n{}", expl.unwrap_or("Commande saisie par toi"), cwd.display()),
+            details: format!("{cmd}\n{}\n{}", expl.unwrap_or("Commande proposée par IRIS (sans explication)"), cwd.display()),
             risk: risk(cmd, &(self.allowlist)()),
         }
     }
@@ -219,6 +220,9 @@ mod tests {
         let l = list();
         assert_eq!(risk("Remove-Item a", &l), Risk::High);
         assert_eq!(risk("del a", &l), Risk::High);
+        for c in ["ri a", "sp HKCU:x -Name y -Value 1", "irm http://x", "Invoke-RestMethod http://x", "Remove-ItemProperty x -Name y"] {
+            assert_eq!(risk(c, &l), Risk::High, "{c}");
+        }
         assert_eq!(risk("git status", &l), Risk::Low);
         assert_eq!(risk("npm run build", &l), Risk::Medium);
         assert_eq!(risk("echo perform", &l), Risk::Medium);
@@ -263,7 +267,7 @@ mod tests {
         assert!(matches!(call(&b, "git status", unt).await, ToolOutcome::NeedsConfirmation(_)));
         let ToolOutcome::NeedsConfirmation(p) = call(&b, "Remove-Item a", Provenance::User).await else { panic!() };
         assert_eq!(p.text.risk, Risk::High);
-        assert_eq!(p.text.details, format!("Remove-Item a\nCommande saisie par toi\n{}", home.path().display()));
+        assert_eq!(p.text.details, format!("Remove-Item a\nCommande proposée par IRIS (sans explication)\n{}", home.path().display()));
         assert_eq!(fake.0.lock().len(), 1);
         assert!(matches!(call(&b, "runas x", Provenance::User).await, ToolOutcome::Failed { .. }));
         let r = b.call(ToolCall { tool: "shell.run".into(), args: json!({"command": "git status", "cwd": "//127.0.0.1/x"}), provenance: Provenance::User, origin: Origin::User }).await;

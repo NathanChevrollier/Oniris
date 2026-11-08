@@ -41,7 +41,8 @@ pub enum IrisEventKind {
     Error { kind: &'static str, message: String, offer_local: bool },
 }
 
-pub struct TurnInput { pub text: String, pub force_claude: bool }
+/// `local_only` : « Version simple en local », jamais de relais vers Claude (ni préfixe, ni délégation).
+pub struct TurnInput { pub text: String, pub force_claude: bool, pub local_only: bool }
 
 /// Prompts système (cerveau local, Claude) et derniers messages de la conversation (textes du planificateur).
 pub struct PromptCtx { pub system: String, pub claude_system: String, pub history: Vec<(Role, String)> }
@@ -95,14 +96,19 @@ fn claude_request(text: &str) -> Option<String> {
 
 impl Agent {
     pub async fn turn(&self, input: TurnInput, exec: Arc<Executor>, ctx: PromptCtx, sink: &Sink) -> TurnEnd {
-        let fast = if input.force_claude { None } else { fastpath::parse(&input.text, chrono::Local::now()) };
-        let ask = if input.force_claude { Some(input.text.clone()) } else { claude_request(&input.text) };
+        let (text, local_only) = if input.local_only {
+            (claude_request(&input.text).unwrap_or(input.text), true)
+        } else {
+            (input.text, false)
+        };
+        let fast = if input.force_claude && !local_only { None } else { fastpath::parse(&text, chrono::Local::now()) };
+        let ask = if local_only { None } else if input.force_claude { Some(text.clone()) } else { claude_request(&text) };
         let end = if let Some((tool, args)) = fast {
             self.fast(tool, args, &exec, sink).await
         } else if let Some(task) = ask {
             self.claude(task, exec, &ctx, true, sink).await
         } else {
-            self.local(input.text, exec, &ctx, sink).await
+            self.local(text, exec, &ctx, local_only, sink).await
         };
         sink(IrisEventKind::State { state: "idle", brain: end.brain });
         end
@@ -124,13 +130,13 @@ impl Agent {
         finish(BrainUsed::Fast, text.into(), &exec.vault, sink)
     }
 
-    async fn local(&self, text: String, exec: Arc<Executor>, ctx: &PromptCtx, sink: &Sink) -> TurnEnd {
+    async fn local(&self, text: String, exec: Arc<Executor>, ctx: &PromptCtx, local_only: bool, sink: &Sink) -> TurnEnd {
         sink(IrisEventKind::State { state: "thinking", brain: BrainUsed::Local });
         let msg = |role, content: String| Msg { role, content, tool_calls: vec![] };
         let mut messages = vec![msg(Role::System, ctx.system.clone())];
         messages.extend(ctx.history.iter().map(|(r, t)| msg(*r, t.clone())));
         messages.push(msg(Role::User, text.clone()));
-        let tools = exec.tools(&[]);
+        let tools = exec.tools(if local_only { &["iris.ask_claude"] } else { &[] });
         // Un outil du courtier a tourné ce tour-ci : déléguer à Claude risquerait de refaire l'action.
         let mut acted = false;
         for step in 0..MAX_STEPS {
@@ -139,7 +145,7 @@ impl Agent {
             let reply = match self.local.chat(req, &mut |d: &str| stream.push(d)).await {
                 Ok(r) => r,
                 // Avant toute action seulement : relancer chez Claude ne refait rien.
-                Err(BrainError::Unavailable | BrainError::NoModel) if step == 0 => {
+                Err(BrainError::Unavailable | BrainError::NoModel) if step == 0 && !local_only => {
                     sink(IrisEventKind::Error { kind: "local_unavailable", message: "IRIS locale est indisponible : je passe la main à Claude.".into(), offer_local: false });
                     return self.claude(text, exec, ctx, false, sink).await;
                 }
@@ -152,6 +158,10 @@ impl Agent {
             for c in &reply.tool_calls {
                 let name = unwire(&c.name);
                 if name == "iris.ask_claude" {
+                    if local_only {
+                        messages.push(msg(Role::Tool, json!({ "error": "délégation à Claude désactivée : réponds toi-même" }).to_string()));
+                        continue;
+                    }
                     if !acted {
                         let task = c.args["task"].as_str().filter(|t| !t.trim().is_empty()).unwrap_or(&text).to_string();
                         return self.claude(task, exec, ctx, true, sink).await;
@@ -348,11 +358,13 @@ mod tests {
 
         fn runs(&self, name: &str) -> usize { self.runs.iter().find(|r| r.0 == name).unwrap().1.load(Ordering::SeqCst) }
 
-        async fn turn(&self, t: &str, force_claude: bool) -> TurnEnd {
+        async fn turn(&self, t: &str, force_claude: bool) -> TurnEnd { self.turn_with(t, force_claude, false).await }
+
+        async fn turn_with(&self, t: &str, force_claude: bool, local_only: bool) -> TurnEnd {
             let ev = self.events.clone();
             let sink = move |e: IrisEventKind| ev.lock().push(e);
             let ctx = PromptCtx { system: "Tu es IRIS.".into(), claude_system: "Tu es IRIS (Claude).".into(), history: vec![(Role::User, "bonjour".into()), (Role::Assistant, "salut".into())] };
-            self.agent.turn(TurnInput { text: t.into(), force_claude }, self.exec.clone(), ctx, &sink).await
+            self.agent.turn(TurnInput { text: t.into(), force_claude, local_only }, self.exec.clone(), ctx, &sink).await
         }
     }
 
@@ -590,5 +602,31 @@ mod tests {
             Segment::Text { text: " puis ".into() }, Segment::Untrusted { text: "Y".into(), source: "mail:1/b".into() },
             Segment::Text { text: " fin".into() },
         ]);
+    }
+
+    #[tokio::test]
+    async fn version_locale_ne_relaie_jamais_a_claude() {
+        let l = local(|n, req| {
+            assert!(!format!("{:?}", req.tools).contains("iris__ask_claude"), "pas d'outil de délégation");
+            match n {
+                0 => tools(vec![call("iris__ask_claude", json!({"task": "fais-le"}))]),
+                _ => text("version simple"),
+            }
+        });
+        let c = claude(Ok("x"), false);
+        let f = fx(l.clone(), c.clone());
+        let end = f.turn_with("demande à Claude un poème", true, true).await;
+        assert_eq!((end.brain, end.planner_text.as_str()), (BrainUsed::Local, "version simple"));
+        assert!(c.plans.lock().is_empty());
+        {
+            let chats = l.chats.lock();
+            assert!(chats[0].contains("content: \"un poème\""), "préfixe retiré : {}", chats[0]);
+            assert!(chats[1].contains("délégation à Claude désactivée"));
+        }
+
+        let f = fx(local(|_, _| Err(BrainError::Unavailable)), c.clone());
+        let end = f.turn_with("un poème", false, true).await;
+        assert_eq!(end.brain, BrainUsed::Local);
+        assert!(c.plans.lock().is_empty(), "local indisponible : pas de relais non plus");
     }
 }

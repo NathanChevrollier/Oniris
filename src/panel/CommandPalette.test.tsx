@@ -155,13 +155,13 @@ it("texte libre sans résultat : Entrée interroge IRIS, Ctrl+Maj+Entrée force 
   await userEvent.type(bar(), "mets ma playlist");
   await act(async () => {});
   await userEvent.keyboard("{Enter}");
-  expect(ask).toHaveBeenCalledWith("mets ma playlist", false);
+  expect(ask).toHaveBeenCalledWith("mets ma playlist", false, false);
   expect(bar()).toHaveValue("");
   expect(useIris.getState()).toMatchObject({ user: "mets ma playlist", state: "thinking" });
   await userEvent.type(bar(), "résume", { skipClick: true });
   await act(async () => {});
   await userEvent.keyboard("{Control>}{Shift>}{Enter}{/Shift}{/Control}");
-  expect(ask).toHaveBeenLastCalledWith("résume", true);
+  expect(ask).toHaveBeenLastCalledWith("résume", true, false);
 });
 
 it("Entrée sur un résultat sélectionné l'ouvre sans solliciter IRIS", async () => {
@@ -199,7 +199,7 @@ it("le bouton Claude force Claude", async () => {
   render(<CommandPalette />);
   await userEvent.type(bar(), "résume mes mails");
   await userEvent.click(screen.getByRole("button", { name: "Claude" }));
-  expect(ask).toHaveBeenCalledWith("résume mes mails", true);
+  expect(ask).toHaveBeenCalledWith("résume mes mails", true, false);
 });
 
 it("Échap pendant un tour l'annule sans fermer le panneau", async () => {

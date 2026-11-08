@@ -100,7 +100,7 @@ where
             tmp.clear();
             tmp.extend(data.iter().map(|s| f32::from_sample(*s)));
             buf.lock().push(&tmp);
-            if last.elapsed() >= Duration::from_millis(33) {
+            if last.elapsed() >= Duration::from_millis(34) {
                 last = Instant::now();
                 on_level(audio::rms(&tmp));
             }

@@ -3,7 +3,7 @@
 use crate::job::{self, Job};
 use oniris_core::voice::stt::SttError;
 use parking_lot::Mutex;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::process::{Child, Command};
@@ -12,6 +12,7 @@ struct Running {
     child: Child,
     _job: Job,
     base: String,
+    model: PathBuf,
     id: u64,
 }
 
@@ -24,15 +25,16 @@ pub struct WhisperProcess {
 }
 
 impl WhisperProcess {
-    /// Adresse du serveur vivant, sinon le lance (une seule fois même si plusieurs appels arrivent ensemble).
+    /// Adresse du serveur vivant sur `model`, sinon le (re)lance (une seule fois même si plusieurs appels arrivent ensemble).
     /// `dir` = dossier de la voix, `idle` = délai avant l'arrêt pour inactivité.
     pub async fn ensure(self: &Arc<Self>, dir: &Path, model: &Path, idle: Duration) -> Result<String, SttError> {
         let mut slot = self.running.lock().await;
         *self.idle.lock() = (Some(Instant::now()), idle);
         if let Some(r) = slot.as_mut() {
-            if r.child.try_wait().ok().flatten().is_none() {
+            if r.model == model && r.child.try_wait().ok().flatten().is_none() {
                 return Ok(r.base.clone());
             }
+            let _ = r.child.kill().await; // mort, ou autre modèle choisi : redémarrage
             *slot = None;
         }
         let exe = dir.join("whisper").join("whisper-server.exe");
@@ -50,7 +52,7 @@ impl WhisperProcess {
                         *n
                     };
                     tracing::info!(ms = t.elapsed().as_millis() as u64, "whisper démarré");
-                    *slot = Some(Running { child, _job: job, base: base.clone(), id });
+                    *slot = Some(Running { child, _job: job, base: base.clone(), model: model.to_path_buf(), id });
                     self.touch(); // le délai court depuis que le serveur est prêt
                     tokio::spawn(self.clone().watch(id));
                     return Ok(base);
@@ -119,7 +121,7 @@ async fn start(exe: &Path, model: &Path) -> Result<(Child, Job, String), SttErro
         .stderr(std::process::Stdio::null());
     let (mut child, job) = job::spawn(cmd).map_err(|e| SttError::Start(e.to_string()))?;
     let base = format!("http://127.0.0.1:{port}");
-    let http = reqwest::Client::new();
+    let http = reqwest::Client::builder().no_proxy().build().map_err(|e| SttError::Start(e.to_string()))?;
     let deadline = Instant::now() + Duration::from_secs(10);
     while Instant::now() < deadline {
         if let Ok(Some(st)) = child.try_wait() {
@@ -210,6 +212,21 @@ mod tests {
         assert!(!gone_now(pid), "touch() doit repousser l'arrêt");
         assert!(gone(pid).await);
         assert!(w.running.lock().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn un_autre_modele_redemarre_le_serveur() {
+        let (d, model, pidf) = setup();
+        let w = Arc::new(WhisperProcess::default());
+        w.ensure(d.path(), &model, Duration::from_secs(60)).await.unwrap();
+        let pid = pid_of(&pidf);
+        let other = d.path().join("m2.bin");
+        std::fs::write(&other, b"y").unwrap();
+        w.ensure(d.path(), &other, Duration::from_secs(60)).await.unwrap();
+        assert_ne!(pid_of(&pidf), pid, "nouveau serveur");
+        assert!(gone(pid).await, "l'ancien est arrêté");
+        assert_eq!(w.running.lock().await.as_ref().unwrap().model, other);
+        w.stop().await;
     }
 
     #[tokio::test]

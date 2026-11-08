@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { it, expect, vi, afterEach, beforeEach } from "vitest";
 import { IrisOrb, IrisReply, IrisStatusLine, IDLE_MS } from "./IrisReply";
 import { irisIpc, type IrisEvent } from "./api";
-import { apply, ask, useIris, type IrisStore } from "./store";
+import { apply, ask, cancel, useIris, type IrisStore } from "./store";
 import { irisBriefingIpc } from "./api";
 import { untrustedLabel } from "./Briefing";
 import { usePanelStore } from "../../panel/store";
@@ -140,4 +140,12 @@ it("un tour vocal que le panneau n'a pas demandé est adopté : le texte dit s'a
   expect(screen.getByText("Il est midi.")).toBeInTheDocument();
   ev({ type: "user", turn: 4, text: "périmé" }); // plus ancien : ignoré
   expect(screen.queryByText("périmé")).toBeNull();
+});
+
+it("Échap annule aussi un tour vocal adopté", () => {
+  const stop = vi.spyOn(irisIpc, "cancel").mockResolvedValue(undefined);
+  ev({ type: "user", turn: 9, text: "mets la musique" });
+  act(() => cancel());
+  expect(stop).toHaveBeenCalledWith(9);
+  expect(useIris.getState()).toMatchObject({ user: "", floor: 9 });
 });

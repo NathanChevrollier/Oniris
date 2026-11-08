@@ -4,7 +4,7 @@ use super::capture::{CpalMic, Mic, Recording};
 use super::install::voice_dir;
 use super::piper::Speaker;
 use super::whisper::WhisperProcess;
-use crate::modules::iris::TurnResult;
+use crate::modules::iris::{TurnError, TurnResult};
 use crate::state::AppState;
 use async_trait::async_trait;
 use oniris_core::iris::Segment;
@@ -52,8 +52,8 @@ pub trait Stt: Send + Sync {
 
 #[async_trait]
 pub trait Turns: Send + Sync {
-    /// Même tour qu'`iris_ask(text, false, false)` ; `None` s'il a échoué ou a été abandonné.
-    async fn run(&self, text: String) -> Option<TurnResult>;
+    /// Même tour qu'`iris_ask(text, false, false)`.
+    async fn run(&self, text: String) -> Result<TurnResult, TurnError>;
 }
 
 /// Appui en cours : son numéro (un nouvel appui rend les suites de l'ancien muettes) et l'enregistrement.
@@ -213,11 +213,15 @@ impl Pipeline {
         if !self.current(press) {
             return; // un nouvel appui a pris la main
         }
-        let Some(r) = self.turns.run(text).await else {
-            if self.current(press) {
-                self.toast("Je n'ai pas pu traiter ta demande.");
+        let r = match self.turns.run(text).await {
+            Ok(r) => r,
+            Err(TurnError::Aborted) => return, // Échap du panneau ou demande tapée : silence
+            Err(TurnError::Failed) => {
+                if self.current(press) {
+                    self.toast("Je n'ai pas pu traiter ta demande.");
+                }
+                return;
             }
-            return;
         };
         let timing = Timing {
             speech_to_text_ms: ms(t1 - t0),
@@ -228,13 +232,15 @@ impl Pipeline {
         if !self.current(press) {
             return;
         }
-        if r.pending {
-            return (self.ui)(Ui::OpenPanel);
-        }
         let conf = (self.conf)();
+        // P6-R7 : jamais de panneau par-dessus un jeu plein écran.
+        let to_panel = || if conf.fullscreen { self.toast("Réponse prête dans le panneau") } else { (self.ui)(Ui::OpenPanel) };
+        if r.pending {
+            return to_panel();
+        }
         let Some(say) = speakable(&r.shown, &conf.user_name) else { return }; // réponse vide : rien à montrer
         if say.starts_with(TO_PANEL) {
-            return (self.ui)(Ui::OpenPanel);
+            return to_panel();
         }
         self.toast(toast_text(&r.shown));
         if !conf.tts {
@@ -242,6 +248,10 @@ impl Pipeline {
         }
         match self.speaker.speak(&say, conf.volume) {
             Ok(h) => {
+                // Un appui arrivé pendant l'ouverture de la sortie : IRIS ne parle pas par-dessus l'écoute.
+                if !self.current(press) {
+                    return h.stop();
+                }
                 self.phase(press, VoicePhase::Speaking);
                 h.done().await;
                 self.phase(press, VoicePhase::Idle);
@@ -257,6 +267,13 @@ impl Pipeline {
 pub static SPEAKING: AtomicBool = AtomicBool::new(false);
 
 type ConfFn = Arc<dyn Fn() -> Conf + Send + Sync>;
+/// Serveur Whisper unique, aussi arrêté à l'entrée en plein écran.
+static WHISPER: std::sync::LazyLock<Arc<WhisperProcess>> = std::sync::LazyLock::new(Arc::default);
+
+/// Entrée en plein écran : Whisper libère sa mémoire tout de suite.
+pub fn unload_on_fullscreen() {
+    tauri::async_runtime::spawn(async { WHISPER.stop().await });
+}
 static VOICE: OnceLock<(tokio::sync::mpsc::UnboundedSender<Input>, ConfFn)> = OnceLock::new();
 
 /// Sans attente : appelable depuis le crochet clavier.
@@ -321,7 +338,7 @@ struct VoiceTurns(AppHandle);
 
 #[async_trait]
 impl Turns for VoiceTurns {
-    async fn run(&self, text: String) -> Option<TurnResult> {
+    async fn run(&self, text: String) -> Result<TurnResult, TurnError> {
         crate::modules::iris::voice_turn(&self.0, text).await
     }
 }
@@ -376,7 +393,8 @@ pub fn start(app: &AppHandle) {
     let h = app.clone();
     let p = Arc::new(Pipeline {
         mic: Arc::new(CpalMic),
-        stt: Arc::new(Whisper { proc: Arc::default(), http: reqwest::Client::new(), app: app.clone() }),
+        // Jamais de proxy : l'audio ne quitte pas 127.0.0.1.
+        stt: Arc::new(Whisper { proc: WHISPER.clone(), http: reqwest::Client::builder().no_proxy().build().expect("client HTTP local"), app: app.clone() }),
         speaker: app.state::<AppState>().speaker.clone(),
         turns: Arc::new(VoiceTurns(app.clone())),
         conf: conf.clone(),
@@ -459,9 +477,9 @@ mod tests {
     struct FakeTurns { log: Log, reply: &'static str, pending: bool }
     #[async_trait]
     impl Turns for FakeTurns {
-        async fn run(&self, text: String) -> Option<TurnResult> {
+        async fn run(&self, text: String) -> Result<TurnResult, TurnError> {
             self.log.lock().push(format!("turn:{text}"));
-            Some(TurnResult { shown: vec![Segment::Text { text: self.reply.into() }], pending: self.pending, first_tool: None })
+            Ok(TurnResult { shown: vec![Segment::Text { text: self.reply.into() }], pending: self.pending, first_tool: None })
         }
     }
 
@@ -641,14 +659,23 @@ mod tests {
         assert!(!f.has("stt") && f.has("finish:true"));
     }
 
+    struct NoTurn(fn() -> TurnError);
+    #[async_trait]
+    impl Turns for NoTurn {
+        async fn run(&self, _: String) -> Result<TurnResult, TurnError> { Err(self.0()) }
+    }
+
+    #[tokio::test]
+    async fn tour_abandonne_aucun_toast_ni_voix() {
+        let f = simple(Opts { turns: Some(Arc::new(NoTurn(|| TurnError::Aborted))), ..Opts::default() });
+        f.press().await;
+        assert!(f.toasts().is_empty() && !f.has("speak"));
+        assert_eq!(f.last_phase(), Some(VoicePhase::Idle));
+    }
+
     #[tokio::test]
     async fn tour_echoue_un_toast_et_reponse_vide_rien() {
-        struct NoTurn;
-        #[async_trait]
-        impl Turns for NoTurn {
-            async fn run(&self, _: String) -> Option<TurnResult> { None }
-        }
-        let f = simple(Opts { turns: Some(Arc::new(NoTurn)), ..Opts::default() });
+        let f = simple(Opts { turns: Some(Arc::new(NoTurn(|| TurnError::Failed))), ..Opts::default() });
         f.press().await;
         assert_eq!(f.toasts(), ["Je n'ai pas pu traiter ta demande."]);
         let log = Log::default();
@@ -685,6 +712,52 @@ mod tests {
         f.press().await;
         assert!(f.ui.lock().contains(&Ui::OpenPanel));
         assert!(!f.has("speak") && f.toasts().is_empty());
+    }
+
+    #[tokio::test]
+    async fn plein_ecran_reponse_pending_ou_longue_un_toast_sans_panneau() {
+        for (reply, pending) in [("Je t'ai préparé la confirmation.", true), ("a ".repeat(200).leak() as &'static str, false)] {
+            let log = Log::default();
+            let turns = Arc::new(FakeTurns { log: log.clone(), reply, pending });
+            let f = fx(Opts { turns: Some(turns), conf: Conf { fullscreen: true, ..Opts::default().conf }, ..Opts::default() }, log);
+            f.press().await;
+            assert!(!f.ui.lock().contains(&Ui::OpenPanel), "pending={pending}");
+            assert_eq!(f.toasts(), ["Réponse prête dans le panneau"]);
+            assert!(!f.has("speak"));
+        }
+    }
+
+    /// Voix dont l'ouverture bloque jusqu'au feu vert du test (périphérique lent).
+    struct SlowSpeaker { entered: std::sync::mpsc::Sender<()>, go: Mutex<std::sync::mpsc::Receiver<()>>, handle: Arc<Mutex<Option<SpeakHandle>>>, done: Mutex<Vec<tokio::sync::watch::Sender<bool>>> }
+    impl Speaker for SlowSpeaker {
+        fn speak(&self, _: &str, _: u8) -> Result<SpeakHandle, TtsError> {
+            let _ = self.entered.send(());
+            let _ = self.go.lock().recv();
+            let (h, done) = SpeakHandle::new();
+            self.done.lock().push(done); // jamais finie d'elle-même
+            *self.handle.lock() = Some(h.clone());
+            Ok(h)
+        }
+        fn stop(&self) {}
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn appui_pendant_l_ouverture_de_la_voix_la_coupe() {
+        let (entered, entered_rx) = std::sync::mpsc::channel();
+        let (go_tx, go) = std::sync::mpsc::channel();
+        let handle: Arc<Mutex<Option<SpeakHandle>>> = Arc::default();
+        let mut f = simple(Opts::default());
+        Arc::get_mut(&mut f.p).unwrap().speaker = Arc::new(SlowSpeaker { entered, go: Mutex::new(go), handle: handle.clone(), done: Mutex::default() });
+        f.p.start().await;
+        let rec = f.p.end().await.unwrap();
+        let task = tokio::spawn(f.p.clone().process(rec));
+        tokio::task::spawn_blocking(move || entered_rx.recv()).await.unwrap().unwrap();
+        f.p.start().await; // nouvel appui pendant que `speak` ouvre la sortie
+        go_tx.send(()).unwrap();
+        tokio::time::timeout(Duration::from_secs(2), task).await.expect("la suite de l'ancien appui se termine").unwrap();
+        assert!(handle.lock().as_ref().unwrap().stopped(), "la voix ouverte trop tard est coupée");
+        assert_eq!(f.last_phase(), Some(VoicePhase::Listening));
+        assert!(!f.speaking.load(Ordering::SeqCst));
     }
 
     #[tokio::test]
@@ -732,12 +805,12 @@ mod tests {
     struct AgentTurns { log: Log, agent: Agent, exec: Arc<Executor> }
     #[async_trait]
     impl Turns for AgentTurns {
-        async fn run(&self, text: String) -> Option<TurnResult> {
+        async fn run(&self, text: String) -> Result<TurnResult, TurnError> {
             self.log.lock().push(format!("turn:{text}"));
             let ctx = PromptCtx { system: String::new(), claude_system: String::new(), history: vec![] };
             let input = TurnInput { text, force_claude: false, local_only: false };
             let (end, pending, first_tool) = crate::modules::iris::play(&self.agent, input, self.exec.clone(), ctx, |_| {}).await;
-            Some(TurnResult { shown: end.shown, pending, first_tool })
+            Ok(TurnResult { shown: end.shown, pending, first_tool })
         }
     }
 

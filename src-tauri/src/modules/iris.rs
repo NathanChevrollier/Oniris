@@ -163,15 +163,28 @@ fn conversation_vault(c: &rusqlite::Connection, now: i64, slot: &mut Option<(i64
 /// Fin d'un tour, pour le pipeline vocal : réponse rendue, confirmation demandée, instant du premier outil.
 pub struct TurnResult { pub shown: Vec<Segment>, pub pending: bool, pub first_tool: Option<Instant> }
 
+/// Tour vocal sans réponse : échec (signalé à voix) ou abandon (Échap, nouvelle demande : silence).
+#[derive(Debug, PartialEq)]
+pub enum TurnError { Failed, Aborted }
+
 /// Lance un tour et rend son numéro ; le tour précédent, s'il court encore, est abandonné.
 #[tauri::command]
 pub async fn iris_ask(app: AppHandle, text: String, force_claude: bool, local_only: bool) -> Result<u32, String> {
     start_turn(app, text, force_claude, local_only, false).map(|(turn, _)| turn)
 }
 
-/// Tour vocal : le même qu'`iris_ask(text, false, false)` ; `None` s'il a échoué ou a été abandonné.
-pub async fn voice_turn(app: &AppHandle, text: String) -> Option<TurnResult> {
-    start_turn(app.clone(), text, false, false, true).ok()?.1.await.ok()?.ok()
+/// Tour vocal : le même qu'`iris_ask(text, false, false)`.
+pub async fn voice_turn(app: &AppHandle, text: String) -> Result<TurnResult, TurnError> {
+    let (_, rx) = start_turn(app.clone(), text, false, false, true).map_err(|_| TurnError::Failed)?;
+    outcome(rx).await
+}
+
+/// Tâche abandonnée : l'émetteur tombe sans rien envoyer.
+async fn outcome(rx: tokio::sync::oneshot::Receiver<Result<TurnResult, String>>) -> Result<TurnResult, TurnError> {
+    match rx.await {
+        Ok(r) => r.map_err(|_| TurnError::Failed),
+        Err(_) => Err(TurnError::Aborted),
+    }
 }
 
 /// Tour vocal : le panneau n'a pas demandé ce tour, il apprend ici le texte dit (jamais écrit dans les journaux).
@@ -427,6 +440,17 @@ pub async fn unload_if_fullscreen(app: &AppHandle) {
 mod tests {
     use super::*;
     use std::path::Path;
+
+    #[tokio::test]
+    async fn tour_abandonne_distinct_d_un_tour_echoue() {
+        let (tx, rx) = tokio::sync::oneshot::channel::<Result<TurnResult, String>>();
+        let task = tokio::spawn(async move { std::future::pending::<()>().await; drop(tx) });
+        task.abort();
+        assert_eq!(outcome(rx).await.err(), Some(TurnError::Aborted));
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        let _ = tx.send(Err("x".into()));
+        assert_eq!(outcome(rx).await.err(), Some(TurnError::Failed));
+    }
 
     #[test]
     fn l_evenement_user_d_un_tour_vocal_porte_le_texte() {

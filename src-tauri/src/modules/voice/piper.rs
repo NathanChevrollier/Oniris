@@ -47,6 +47,11 @@ impl SpeakHandle {
         self.cancel.send_replace(true);
     }
 
+    #[cfg(test)]
+    pub fn stopped(&self) -> bool {
+        *self.cancel.borrow()
+    }
+
     pub async fn done(&self) {
         let _ = self.done.clone().wait_for(|d| *d).await;
     }
@@ -102,7 +107,8 @@ impl Speaker for PiperSpeaker {
             return Err(TtsError::NotInstalled);
         }
         let lines = sentences(text);
-        let sink = self.out.open(sample_rate(&self.dir.join("models").join(format!("{MODEL}.json"))))?;
+        let rate = sample_rate(&self.dir.join("models").join(format!("{MODEL}.json")));
+        let sink = self.out.open(rate)?;
         let mut cmd = Command::new(&exe);
         cmd.arg("--model").arg(&model).arg("--output-raw");
         cmd.current_dir(exe.parent().unwrap_or(std::path::Path::new(".")))
@@ -119,7 +125,7 @@ impl Speaker for PiperSpeaker {
             // Annulé par `select!`, `play` est lâché : le Sink se ferme, puis le Job tue Piper.
             tokio::select! {
                 _ = cancel_rx.wait_for(|c| *c) => tracing::info!(ms = t.elapsed().as_millis() as u64, "voix coupée"),
-                _ = play(child, sink, lines, volume) => tracing::info!(chars, ms = t.elapsed().as_millis() as u64, "voix terminée"),
+                _ = play(child, sink, lines, volume, rate) => tracing::info!(chars, ms = t.elapsed().as_millis() as u64, "voix terminée"),
             }
             drop(job);
             let _ = done_tx.send(true);
@@ -128,8 +134,8 @@ impl Speaker for PiperSpeaker {
     }
 }
 
-/// Écrit les phrases, lit le PCM, le joue, puis attend que la file soit vidée.
-async fn play(mut child: tokio::process::Child, mut sink: Box<dyn Sink>, lines: Vec<String>, volume: u8) {
+/// Écrit les phrases, lit le PCM, le joue, puis attend que la file soit vidée (durée du son + 2 s au plus).
+async fn play(mut child: tokio::process::Child, mut sink: Box<dyn Sink>, lines: Vec<String>, volume: u8, rate: u32) {
     let (Some(mut stdin), Some(mut stdout)) = (child.stdin.take(), child.stdout.take()) else { return };
     tokio::spawn(async move {
         for l in lines {
@@ -141,6 +147,7 @@ async fn play(mut child: tokio::process::Child, mut sink: Box<dyn Sink>, lines: 
     });
     let mut buf = [0u8; 8192];
     let mut odd: Option<u8> = None; // octet de poids faible en attente d'un échantillon complet
+    let mut pushed: u64 = 0;
     while let Ok(n) = stdout.read(&mut buf).await {
         if n == 0 {
             break;
@@ -153,8 +160,15 @@ async fn play(mut child: tokio::process::Child, mut sink: Box<dyn Sink>, lines: 
         }
         let pcm: Vec<i16> = bytes.as_chunks::<2>().0.iter().map(|&b| scale(i16::from_le_bytes(b), volume)).collect();
         sink.push(&pcm);
+        pushed += pcm.len() as u64;
     }
+    // Une sortie disparue ne se vide jamais : IRIS ne reste pas bloquée en Speaking.
+    let deadline = Instant::now() + Duration::from_millis(pushed * 1000 / rate.max(1) as u64) + Duration::from_secs(2);
     while sink.pending() > 0 {
+        if Instant::now() >= deadline {
+            tracing::warn!("voix : la sortie audio ne se vide pas, lecture abandonnée");
+            break;
+        }
         tokio::time::sleep(Duration::from_millis(20)).await;
     }
 }
@@ -170,15 +184,18 @@ mod tests {
         samples: Arc<AtomicUsize>,
         closed: Arc<AtomicUsize>,
         rate: Arc<AtomicUsize>,
+        /// La file ne se vide jamais (périphérique disparu).
+        stuck: bool,
     }
     struct FakeSink {
         samples: Arc<AtomicUsize>,
         closed: Arc<AtomicUsize>,
+        stuck: bool,
     }
     impl AudioOut for FakeOut {
         fn open(&self, rate: u32) -> Result<Box<dyn Sink>, TtsError> {
             self.rate.store(rate as usize, SeqCst);
-            Ok(Box::new(FakeSink { samples: self.samples.clone(), closed: self.closed.clone() }))
+            Ok(Box::new(FakeSink { samples: self.samples.clone(), closed: self.closed.clone(), stuck: self.stuck }))
         }
     }
     impl Sink for FakeSink {
@@ -186,7 +203,7 @@ mod tests {
             self.samples.fetch_add(pcm.len(), SeqCst);
         }
         fn pending(&self) -> usize {
-            0
+            self.stuck as usize
         }
     }
     impl Drop for FakeSink {
@@ -197,6 +214,10 @@ mod tests {
 
     /// Voix factice installée dans un dossier temporaire : `piper\piper.exe` (faux), modèle et JSON (rate 16000).
     fn setup() -> (tempfile::TempDir, PiperSpeaker, Arc<FakeOut>, PathBuf) {
+        setup_with(FakeOut::default())
+    }
+
+    fn setup_with(out: FakeOut) -> (tempfile::TempDir, PiperSpeaker, Arc<FakeOut>, PathBuf) {
         let src = std::env::current_exe().unwrap().parent().unwrap().parent().unwrap().join("examples").join("fake_piper.exe");
         assert!(src.is_file(), "faux piper absent : lancer `cargo test` (qui compile les exemples), pas `--lib` seul");
         let d = tempfile::tempdir().unwrap();
@@ -206,7 +227,7 @@ mod tests {
         std::fs::copy(src, &exe).unwrap();
         std::fs::write(d.path().join("models").join(MODEL), b"x").unwrap();
         std::fs::write(d.path().join("models").join(format!("{MODEL}.json")), r#"{"audio":{"sample_rate":16000}}"#).unwrap();
-        let out = Arc::new(FakeOut::default());
+        let out = Arc::new(out);
         let speaker = PiperSpeaker::new(d.path().to_path_buf(), out.clone());
         (d, speaker, out, exe.with_extension("pid"))
     }
@@ -250,6 +271,16 @@ mod tests {
         tokio::time::timeout(Duration::from_secs(10), h.done()).await.expect("fin de lecture");
         assert_eq!(out.samples.load(SeqCst), 1000, "2 phrases x 1000 octets = 1000 échantillons");
         assert_eq!(out.rate.load(SeqCst), 16_000);
+        assert_eq!(out.closed.load(SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn une_sortie_qui_ne_se_vide_pas_n_attend_pas_indefiniment() {
+        let (_d, s, out, _pid) = setup_with(FakeOut { stuck: true, ..FakeOut::default() });
+        let t = Instant::now();
+        let h = s.speak("Bonjour. Salut !", 80).unwrap();
+        tokio::time::timeout(Duration::from_secs(10), h.done()).await.expect("fin malgré la file pleine");
+        assert!(t.elapsed() >= Duration::from_secs(2), "attend la durée du son + 2 s : {:?}", t.elapsed());
         assert_eq!(out.closed.load(SeqCst), 1);
     }
 

@@ -182,7 +182,7 @@ Claude ne reçoit aucun outil propre : il n'agit que par les outils d'Oniris, av
 La voix est facultative et se passe entièrement **sur ton PC**.
 
 - **Micro** : il n'est ouvert que pendant que tu maintiens Alt+Espace, et se referme au relâchement (au plus 30 secondes d'affilée). Oniris n'écoute jamais en continu et n'a pas de mot d'activation. Le son reste **en mémoire** : il n'est écrit ni sur le disque, ni dans la base, ni dans les journaux, et n'est envoyé nulle part.
-- **Transcription** : [Whisper](https://github.com/ggml-org/whisper.cpp) tourne sur ton processeur, en local (`127.0.0.1`). Le programme se lance au premier usage et s'arrête après quelques minutes d'inactivité, ou tout de suite en jeu ou en plein écran.
+- **Transcription** : [Whisper](https://github.com/ggml-org/whisper.cpp) tourne sur ton processeur, en local (`127.0.0.1`). Le programme se lance au premier usage et s'arrête après quelques minutes d'inactivité ; il s'arrête aussi dès l'entrée en plein écran (jeu, vidéo), et juste après chaque transcription faite en plein écran.
 - **Synthèse** : [Piper](https://github.com/rhasspy/piper) lit les réponses d'IRIS à voix haute, en local, avec une voix française. Tu peux le désactiver (réponses écrites seulement) et régler le volume. Les textes lus ne sont gardés nulle part et n'apparaissent pas dans les journaux.
 - **Ce que tu dis à IRIS** est transcrit en texte, puis suit **exactement le même chemin qu'une demande écrite** (voir « IRIS : le cerveau local » et « IRIS : Claude ») : local par défaut, et Claude seulement dans les cas décrits plus haut. Le texte transcrit s'ajoute à la conversation, dans `oniris.db`, comme un message écrit.
 - **Pause** : « Mettre la voix en pause » dans le menu de l'icône d'Oniris coupe l'écoute.

@@ -68,10 +68,13 @@ export function ask(text: string, forceClaude: boolean, localOnly = false) {
 
 /** Annule sans attendre : Rust n'émet rien et n'enregistre pas un tour abandonné. */
 export function cancel() {
-  const p = asking;
+  const p = unresolved ? asking : null;
+  const { turn } = useIris.getState();
   useIris.setState((s) => ({ ...EMPTY, floor: s.turn }));
   asking = null;
-  p?.then((t) => { void irisIpc.cancel(t); useIris.setState((s) => (s.user === "" && t > s.floor ? { floor: t } : s)); }, () => {});
+  if (p) p.then((t) => { void irisIpc.cancel(t); useIris.setState((s) => (s.user === "" && t > s.floor ? { floor: t } : s)); }, () => {});
+  // Numéro déjà connu : le tour affiché, tapé ou vocal adopté.
+  else if (turn) void irisIpc.cancel(turn);
 }
 
 /** Referme l'échange (le briefing revient). */

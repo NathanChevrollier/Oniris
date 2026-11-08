@@ -101,6 +101,7 @@ fn apply(active: bool) {
     let _ = app.emit("oniris://fullscreen", FullscreenState { active });
     if active {
         crate::modules::iris::unload_on_fullscreen(app); // une fois par entrée : `swap` ci-dessus filtre les répétitions
+        crate::modules::voice::pipeline::unload_on_fullscreen();
     }
     if let Some(pill) = app.get_webview_window("pill") {
         if !active {

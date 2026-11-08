@@ -129,3 +129,15 @@ it("local indisponible", () => {
   render(<IrisStatusLine />);
   expect(screen.getByRole("status")).toHaveTextContent("Local indisponible");
 });
+
+it("un tour vocal que le panneau n'a pas demandé est adopté : le texte dit s'affiche, puis la réponse", () => {
+  render(<IrisReply />);
+  ev({ type: "reply", turn: 5, segments: [{ t: "Text", text: "perdu" }], done: true }); // sans échange : ignoré
+  expect(screen.queryByText("perdu")).toBeNull();
+  ev({ type: "user", turn: 5, text: "quelle heure est-il" });
+  expect(screen.getByText("quelle heure est-il")).toBeInTheDocument();
+  ev({ type: "reply", turn: 5, segments: [{ t: "Text", text: "Il est midi." }], done: true });
+  expect(screen.getByText("Il est midi.")).toBeInTheDocument();
+  ev({ type: "user", turn: 4, text: "périmé" }); // plus ancien : ignoré
+  expect(screen.queryByText("périmé")).toBeNull();
+});

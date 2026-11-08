@@ -166,20 +166,26 @@ pub struct TurnResult { pub shown: Vec<Segment>, pub pending: bool, pub first_to
 /// Lance un tour et rend son numéro ; le tour précédent, s'il court encore, est abandonné.
 #[tauri::command]
 pub async fn iris_ask(app: AppHandle, text: String, force_claude: bool, local_only: bool) -> Result<u32, String> {
-    start_turn(app, text, force_claude, local_only).map(|(turn, _)| turn)
+    start_turn(app, text, force_claude, local_only, false).map(|(turn, _)| turn)
 }
 
 /// Tour vocal : le même qu'`iris_ask(text, false, false)` ; `None` s'il a échoué ou a été abandonné.
 pub async fn voice_turn(app: &AppHandle, text: String) -> Option<TurnResult> {
-    start_turn(app.clone(), text, false, false).ok()?.1.await.ok()?.ok()
+    start_turn(app.clone(), text, false, false, true).ok()?.1.await.ok()?.ok()
 }
 
-fn start_turn(app: AppHandle, text: String, force_claude: bool, local_only: bool) -> Result<(u32, tokio::sync::oneshot::Receiver<Result<TurnResult, String>>), String> {
+/// Tour vocal : le panneau n'a pas demandé ce tour, il apprend ici le texte dit (jamais écrit dans les journaux).
+fn user_event(turn: u32, text: &str) -> serde_json::Value { json!({ "turn": turn, "type": "user", "text": text }) }
+
+fn start_turn(app: AppHandle, text: String, force_claude: bool, local_only: bool, voice: bool) -> Result<(u32, tokio::sync::oneshot::Receiver<Result<TurnResult, String>>), String> {
     let text = text.trim().to_string();
     if text.is_empty() || text.len() > ASK_MAX {
         return Err("message vide ou trop long".into());
     }
     let turn = NEXT_TURN.fetch_add(1, Ordering::SeqCst) + 1;
+    if voice {
+        let _ = app.emit("oniris://iris", user_event(turn, &text));
+    }
     let (done, rx) = tokio::sync::oneshot::channel();
     let mut cur = TURN.lock();
     if let Some((_, old)) = cur.take() {
@@ -421,6 +427,11 @@ pub async fn unload_if_fullscreen(app: &AppHandle) {
 mod tests {
     use super::*;
     use std::path::Path;
+
+    #[test]
+    fn l_evenement_user_d_un_tour_vocal_porte_le_texte() {
+        assert_eq!(user_event(7, "salut"), json!({ "turn": 7, "type": "user", "text": "salut" }));
+    }
 
     /// `examples/fake_claude.rs`, compilé par `cargo test` à côté du binaire de test.
     fn fake(dir: &Path, timeout_ms: u64) -> RealClaude {

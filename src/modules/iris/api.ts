@@ -35,6 +35,7 @@ export type IrisStatus = { local: "down" | "no_model" | "ready"; model: string; 
 export type IrisErrorKind = "claude_unavailable" | "claude_missing" | "local_unavailable" | "failed";
 /** Miroir de `IrisEvent` / `IrisEventKind` (étiquette `type`) sur `oniris://iris`. */
 export type IrisEvent = { turn: number } & (
+  | { type: "user"; text: string } // tour vocal : le texte dit, émis par Rust seulement
   | { type: "state"; state: "idle" | "thinking"; brain: Brain }
   | { type: "reply"; segments: Segment[]; done: boolean }
   | { type: "tool_used"; tool: string }

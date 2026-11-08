@@ -29,6 +29,8 @@ let unresolved = false;
 
 export function apply(ev: IrisEvent) {
   useIris.setState((s) => {
+    // Tour vocal que le panneau n'a pas demandé : il remplace l'échange comme un nouvel `ask`.
+    if (ev.type === "user") return ev.turn > s.floor && ev.turn > s.turn ? { ...EMPTY, user: ev.text, state: "thinking", turn: ev.turn } : s;
     if (ev.turn <= s.floor || ev.turn < s.turn || !s.user) return s;
     const base = { turn: ev.turn };
     switch (ev.type) {

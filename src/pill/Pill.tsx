@@ -5,6 +5,8 @@ import { hhmm, useNow } from "../lib/time";
 import { PillTimer } from "../modules/timers/PillTimer";
 import { Orb } from "../ui/Orb";
 import { onIris } from "../modules/iris/api";
+import { orbFor, useVoice } from "../modules/voice/api";
+import { PillToast } from "../modules/voice/PillToast";
 import "../ui/tokens.css";
 import "../ui/glass.css";
 import "../ui/motion.css";
@@ -18,6 +20,7 @@ export function Pill() {
   const now = useNow(60_000);
   const [panelOpen, setPanelOpen] = useState(false);
   const [thinking, setThinking] = useState(false);
+  const voice = useVoice();
   const root = useRef<HTMLDivElement>(null);
   const hover = useRef<ReturnType<typeof setTimeout>>(undefined);
   const closedAt = useRef(-Infinity);
@@ -62,7 +65,8 @@ export function Pill() {
         <PillTimer />
         <span className="slot-music" hidden />
         <span className="slot-mails" hidden />
-        <Orb state={thinking ? "thinking" : "idle"} size={24} />
+        <PillToast />
+        <Orb state={orbFor(voice.phase, thinking)} size={24} level={voice.level} />
       </button>
     </div>
   );

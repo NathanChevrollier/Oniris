@@ -3,6 +3,7 @@ import { Sparkles, X } from "lucide-react";
 import { Orb } from "../../ui/Orb";
 import { usePanelStore } from "../../panel/store";
 import { onIris, type Brain } from "./api";
+import { orbFor, useVoice } from "../voice/api";
 import { Briefing, SegmentText } from "./Briefing";
 import { apply, ask, dismiss, loadStatus, useIris } from "./store";
 import "./iris.css";
@@ -12,10 +13,11 @@ export const IDLE_MS = 2 * 60_000;
 
 const BRAIN: Record<Brain, string> = { fast: "éclair", local: "local", claude: "Claude" };
 
-/** Sphère : réfléchit pendant un tour, repos sinon. Seul l'état est suivi, jamais le flux. */
+/** Sphère : écoute, réfléchit ou parle selon la voix et le tour ; repos sinon. Seul l'état est suivi, jamais le flux. */
 export function IrisOrb({ size }: { size: number }) {
   const thinking = useIris((s) => s.state === "thinking");
-  return <Orb state={thinking ? "thinking" : "idle"} size={size} />;
+  const voice = useVoice();
+  return <Orb state={orbFor(voice.phase, thinking)} size={size} level={voice.level} />;
 }
 
 /** « Prêt · local », « Réfléchit · Claude » ou « Local indisponible » ; l'état de Rust est relu à l'ouverture seulement. */

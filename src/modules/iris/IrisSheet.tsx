@@ -4,6 +4,7 @@ import { ipc } from "../../lib/ipc";
 import { DEFAULT_SETTINGS, useSettings, type Settings } from "../../lib/settings";
 import { accountsIpc, errorText } from "../accounts/api";
 import { irisIpc, onIrisPull, type HistoryItem, type IrisStatus, type Memory } from "./api";
+import { VoiceSection } from "../voice/VoiceSection";
 import "../accounts/accounts.css";
 import "./iris.css";
 
@@ -11,7 +12,7 @@ const MAX_PERSONALITY = 2000;
 const lines = (s: string) => s.split("\n").map((l) => l.trim()).filter(Boolean);
 
 /** Relit les réglages juste avant d'écrire (comme /météo) ; le texte de refus de Rust s'affiche tel quel. */
-function useSave() {
+export function useSave() {
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const save = async (patch: Partial<Settings>) => {
     try {
@@ -162,7 +163,7 @@ function History() {
   );
 }
 
-/** Feuille « IRIS » : cerveaux, personnalité, mémoire, sécurité, historique. Chargée à l'ouverture, sans sondage. */
+/** Feuille « IRIS » : cerveaux, voix, personnalité, mémoire, sécurité, historique. Chargée à l'ouverture, sans sondage. */
 export function IrisSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [status, setStatus] = useState<IrisStatus | null>(null);
   const root = useRef<HTMLElement>(null);
@@ -176,6 +177,7 @@ export function IrisSheet({ open, onClose }: { open: boolean; onClose: () => voi
         <button type="button" className="acc-icon" aria-label="Fermer IRIS" onClick={onClose}><X size={16} /></button></header>
       <div className="acc-body">
         <Brains status={status} reload={reload} />
+        <VoiceSection />
         <Personality />
         <Memories />
         <Security />

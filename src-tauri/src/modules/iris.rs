@@ -125,6 +125,14 @@ impl ClaudeBrain for NoClaude {
     async fn plan(&self, _: &str, _: String, _: Arc<Executor>, _: OnDelta<'_>) -> Result<String, ClaudeError> { Err(ClaudeError::NotInstalled) }
 }
 
+/// Cerveau Claude d'un tour : « Version simple en local » (P5-R12) n'en a jamais, quels que soient les réglages.
+fn claude_for(local_only: bool, s: &Settings) -> Arc<dyn ClaudeBrain> {
+    match RealClaude::from_settings(s).filter(|_| !local_only) {
+        Some(c) => Arc::new(c),
+        None => Arc::new(NoClaude),
+    }
+}
+
 /// Événement d'un tour sur `oniris://iris`.
 #[derive(Serialize, Clone)]
 struct IrisEvent { turn: u32, #[serde(flatten)] kind: IrisEventKind }
@@ -199,10 +207,7 @@ async fn run_turn(app: &AppHandle, turn: u32, text: String, force_claude: bool, 
         (conv, vault, history, memories)
     };
     let local: Arc<dyn LocalBrain> = Arc::new(Ollama::new(&s.iris_local_model, s.iris_unload_minutes));
-    let claude: Arc<dyn ClaudeBrain> = match RealClaude::from_settings(&s) {
-        Some(c) => Arc::new(c),
-        None => Arc::new(NoClaude),
-    };
+    let claude = claude_for(local_only, &s);
     let handle = app.clone();
     let exec = Arc::new(Executor {
         broker: st.broker.clone(),
@@ -503,6 +508,16 @@ mod tests {
         let c = RealClaude::from_settings(&s).unwrap();
         assert_eq!((c.program, c.model), (exe, "sonnet".to_string()));
         assert_eq!(c.cwd, dirs::data_dir().unwrap().join("Oniris").join("claude"));
+    }
+
+    #[tokio::test]
+    async fn la_version_locale_n_a_jamais_de_claude() {
+        let d = tempfile::tempdir().unwrap();
+        let exe = fake(d.path(), 1).program;
+        let s = Settings { claude_path: exe.to_string_lossy().into_owned(), ..Settings::default() };
+        assert!(RealClaude::from_settings(&s).is_some(), "Claude est bien installé");
+        let r = claude_for(true, &s).complete("s", "p".into(), &mut |_: &str| {}).await;
+        assert_eq!(r, Err(ClaudeError::NotInstalled));
     }
 
     #[tokio::test]

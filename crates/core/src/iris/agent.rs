@@ -458,6 +458,33 @@ mod tests {
         assert!(matches!(&end.shown[1], Segment::Untrusted { source, .. } if source.starts_with("mail:")), "{:?}", end.shown);
     }
 
+    /// Claude indisponible, comme `NoClaude` côté application.
+    struct Absent;
+
+    #[async_trait]
+    impl ClaudeBrain for Absent {
+        async fn complete(&self, _: &str, _: String, _: OnDelta<'_>) -> Result<String, ClaudeError> { Err(ClaudeError::NotInstalled) }
+        async fn plan(&self, _: &str, _: String, _: Arc<Executor>, _: OnDelta<'_>) -> Result<String, ClaudeError> { Err(ClaudeError::NotInstalled) }
+    }
+
+    #[tokio::test]
+    async fn version_locale_digest_long_n_appelle_pas_claude() {
+        let l = local(|n, _| if n == 0 {
+            tools(vec![call("iris__digest", json!({"refs": ["{{u1}}"], "task": "draft_reply", "detail": "long"}))])
+        } else {
+            text("fini")
+        });
+        let c = claude(Ok("x"), false);
+        let mut f = fx(l, c.clone());
+        f.exec.vault.lock().put("mail:1/a", "contenu".into());
+        // Comme `run_turn` en version locale : la quarantaine reçoit le cerveau absent.
+        let virtuals = Arc::new(Quarantine { local: f.agent.local.clone(), claude: Arc::new(Absent), vault: f.exec.vault.clone(), now_ms: || 1_800_000_000_000 });
+        f.exec = Arc::new(Executor { broker: f.exec.broker.clone(), vault: f.exec.vault.clone(), origin: Origin::Assistant { brain: Brain::Local }, on_pending: Arc::new(|_: &PendingAction| {}), virtuals: Some(virtuals) });
+        let end = f.turn_with("Rédige une réponse", false, true).await;
+        assert_eq!(end.brain, BrainUsed::Local);
+        assert!(c.plans.lock().is_empty() && c.completes.lock().is_empty(), "aucun appel à Claude");
+    }
+
     #[test]
     fn faux_sujet_reference_rangee_comme_reference() {
         let mut v = Vault::default();

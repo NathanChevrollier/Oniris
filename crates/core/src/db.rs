@@ -267,6 +267,13 @@ pub fn open_db(path: &Path) -> Result<Connection, CoreError> {
     Ok(c)
 }
 
+/// Vide le WAL dans le fichier principal (arrêt propre). Attend un verrou au plus 2 s.
+pub fn checkpoint(conn: &Connection) -> Result<(), CoreError> {
+    conn.busy_timeout(std::time::Duration::from_secs(2))?;
+    conn.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |_| Ok(()))?;
+    Ok(())
+}
+
 /// Applique, dans une transaction, les migrations dont la version dépasse `user_version`.
 /// Base créée par un build plus récent (version inconnue) : `CoreError::Invalid`, rien n'est touché.
 pub fn migrate(conn: &mut Connection, migrations: &[Migration]) -> Result<u32, CoreError> {
@@ -302,6 +309,16 @@ mod tests {
         assert_eq!(secure, 1, "le contenu supprimé (presse-papiers) est écrasé sur disque");
         migrate(&mut c, CORE_MIGRATIONS).unwrap();
         assert!(c.execute("INSERT INTO settings(id, json) VALUES ('a', 1)", []).is_err());
+    }
+    #[test] fn checkpoint_vide_le_wal() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("t.db");
+        let mut c = open_db(&path).unwrap();
+        migrate(&mut c, CORE_MIGRATIONS).unwrap();
+        let wal = dir.path().join("t.db-wal");
+        assert!(std::fs::metadata(&wal).unwrap().len() > 0);
+        checkpoint(&c).unwrap();
+        assert_eq!(std::fs::metadata(&wal).unwrap().len(), 0);
     }
     #[test] fn migrations_idempotentes() {
         let dir = tempfile::tempdir().unwrap();

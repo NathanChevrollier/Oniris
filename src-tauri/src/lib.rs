@@ -150,7 +150,23 @@ pub fn run() {
         })
         .setup(|app| {
             let guard = logging::init(&logging::log_dir());
-            let mut st = state::AppState::open(app.handle()).inspect_err(|e| tracing::error!("ouverture de la base impossible : {e}"))?;
+            let mut st = match state::AppState::open(app.handle()) {
+                Ok(st) => st,
+                Err(e) => {
+                    tracing::error!("démarrage impossible : {e}");
+                    use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
+                    app.dialog()
+                        .message(format!(
+                            "Oniris n'a pas pu démarrer : {}. Le journal est dans {}.",
+                            startup_error_kind(e.as_ref()),
+                            logging::log_dir().display()
+                        ))
+                        .title("Oniris")
+                        .kind(MessageDialogKind::Error)
+                        .blocking_show();
+                    return Err(e);
+                }
+            };
             st._log_guard = guard;
             let hotkey_cfg = st.hotkey.clone();
             let autostart = st.settings.read().autostart;
@@ -182,15 +198,64 @@ pub fn run() {
         })
         .build(tauri::generate_context!())
         .expect("erreur au lancement d'Oniris")
-        .run(|_, event| {
+        .run(|app, event| {
             if let tauri::RunEvent::Exit = event {
+                if let Some(st) = app.try_state::<state::AppState>() {
+                    // Au plus 2 s pour le verrou puis 2 s pour le checkpoint.
+                    if let Some(conn) = st.db.try_lock_for(std::time::Duration::from_secs(2)) {
+                        if let Err(e) = oniris_core::checkpoint(&conn) {
+                            tracing::warn!("checkpoint du WAL impossible : {e}");
+                        }
+                    }
+                }
                 modules::zenytt::shutdown(); // Zenytt ne survit pas à Oniris
             }
         });
 }
 
+/// Catégorie fixe affichée à l'utilisateur ; jamais le texte brut de l'erreur (chemins, SQL).
+pub fn startup_error_kind(e: &(dyn std::error::Error + 'static)) -> &'static str {
+    use rusqlite::ErrorCode::*;
+    let mut cur = Some(e);
+    while let Some(err) = cur {
+        if let Some(rusqlite::Error::SqliteFailure(f, _)) = err.downcast_ref::<rusqlite::Error>() {
+            match f.code {
+                DatabaseBusy | DatabaseLocked => return "base de données verrouillée",
+                DatabaseCorrupt | NotADatabase => return "base de données endommagée",
+                CannotOpen | ReadOnly | PermissionDenied => return "dossier inaccessible",
+                _ => {}
+            }
+        }
+        if let Some(io) = err.downcast_ref::<std::io::Error>() {
+            if matches!(io.kind(), std::io::ErrorKind::PermissionDenied | std::io::ErrorKind::NotFound) {
+                return "dossier inaccessible";
+            }
+        }
+        cur = err.source();
+    }
+    "erreur inattendue"
+}
+
 #[cfg(test)]
 mod tests {
+    use super::startup_error_kind;
+    use rusqlite::ffi;
+
+    fn sqlite(code: i32) -> rusqlite::Error {
+        rusqlite::Error::SqliteFailure(ffi::Error::new(code), None)
+    }
+    #[test]
+    fn categories_d_erreur_de_demarrage() {
+        assert_eq!(startup_error_kind(&sqlite(ffi::SQLITE_BUSY)), "base de données verrouillée");
+        assert_eq!(startup_error_kind(&sqlite(ffi::SQLITE_CORRUPT)), "base de données endommagée");
+        assert_eq!(startup_error_kind(&sqlite(ffi::SQLITE_NOTADB)), "base de données endommagée");
+        let denied = std::io::Error::from(std::io::ErrorKind::PermissionDenied);
+        assert_eq!(startup_error_kind(&denied), "dossier inaccessible");
+        let wrapped = oniris_core::CoreError::Io(denied);
+        assert_eq!(startup_error_kind(&wrapped), "dossier inaccessible");
+        assert_eq!(startup_error_kind(&oniris_core::CoreError::Invalid("x".into())), "erreur inattendue");
+    }
+
     /// Une commande synchrone tourne sur le fil principal (celui des fenêtres) : toute commande qui verrouille
     /// la base doit être `#[tauri::command(async)]` ou `async fn`. Même règle pour l'ouverture du panneau.
     #[test]

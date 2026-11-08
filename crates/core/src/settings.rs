@@ -702,6 +702,13 @@ mod tests {
         assert_eq!(d.resume_prompt_normal, "Reprends là où tu en étais sur ce projet. Appuie-toi sur le plan de développement et l'historique git. Commence par me dire où on en est.");
         assert_eq!(d.resume_prompt_orchestrator, format!("{} Travaille en mode orchestrateur, comme décrit dans mon CLAUDE.md global : graphify pour t'orienter, sous-agents haiku/sonnet/opus selon la tâche, parallélisation des tâches indépendantes, et relecture avant intégration.", d.resume_prompt_normal));
     }
+    #[test] fn delai_de_survol_forge_en_base_revient_au_defaut() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut c = open_db(&dir.path().join("t.db")).unwrap();
+        migrate(&mut c, CORE_MIGRATIONS).unwrap();
+        c.execute("INSERT INTO settings(id, json) VALUES (1, ?1)", [r#"{"hover_delay_ms":50}"#]).unwrap();
+        assert_eq!(load_settings(&c).unwrap().hover_delay_ms, Settings::default().hover_delay_ms);
+    }
     #[test] fn champs_invalides_en_base_remplaces_un_par_un() {
         let dir = tempfile::tempdir().unwrap();
         let mut c = open_db(&dir.path().join("t.db")).unwrap();

@@ -29,7 +29,7 @@ pub mod tools;
 pub mod weather;
 pub mod when;
 
-pub use db::{migrate, open_db, Migration, CORE_MIGRATIONS};
+pub use db::{checkpoint, migrate, open_db, Migration, CORE_MIGRATIONS};
 pub use error::CoreError;
 pub use settings::{key_to_vk, load_settings, merge_domains, save_settings, HotkeySetting, Settings, Site};
 

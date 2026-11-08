@@ -49,8 +49,9 @@ pub fn clean(text: &str) -> Option<String> {
     }
     let out = out.trim().to_string();
     let key = crate::when::norm(&out);
-    // Début de texte seulement : « Active le sous-titrage » est une vraie phrase.
-    let bad = key == "musique" || HALLUCINATIONS.iter().any(|h| key.starts_with(h));
+    // Début de texte, ou crédit en fin de texte (« Merci. Sous-titres réalisés par… Amara.org ») :
+    // « Active le sous-titrage » est une vraie phrase.
+    let bad = key == "musique" || HALLUCINATIONS.iter().any(|h| key.starts_with(h)) || key.ends_with("amara.org");
     (out.chars().filter(|c| c.is_alphanumeric()).count() >= 2 && !bad).then_some(out)
 }
 
@@ -90,6 +91,7 @@ mod tests {
         }
         assert_eq!(clean("Mets la playlist Focus").as_deref(), Some("Mets la playlist Focus"));
         assert_eq!(clean(" [BLANK_AUDIO] \"Ouvre Spotify\" ♪").as_deref(), Some("Ouvre Spotify"));
+        assert_eq!(clean("Merci. Sous-titres réalisés par la communauté d'Amara.org"), None);
         assert_eq!(clean("Active le sous-titrage").as_deref(), Some("Active le sous-titrage"));
         assert_eq!(clean("Mets de la musique").as_deref(), Some("Mets de la musique"));
     }

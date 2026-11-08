@@ -134,6 +134,7 @@ pub async fn accounts_remove(state: State<'_, AppState>, id: i64) -> Result<(), 
     accounts::remove(&state.db.lock(), &*state.secrets, id).map_err(|e| e.to_string())?;
     state.accounts.forget(id);
     state.spotify.clear_cache();
+    state.events.changed(Topic::Music); // les playlists disparaissent tout de suite
     state.events.changed(Topic::Accounts);
     state.events.changed(Topic::Mail); // ses mails ont quitté le cache
     Ok(())

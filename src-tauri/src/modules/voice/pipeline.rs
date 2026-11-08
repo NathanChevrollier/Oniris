@@ -734,7 +734,8 @@ mod tests {
     impl Speaker for SlowSpeaker {
         async fn speak(&self, _: &str, _: u8) -> Result<SpeakHandle, TtsError> {
             let _ = self.entered.send(());
-            let _ = self.go.lock().recv();
+            // Multi-thread uniquement (le test le déclare) : le fil bloqué cède sa file de tâches au runtime.
+            tokio::task::block_in_place(|| { let _ = self.go.lock().recv(); });
             let (h, done) = SpeakHandle::new();
             self.done.lock().push(done); // jamais finie d'elle-même
             *self.handle.lock() = Some(h.clone());

@@ -17,8 +17,10 @@ use std::sync::Arc;
 use tauri::{AppHandle, Manager};
 
 const LIMIT: usize = 30;
-/// Notes gardées dans le cache de la recherche (les plus récentes, épinglées d'abord).
-const NOTES_CACHED: usize = 500;
+/// Notes gardées dans le cache de la recherche.
+// shortcut: plafond de 100 000 notes (texte entier en mémoire), upgrade : index inversé si une base dépasse ça.
+const NOTES_CACHED: usize = 100_000;
+const CLIP: usize = 80;
 /// Miroir des commandes « / » de `src/panel/CommandPalette.tsx` (clé, description, argument attendu ou "") :
 /// elles s'exécutent côté interface. Un test vérifie les deux listes dans les deux sens.
 const COMMANDS: [(&str, &str, &str); 7] = [
@@ -68,7 +70,8 @@ pub fn refresh_notes(app: &AppHandle) {
     }
 }
 
-/// Première ligne en titre, le reste (une ligne) en sous-titre : le classement flou voit tout le texte.
+/// Première ligne en titre, le reste (une ligne) en sous-titre, tous deux entiers : le classement flou voit tout le texte.
+/// L'affichage est raccourci à `CLIP` caractères dans `run`, pas ici.
 pub fn note_items(db: &Db) -> Vec<Item> {
     let found = notes::recent(&db.lock(), NOTES_CACHED);
     let found = found.inspect_err(|e| tracing::warn!("recherche : notes indisponibles : {e}")).unwrap_or_default();
@@ -77,9 +80,8 @@ pub fn note_items(db: &Db) -> Vec<Item> {
         .map(|n| {
             let (first, rest) = n.body.trim().split_once('\n').unwrap_or((n.body.trim(), ""));
             let rest = rest.split_whitespace().collect::<Vec<_>>().join(" ");
-            let clip = |s: &str| s.chars().take(80).collect::<String>();
-            let subtitle = if rest.is_empty() { "Note".into() } else { clip(&rest) };
-            Item { kind: ItemKind::Note, key: n.id.to_string(), title: clip(first.trim()), subtitle }
+            let subtitle = if rest.is_empty() { "Note".into() } else { rest };
+            Item { kind: ItemKind::Note, key: n.id.to_string(), title: first.trim().to_string(), subtitle }
         })
         .collect()
 }
@@ -128,6 +130,11 @@ fn run(index: &FileIndex, extra: &[Arc<Vec<Item>>], usage: &UsageMap, q: &str, s
     let mut hits = search::query_at(index, &sources, usage, q, limit, now);
     hits.retain(|h| wants(scope, h.item.kind));
     hits.truncate(LIMIT);
+    for h in hits.iter_mut().filter(|h| h.item.kind == ItemKind::Note) {
+        for f in [&mut h.item.title, &mut h.item.subtitle] {
+            if let Some((i, _)) = f.char_indices().nth(CLIP) { f.truncate(i); }
+        }
+    }
     hits
 }
 
@@ -263,6 +270,24 @@ mod tests {
         let h = run(&ix, &extras(&apps, &Arc::default(), &Arc::default(), &Arc::new(note_items(&db)), None), &usage, "minut", None, 1);
         assert_eq!(h[0].item.kind, ItemKind::Command);
         assert_eq!(h[0].item.key, "minuteur");
+    }
+
+    #[test]
+    fn les_notes_sont_trouvees_sur_tout_le_texte_et_toutes_anciennes_comprises() {
+        let db = db();
+        notes::insert(&db.lock(), "Ancienne note zebulon").unwrap();
+        for i in 0..600 { notes::insert(&db.lock(), &format!("Note courante {i}")).unwrap(); }
+        let long = format!("Titre
+{} motfinalrare", "mot ".repeat(50));
+        notes::insert(&db.lock(), &long).unwrap();
+        let (apps, ix, usage) = (Inventory::default(), FileIndex::new(), UsageMap::new());
+        let cache = Arc::new(note_items(&db));
+        let go = |q: &str| run(&ix, &extras(&apps, &Arc::default(), &Arc::default(), &cache, Some(ItemKind::Note)), &usage, q, Some(ItemKind::Note), 1);
+        let h = go("motfinalrare");
+        assert_eq!(h.len(), 1, "mot en fin de texte (position > 200)");
+        assert_eq!(h[0].item.title, "Titre");
+        assert!(h[0].item.subtitle.chars().count() <= CLIP, "affichage raccourci");
+        assert_eq!(go("zebulon").len(), 1, "note plus ancienne que les 500 dernières");
     }
 
     #[test]

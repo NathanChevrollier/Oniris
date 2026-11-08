@@ -1,4 +1,4 @@
-import { render, screen, cleanup, act, fireEvent } from "@testing-library/react";
+import { render, screen, cleanup, act, fireEvent, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { it, expect, vi, afterEach, beforeEach } from "vitest";
 import { Panel } from "./Panel";
@@ -154,4 +154,5 @@ it("une confirmation qui arrive ferme la feuille ouverte pour rester cliquable",
   expect(screen.queryByRole("dialog", { name: "Journal" })).toBeNull();
   expect(container.querySelector(".inner")).not.toHaveAttribute("inert");
   expect(screen.getByText("Supprimer y")).toBeInTheDocument();
+  await waitFor(() => expect(screen.getByRole("button", { name: "Refuser" })).toHaveFocus());
 });

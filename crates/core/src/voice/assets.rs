@@ -114,8 +114,12 @@ pub fn needed_in<'a>(catalog: &'a [Asset], stt_model: &str) -> Vec<&'a Asset> {
 fn installed(a: &Asset, dir: &Path) -> bool {
     match a.kind {
         AssetKind::File { dest } => dir.join(dest).is_file(),
-        // Le dossier n'apparaît que par renommage atomique d'une extraction complète.
-        AssetKind::Zip { dest_dir, .. } => dir.join(dest_dir).is_dir(),
+        // Le dossier n'apparaît que par renommage atomique d'une extraction complète, mais peut être vidé à la main :
+        // l'exécutable principal doit y être.
+        AssetKind::Zip { dest_dir, .. } => {
+            let exe = match dest_dir { "whisper" => Some("whisper-server.exe"), "piper" => Some("piper.exe"), _ => None };
+            dir.join(dest_dir).is_dir() && exe.is_none_or(|e| dir.join(dest_dir).join(e).is_file())
+        }
     }
 }
 
@@ -360,6 +364,9 @@ mod tests {
         fs::create_dir_all(d.path().join("models")).unwrap();
         fs::create_dir_all(d.path().join("whisper")).unwrap();
         fs::write(d.path().join("models/fr_FR-siwis-medium.onnx"), b"x").unwrap();
+        let st = status(d.path(), "small");
+        assert_eq!(st.missing, ["whisper-bin", "piper-bin", "voice-json", "stt-small"], "dossier whisper sans whisper-server.exe : manquant");
+        fs::write(d.path().join("whisper/whisper-server.exe"), b"x").unwrap();
         let st = status(d.path(), "small");
         assert_eq!(st.missing, ["piper-bin", "voice-json", "stt-small"]);
     }

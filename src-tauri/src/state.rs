@@ -53,6 +53,8 @@ pub struct AppState {
     pub usage: RwLock<oniris_core::search::UsageMap>,
     /// Entrées de recherche des favoris, reconstruites sur `Topic::Favorites` (la frappe ne lit jamais la base).
     pub favorites: RwLock<Arc<Vec<oniris_core::search::Item>>>,
+    /// Entrées de recherche des notes, reconstruites sur `Topic::Notes` (la frappe ne lit jamais la base).
+    pub notes: RwLock<Arc<Vec<oniris_core::search::Item>>>,
     /// Inventaire des projets, recalculé en tâche de fond (`modules::projects`).
     pub projects: RwLock<oniris_core::projects::ProjectsCache>,
     /// Plus récent numéro de requête reçu par `search_query` (les plus anciennes abandonnent).
@@ -71,6 +73,9 @@ impl AppState {
         let mut conn = open_db(&dir.join("oniris.db"))?;
         migrate(&mut conn, CORE_MIGRATIONS)?;
         let s = load_settings(&conn)?;
+        if let Err(e) = oniris_core::search::prune_stale(&conn, oniris_core::time_util::now_ms()) {
+            tracing::warn!("recherche : élagage de l'usage impossible : {e}");
+        }
         let usage = oniris_core::search::load(&conn)?;
         let favorites = oniris_core::favorites::items(&conn);
         let db = Arc::new(Mutex::new(conn));
@@ -107,6 +112,7 @@ impl AppState {
             account_http: account_http.clone(), roots, projects, resume_env, sites, vps, allowlist, work_dirs, home,
         });
         let broker = Arc::new(ToolBroker::new(db.clone(), clock, tools)?);
+        let notes = crate::modules::search::note_items(&db);
         broker.mark_interrupted();
         broker.expire_stale();
         Ok(Self {
@@ -122,6 +128,7 @@ impl AppState {
             apps,
             usage: RwLock::new(usage),
             favorites: RwLock::new(Arc::new(favorites)),
+            notes: RwLock::new(Arc::new(notes)),
             projects: RwLock::default(),
             search_req: AtomicU32::new(0),
             http: oniris_core::weather::client()

@@ -28,7 +28,7 @@ export function ConfirmCard({ pending, onResolve }: { pending: PendingAction; on
       <pre style={{ fontFamily: "ui-monospace, Consolas, monospace", whiteSpace: "pre-wrap", overflowWrap: "anywhere", maxHeight: "40vh", overflowY: "auto" }}>{details}</pre>
       {typeof p !== "string" && <p>Demandé à partir de : {p.Untrusted.source}</p>}
       <button type="button" disabled={!armed} onClick={() => onResolve(true)}>Autoriser</button>
-      <button type="button" ref={refuse} onClick={() => onResolve(false)}>Refuser</button>
+      <button type="button" data-confirm-refuse ref={refuse} onClick={() => onResolve(false)}>Refuser</button>
     </Card>
   );
 }

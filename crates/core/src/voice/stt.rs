@@ -49,7 +49,8 @@ pub fn clean(text: &str) -> Option<String> {
     }
     let out = out.trim().to_string();
     let key = crate::when::norm(&out);
-    let bad = key == "musique" || HALLUCINATIONS.iter().any(|h| key.contains(h));
+    // Début de texte seulement : « Active le sous-titrage » est une vraie phrase.
+    let bad = key == "musique" || HALLUCINATIONS.iter().any(|h| key.starts_with(h));
     (out.chars().filter(|c| c.is_alphanumeric()).count() >= 2 && !bad).then_some(out)
 }
 
@@ -89,6 +90,7 @@ mod tests {
         }
         assert_eq!(clean("Mets la playlist Focus").as_deref(), Some("Mets la playlist Focus"));
         assert_eq!(clean(" [BLANK_AUDIO] \"Ouvre Spotify\" ♪").as_deref(), Some("Ouvre Spotify"));
+        assert_eq!(clean("Active le sous-titrage").as_deref(), Some("Active le sous-titrage"));
         assert_eq!(clean("Mets de la musique").as_deref(), Some("Mets de la musique"));
     }
 }

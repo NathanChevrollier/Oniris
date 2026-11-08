@@ -86,6 +86,9 @@ impl Web {
         Ok(list)
     }
 
+    /// Oublie les playlists (compte retiré : elles ne doivent plus s'afficher).
+    pub fn clear_cache(&self) { *self.cache.lock() = (0, vec![]); }
+
     /// Vrai si le cache n'a pas été rempli depuis 10 minutes (ou jamais).
     pub fn stale(&self) -> bool { now_ms() - self.cache.lock().0 > CACHE_MS }
 
@@ -551,6 +554,17 @@ mod tests {
         assert_eq!(e.web.favorites().iter().map(|p| p.id.as_str()).collect::<Vec<_>>(), ["pl3", "pl1xxxxxxxxxxxxxxxxxxx"]);
         let nine: Vec<String> = (0..9).map(|i| format!("p{i}")).collect();
         assert!(e.web.set_favorites(&nine).is_err());
+    }
+
+    #[tokio::test]
+    async fn clear_cache_vide_les_playlists() {
+        let server = MockServer::start().await;
+        playlists_mocks(&server).await;
+        let e = env(&server, true, false).await;
+        e.web.refresh_if_stale().await;
+        assert!(!e.web.view().all.is_empty());
+        e.web.clear_cache();
+        assert!(e.web.view().all.is_empty() && e.web.stale());
     }
 
     #[tokio::test]

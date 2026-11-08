@@ -307,6 +307,11 @@ mod tests {
                 assert!(!(head.starts_with("pub fn") && touches_db(body)), "{file} : commande synchrone qui touche la base : {head}");
             }
         }
+        let search = include_str!("modules/search.rs");
+        let query = &search[search.find("pub async fn search_query").unwrap()..];
+        let query = &query[..query.find("
+}").unwrap()];
+        assert!(!query.contains("db.lock") && !query.contains("st.db"), "search_query lit les caches, jamais la base");
         for module in [include_str!("modules/weather.rs"), include_str!("modules/mail.rs"), include_str!("modules/music.rs"), include_str!("modules/iris_briefing.rs")] {
             let open = module.split("pub fn on_panel_open").nth(1).expect("on_panel_open");
             assert!(!touches_db(&open[..open.find("\n}").unwrap()]), "on_panel_open ne doit pas verrouiller la base");

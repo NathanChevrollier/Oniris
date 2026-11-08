@@ -246,7 +246,7 @@ impl Pipeline {
         if !conf.tts {
             return;
         }
-        match self.speaker.speak(&say, conf.volume) {
+        match self.speaker.speak(&say, conf.volume).await {
             Ok(h) => {
                 // Un appui arrivé pendant l'ouverture de la sortie : IRIS ne parle pas par-dessus l'écoute.
                 if !self.current(press) {
@@ -457,8 +457,9 @@ mod tests {
 
     /// Voix qui ne finit que sur `stop()` (`long`) ou aussitôt.
     struct FakeSpeaker { log: Log, long: bool, playing: Mutex<Option<tokio::sync::watch::Sender<bool>>> }
+    #[async_trait::async_trait]
     impl Speaker for FakeSpeaker {
-        fn speak(&self, _: &str, _: u8) -> Result<SpeakHandle, TtsError> {
+        async fn speak(&self, _: &str, _: u8) -> Result<SpeakHandle, TtsError> {
             self.log.lock().push("speak".into());
             let (h, done) = SpeakHandle::new();
             if self.long {
@@ -729,8 +730,9 @@ mod tests {
 
     /// Voix dont l'ouverture bloque jusqu'au feu vert du test (périphérique lent).
     struct SlowSpeaker { entered: std::sync::mpsc::Sender<()>, go: Mutex<std::sync::mpsc::Receiver<()>>, handle: Arc<Mutex<Option<SpeakHandle>>>, done: Mutex<Vec<tokio::sync::watch::Sender<bool>>> }
+    #[async_trait::async_trait]
     impl Speaker for SlowSpeaker {
-        fn speak(&self, _: &str, _: u8) -> Result<SpeakHandle, TtsError> {
+        async fn speak(&self, _: &str, _: u8) -> Result<SpeakHandle, TtsError> {
             let _ = self.entered.send(());
             let _ = self.go.lock().recv();
             let (h, done) = SpeakHandle::new();

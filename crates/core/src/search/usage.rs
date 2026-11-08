@@ -61,6 +61,21 @@ pub fn prune(c: &Connection, keep: usize) -> Result<usize, CoreError> {
     )?)
 }
 
+const STALE_MS: i64 = 180 * 86_400_000;
+const DAY_MS: i64 = 86_400_000;
+const PRUNE_KEY: &str = "usage_pruned";
+
+/// Supprime les usages inactifs depuis 180 jours, au plus une fois par jour (horodatage dans `kv`).
+/// Renvoie le nombre supprimé ; à appeler avant `load`.
+pub fn prune_stale(c: &Connection, now: i64) -> Result<usize, CoreError> {
+    if crate::kv::get(c, PRUNE_KEY)?.is_some_and(|(_, at)| now - at < DAY_MS) {
+        return Ok(0);
+    }
+    let n = c.execute("DELETE FROM usage WHERE last_ms < ?1", [now - STALE_MS])?;
+    crate::kv::set(c, PRUNE_KEY, "1", now)?;
+    Ok(n)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -85,5 +100,17 @@ mod tests {
         let (s, t) = m[&(ItemKind::App, "b".into())];
         assert_eq!(t, 9);
         assert!((s - 2.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn elagage_des_usages_inactifs_une_fois_par_jour() {
+        let c = db();
+        let day = 86_400_000;
+        record(&c, ItemKind::File, "vieux", 0).unwrap();
+        assert_eq!(prune_stale(&c, 10 * day).unwrap(), 0, "10 jours : reste");
+        assert_eq!(load(&c).unwrap().len(), 1);
+        assert_eq!(prune_stale(&c, 10 * day + 1000).unwrap(), 0, "déjà fait aujourd'hui");
+        assert_eq!(prune_stale(&c, 200 * day).unwrap(), 1, "200 jours : disparaît");
+        assert!(load(&c).unwrap().is_empty());
     }
 }

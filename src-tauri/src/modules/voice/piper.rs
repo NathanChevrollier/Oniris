@@ -57,8 +57,9 @@ impl SpeakHandle {
     }
 }
 
+#[async_trait::async_trait]
 pub trait Speaker: Send + Sync {
-    fn speak(&self, text: &str, volume: u8) -> Result<SpeakHandle, TtsError>;
+    async fn speak(&self, text: &str, volume: u8) -> Result<SpeakHandle, TtsError>;
     /// Coupe la voix en cours, s'il y en a une.
     fn stop(&self);
 }
@@ -92,6 +93,7 @@ fn sample_rate(json: &std::path::Path) -> u32 {
         .map_or(22_050, |r| r as u32)
 }
 
+#[async_trait::async_trait]
 impl Speaker for PiperSpeaker {
     fn stop(&self) {
         if let Some(h) = self.current.lock().take() {
@@ -99,7 +101,7 @@ impl Speaker for PiperSpeaker {
         }
     }
 
-    fn speak(&self, text: &str, volume: u8) -> Result<SpeakHandle, TtsError> {
+    async fn speak(&self, text: &str, volume: u8) -> Result<SpeakHandle, TtsError> {
         self.stop();
         let exe = self.dir.join("piper").join("piper.exe");
         let model = self.dir.join("models").join(MODEL);
@@ -108,7 +110,9 @@ impl Speaker for PiperSpeaker {
         }
         let lines = sentences(text);
         let rate = sample_rate(&self.dir.join("models").join(format!("{MODEL}.json")));
-        let sink = self.out.open(rate)?;
+        // L'ouverture du périphérique peut bloquer (pilote lent) : hors des fils du runtime.
+        let out = self.out.clone();
+        let sink = tokio::task::spawn_blocking(move || out.open(rate)).await.map_err(|e| TtsError::Start(e.to_string()))??;
         let mut cmd = Command::new(&exe);
         cmd.arg("--model").arg(&model).arg("--output-raw");
         cmd.current_dir(exe.parent().unwrap_or(std::path::Path::new(".")))
@@ -184,6 +188,7 @@ mod tests {
         samples: Arc<AtomicUsize>,
         closed: Arc<AtomicUsize>,
         rate: Arc<AtomicUsize>,
+        open_thread: Arc<std::sync::Mutex<Option<std::thread::ThreadId>>>,
         /// La file ne se vide jamais (périphérique disparu).
         stuck: bool,
     }
@@ -195,6 +200,7 @@ mod tests {
     impl AudioOut for FakeOut {
         fn open(&self, rate: u32) -> Result<Box<dyn Sink>, TtsError> {
             self.rate.store(rate as usize, SeqCst);
+            *self.open_thread.lock().unwrap() = Some(std::thread::current().id());
             Ok(Box::new(FakeSink { samples: self.samples.clone(), closed: self.closed.clone(), stuck: self.stuck }))
         }
     }
@@ -261,13 +267,22 @@ mod tests {
     async fn non_installe_sans_les_fichiers() {
         let d = tempfile::tempdir().unwrap();
         let s = PiperSpeaker::new(d.path().to_path_buf(), Arc::new(FakeOut::default()));
-        assert!(matches!(s.speak("Bonjour", 80), Err(TtsError::NotInstalled)));
+        assert!(matches!(s.speak("Bonjour", 80).await, Err(TtsError::NotInstalled)));
+    }
+
+    #[tokio::test]
+    async fn l_ouverture_de_la_sortie_quitte_le_fil_du_runtime() {
+        let (_d, s, out, _pid) = setup();
+        let h = s.speak("Bonjour", 80).await.unwrap();
+        tokio::time::timeout(Duration::from_secs(10), h.done()).await.expect("fin de lecture");
+        let opened = out.open_thread.lock().unwrap().expect("sortie ouverte");
+        assert_ne!(opened, std::thread::current().id(), "open() bloquant ne doit pas tourner sur le fil du runtime");
     }
 
     #[tokio::test]
     async fn les_octets_arrivent_au_taux_du_json() {
         let (_d, s, out, _pid) = setup();
-        let h = s.speak("Bonjour. Salut !", 80).unwrap();
+        let h = s.speak("Bonjour. Salut !", 80).await.unwrap();
         tokio::time::timeout(Duration::from_secs(10), h.done()).await.expect("fin de lecture");
         assert_eq!(out.samples.load(SeqCst), 1000, "2 phrases x 1000 octets = 1000 échantillons");
         assert_eq!(out.rate.load(SeqCst), 16_000);
@@ -278,7 +293,7 @@ mod tests {
     async fn une_sortie_qui_ne_se_vide_pas_n_attend_pas_indefiniment() {
         let (_d, s, out, _pid) = setup_with(FakeOut { stuck: true, ..FakeOut::default() });
         let t = Instant::now();
-        let h = s.speak("Bonjour. Salut !", 80).unwrap();
+        let h = s.speak("Bonjour. Salut !", 80).await.unwrap();
         tokio::time::timeout(Duration::from_secs(10), h.done()).await.expect("fin malgré la file pleine");
         assert!(t.elapsed() >= Duration::from_secs(2), "attend la durée du son + 2 s : {:?}", t.elapsed());
         assert_eq!(out.closed.load(SeqCst), 1);
@@ -287,7 +302,7 @@ mod tests {
     #[tokio::test]
     async fn stop_coupe_en_moins_de_150_ms_et_tue_piper() {
         let (_d, s, out, pidf) = setup();
-        let h = s.speak("LONG", 100).unwrap();
+        let h = s.speak("LONG", 100).await.unwrap();
         let pid = pid_of(&pidf).await;
         tokio::time::sleep(Duration::from_millis(200)).await;
         assert!(out.samples.load(SeqCst) > 0 && !gone_now(pid));
@@ -308,9 +323,9 @@ mod tests {
     #[tokio::test]
     async fn un_deuxieme_speak_coupe_le_premier() {
         let (_d, s, out, _pid) = setup();
-        let first = s.speak("LONG", 100).unwrap();
+        let first = s.speak("LONG", 100).await.unwrap();
         tokio::time::sleep(Duration::from_millis(200)).await;
-        let second = s.speak("Bonjour", 100).unwrap();
+        let second = s.speak("Bonjour", 100).await.unwrap();
         tokio::time::timeout(Duration::from_millis(500), first.done()).await.expect("le premier est coupé");
         tokio::time::timeout(Duration::from_secs(10), second.done()).await.expect("le second finit");
         assert_eq!(out.closed.load(SeqCst), 2);

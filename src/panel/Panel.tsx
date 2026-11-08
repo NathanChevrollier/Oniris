@@ -56,7 +56,11 @@ export function Panel() {
   // Une confirmation arrive : la feuille ouverte se ferme, sinon la carte resterait inerte dessous.
   const pendingCount = usePanelStore((s) => s.pending.length);
   useEffect(() => {
-    if (pendingCount > 0) { setAccountsOpen(false); setIrisOpen(false); setJournalOpen(false); setSettingsOpen(false); }
+    if (pendingCount === 0) return;
+    setAccountsOpen(false); setIrisOpen(false); setJournalOpen(false); setSettingsOpen(false);
+    // Le focus était dans la feuille (ou sur la carte, alors inerte) : on le rend à « Refuser », jamais à « Autoriser ».
+    const t = setTimeout(() => document.querySelector<HTMLElement>("[data-confirm-refuse]")?.focus(), 0);
+    return () => clearTimeout(t);
   }, [pendingCount]);
   const [welcome, setWelcome] = useState(false);
   const [colors, setColors] = useState<string[]>(NO_COLORS);

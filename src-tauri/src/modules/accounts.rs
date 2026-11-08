@@ -133,6 +133,7 @@ pub fn accounts_cancel(state: State<'_, AppState>) {
 pub async fn accounts_remove(state: State<'_, AppState>, id: i64) -> Result<(), String> {
     accounts::remove(&state.db.lock(), &*state.secrets, id).map_err(|e| e.to_string())?;
     state.accounts.forget(id);
+    state.spotify.clear_cache();
     state.events.changed(Topic::Accounts);
     state.events.changed(Topic::Mail); // ses mails ont quitté le cache
     Ok(())

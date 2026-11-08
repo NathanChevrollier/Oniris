@@ -27,6 +27,9 @@ impl Events for TauriEvents {
             crate::modules::favorites::refresh(&self.0);
             crate::modules::favicons::spawn(&self.0);
         }
+        if topic == Topic::Notes {
+            crate::modules::search::refresh_notes(&self.0);
+        }
         crate::modules::iris_briefing::on_topic(&self.0, topic);
         for (t, key, next_fn) in RESCHEDULE {
             if t == topic {

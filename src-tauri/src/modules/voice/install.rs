@@ -100,7 +100,10 @@ mod tests {
         for a in assets::CATALOG {
             match a.kind {
                 assets::AssetKind::File { dest } => { std::fs::create_dir_all(d.path().join(dest).parent().unwrap()).unwrap(); std::fs::write(d.path().join(dest), b"x").unwrap(); }
-                assets::AssetKind::Zip { dest_dir, .. } => std::fs::create_dir_all(d.path().join(dest_dir)).unwrap(),
+                assets::AssetKind::Zip { dest_dir, .. } => {
+                    std::fs::create_dir_all(d.path().join(dest_dir)).unwrap();
+                    for exe in ["whisper-server.exe", "piper.exe"] { std::fs::write(d.path().join(dest_dir).join(exe), b"x").unwrap(); }
+                }
             }
         }
         let n = std::sync::atomic::AtomicU32::new(0);

@@ -17,7 +17,8 @@ use std::sync::Arc;
 use tauri::{AppHandle, Manager};
 
 const LIMIT: usize = 30;
-const NOTES_LIMIT: usize = 5;
+/// Notes gardées dans le cache de la recherche (les plus récentes, épinglées d'abord).
+const NOTES_CACHED: usize = 500;
 /// Miroir des commandes « / » de `src/panel/CommandPalette.tsx` (clé, description, argument attendu ou "") :
 /// elles s'exécutent côté interface. Un test vérifie les deux listes dans les deux sens.
 const COMMANDS: [(&str, &str, &str); 7] = [
@@ -60,10 +61,16 @@ fn wants(scope: Option<ItemKind>, k: ItemKind) -> bool {
     }
 }
 
+/// Reconstruit le cache des notes (appelé sur `Topic::Notes`, jamais en tenant le verrou de la base).
+pub fn refresh_notes(app: &AppHandle) {
+    if let Some(st) = app.try_state::<AppState>() {
+        *st.notes.write() = Arc::new(note_items(&st.db));
+    }
+}
+
 /// Première ligne en titre, le reste (une ligne) en sous-titre : le classement flou voit tout le texte.
-fn note_items(db: &Db, q: &str) -> Vec<Item> {
-    // Verrou de la base à chaque frappe : voulu par la spécification (notes::search), borné à 5 résultats.
-    let found = notes::search(&db.lock(), q, NOTES_LIMIT);
+pub fn note_items(db: &Db) -> Vec<Item> {
+    let found = notes::recent(&db.lock(), NOTES_CACHED);
     let found = found.inspect_err(|e| tracing::warn!("recherche : notes indisponibles : {e}")).unwrap_or_default();
     found
         .into_iter()
@@ -92,7 +99,7 @@ fn command_items() -> Vec<Item> {
 
 /// Sources hors index, une ligne par source.
 /// Les applications ne sont pas copiées : seul l'`Arc` de l'inventaire est cloné.
-fn extras(apps: &Inventory, favorites: &Arc<Vec<Item>>, projects: &Arc<Vec<Item>>, db: &Db, q: &str, scope: Option<ItemKind>) -> Vec<Arc<Vec<Item>>> {
+fn extras(apps: &Inventory, favorites: &Arc<Vec<Item>>, projects: &Arc<Vec<Item>>, notes: &Arc<Vec<Item>>, scope: Option<ItemKind>) -> Vec<Arc<Vec<Item>>> {
     let mut v = Vec::new();
     if wants(scope, ItemKind::App) {
         v.push(apps.items.read().clone());
@@ -104,7 +111,7 @@ fn extras(apps: &Inventory, favorites: &Arc<Vec<Item>>, projects: &Arc<Vec<Item>
         v.push(projects.clone());
     }
     if wants(scope, ItemKind::Note) {
-        v.push(Arc::new(note_items(db, q)));
+        v.push(notes.clone());
     }
     if wants(scope, ItemKind::Command) {
         v.push(Arc::new(command_items()));
@@ -167,7 +174,8 @@ pub async fn search_query(app: AppHandle, q: String, scope: Option<String>, req:
         }
         let favs = st.favorites.read().clone();
         let projects = st.projects.read().items.clone();
-        let extra = extras(&st.apps, &favs, &projects, &st.db, &q, scope);
+        let notes = st.notes.read().clone();
+        let extra = extras(&st.apps, &favs, &projects, &notes, scope);
         let empty = FileIndex::new();
         let index = st.indexer.get().map(|i| i.index.read());
         let hits = run(index.as_deref().unwrap_or(&empty), &extra, &st.usage.read(), &q, scope, now_ms());
@@ -243,7 +251,7 @@ mod tests {
         ix.insert(r"C:\u\vacances.jpg", false);
         let usage = UsageMap::new();
 
-        let extra = extras(&apps, &Arc::default(), &Arc::default(), &db, "rapport", None);
+        let extra = extras(&apps, &Arc::default(), &Arc::default(), &Arc::new(note_items(&db)), None);
         let h = run(&ix, &extra, &usage, "rapport", None, 1);
         assert_eq!(kinds(&h), [ItemKind::File, ItemKind::Dir, ItemKind::App, ItemKind::Note]);
         let note = h.iter().find(|h| h.item.kind == ItemKind::Note).unwrap();
@@ -252,7 +260,7 @@ mod tests {
         assert!(!h.iter().any(|h| h.item.title.contains("pain") || h.item.key.contains("vacances")));
 
         // Commandes « / » : présentes dans la recherche universelle.
-        let h = run(&ix, &extras(&apps, &Arc::default(), &Arc::default(), &db, "minut", None), &usage, "minut", None, 1);
+        let h = run(&ix, &extras(&apps, &Arc::default(), &Arc::default(), &Arc::new(note_items(&db)), None), &usage, "minut", None, 1);
         assert_eq!(h[0].item.kind, ItemKind::Command);
         assert_eq!(h[0].item.key, "minuteur");
     }
@@ -267,7 +275,7 @@ mod tests {
         ix.insert(r"C:\u\rapport.pdf", false);
         ix.insert(r"C:\u\rapports", true);
         let usage = UsageMap::new();
-        let go = |s: ItemKind| run(&ix, &extras(&apps, &Arc::default(), &Arc::default(), &db, "rapport", Some(s)), &usage, "rapport", Some(s), 1);
+        let go = |s: ItemKind| run(&ix, &extras(&apps, &Arc::default(), &Arc::default(), &Arc::new(note_items(&db)), Some(s)), &usage, "rapport", Some(s), 1);
         assert_eq!(kinds(&go(ItemKind::File)), [ItemKind::File, ItemKind::Dir], "f : fichiers et dossiers");
         assert_eq!(kinds(&go(ItemKind::App)), [ItemKind::App]);
         assert_eq!(kinds(&go(ItemKind::Note)), [ItemKind::Note]);
@@ -279,9 +287,9 @@ mod tests {
         let db = db();
         let favs = Arc::new(vec![Item { kind: ItemKind::Favorite, key: "4".into(), title: "Nexus".into(), subtitle: "nexus.example.com".into() }]);
         let (apps, ix, usage) = (Inventory::default(), FileIndex::new(), UsageMap::new());
-        let h = run(&ix, &extras(&apps, &favs, &Arc::default(), &db, "nexus", None), &usage, "nexus", None, 1);
+        let h = run(&ix, &extras(&apps, &favs, &Arc::default(), &Arc::new(note_items(&db)), None), &usage, "nexus", None, 1);
         assert_eq!(kinds(&h), [ItemKind::Favorite]);
-        let h = run(&ix, &extras(&apps, &favs, &Arc::default(), &db, "nexus", Some(ItemKind::App)), &usage, "nexus", Some(ItemKind::App), 1);
+        let h = run(&ix, &extras(&apps, &favs, &Arc::default(), &Arc::new(note_items(&db)), Some(ItemKind::App)), &usage, "nexus", Some(ItemKind::App), 1);
         assert!(h.is_empty());
     }
 
@@ -295,9 +303,9 @@ mod tests {
         search::bump(&mut usage, ItemKind::App, "a.lnk", 1);
         search::bump(&mut usage, ItemKind::App, "disparue.lnk", 1);
         let ix = FileIndex::new();
-        let h = run(&ix, &extras(&apps, &Arc::default(), &Arc::default(), &db, "", None), &usage, "", None, 2);
+        let h = run(&ix, &extras(&apps, &Arc::default(), &Arc::default(), &Arc::new(note_items(&db)), None), &usage, "", None, 2);
         assert_eq!(h.len(), 2, "app inconnue de l'inventaire ignorée");
-        let h = run(&ix, &extras(&apps, &Arc::default(), &Arc::default(), &db, "", Some(ItemKind::App)), &usage, "", Some(ItemKind::App), 2);
+        let h = run(&ix, &extras(&apps, &Arc::default(), &Arc::default(), &Arc::new(note_items(&db)), Some(ItemKind::App)), &usage, "", Some(ItemKind::App), 2);
         assert_eq!(h.iter().map(|h| h.item.title.as_str()).collect::<Vec<_>>(), ["Firefox"]);
     }
 

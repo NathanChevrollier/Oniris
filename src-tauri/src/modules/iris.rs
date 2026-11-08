@@ -246,6 +246,19 @@ pub async fn iris_cancel(turn: u32) {
     }
 }
 
+/// Exécute `f` si le tour est abandonné (futur détruit avant `disarm`) : le modèle local doit être déchargé aussi dans ce cas.
+struct OnAbort<F: FnOnce()>(Option<F>);
+
+impl<F: FnOnce()> OnAbort<F> {
+    fn disarm(&mut self) { self.0 = None; }
+}
+
+impl<F: FnOnce()> Drop for OnAbort<F> {
+    fn drop(&mut self) {
+        if let Some(f) = self.0.take() { f(); }
+    }
+}
+
 /// Cerveaux construits d'après les réglages du moment ; exécuteur sur le coffre de la conversation.
 async fn run_turn(app: &AppHandle, turn: u32, text: String, force_claude: bool, local_only: bool) -> Result<TurnResult, String> {
     let st = app.state::<AppState>();
@@ -276,7 +289,10 @@ async fn run_turn(app: &AppHandle, turn: u32, text: String, force_claude: bool, 
     let emit = move |kind: IrisEventKind| {
         let _ = emitter.emit("oniris://iris", IrisEvent { turn, kind });
     };
+    let unload = app.clone();
+    let mut on_abort = OnAbort(Some(move || { tauri::async_runtime::spawn(async move { unload_if_fullscreen(&unload).await }); }));
     let (end, pending, first_tool) = play(&agent, TurnInput { text: text.clone(), force_claude, local_only }, exec, PromptCtx { system, claude_system, history }, emit).await;
+    on_abort.disarm();
     unload_if_fullscreen(app).await;
     let shown: String = end.shown.iter().map(|s| match s { Segment::Text { text } | Segment::Untrusted { text, .. } => text.as_str() }).collect();
     {
@@ -450,6 +466,26 @@ mod tests {
         let (tx, rx) = tokio::sync::oneshot::channel();
         let _ = tx.send(Err("x".into()));
         assert_eq!(outcome(rx).await.err(), Some(TurnError::Failed));
+    }
+
+    #[tokio::test]
+    async fn un_tour_abandonne_declenche_le_dechargement() {
+        let hit = Arc::new(AtomicBool::new(false));
+        let h = hit.clone();
+        let task = tokio::spawn(async move {
+            let _g = OnAbort(Some(move || h.store(true, Ordering::SeqCst)));
+            std::future::pending::<()>().await;
+        });
+        tokio::task::yield_now().await;
+        task.abort();
+        let _ = task.await;
+        assert!(hit.load(Ordering::SeqCst), "abandon : déchargement appelé");
+        let done = Arc::new(AtomicBool::new(false));
+        let d = done.clone();
+        let mut g = OnAbort(Some(move || d.store(true, Ordering::SeqCst)));
+        g.disarm();
+        drop(g);
+        assert!(!done.load(Ordering::SeqCst), "tour terminé : rien de plus");
     }
 
     #[test]

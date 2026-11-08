@@ -3,6 +3,7 @@
 //! (tâche de fond, jamais sur le chemin d'ouverture), relevé toutes les 30 s panneau ouvert et hors plein écran,
 //! arrêté 10 min après la fermeture et à la sortie d'Oniris. Journal : genres d'erreur seulement (les textes
 //! de Zenytt peuvent contenir des noms de serveur ou d'hôte).
+use crate::job::{self, Job};
 use crate::state::AppState;
 use oniris_core::events::Topic;
 use oniris_core::sites::{VpsStatus, VpsView};
@@ -12,16 +13,15 @@ use rmcp::model::CallToolRequestParams;
 use rmcp::service::{RunningService, ServiceError};
 use rmcp::{RoleClient, ServiceExt};
 use serde_json::{json, Value};
-use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Stdio};
+use std::process::Stdio;
+use tokio::process::{Child, Command};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, LazyLock, Weak};
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Manager};
 use tokio::sync::Notify;
 
-const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 const MCP_ARGS: &[&str] = &["--mcp"];
 /// Par appel : la première connexion SSH de Zenytt peut prendre 20 s.
 const CALL_TIMEOUT: Duration = Duration::from_secs(25);
@@ -140,40 +140,33 @@ fn https_domains(v: &Value) -> Vec<String> {
 /// Processus Zenytt vivants, tués à la sortie d'Oniris (`shutdown`).
 static LIVE: Mutex<Vec<Weak<Mutex<Child>>>> = Mutex::new(Vec::new());
 
-/// Tue le processus quand le client disparaît (arrêt, échec, remplacement).
-struct Kill(Arc<Mutex<Child>>);
-
-impl Drop for Kill {
-    fn drop(&mut self) {
-        let mut c = self.0.lock();
-        let _ = c.kill();
-        let _ = c.wait();
-    }
+/// Processus et son Job Object : le Job tué (drop) emporte l'arbre, même si le processus ignore l'arrêt.
+struct Proc {
+    child: Arc<Mutex<Child>>,
+    _job: Job,
 }
 
 pub struct Client {
-    // Ordre de destruction : le service d'abord, puis le processus.
+    // Ordre de destruction : le service d'abord, puis le processus et son Job.
     svc: RunningService<RoleClient, ()>,
-    _child: Kill,
+    _proc: Proc,
     timeout: Duration,
 }
 
 impl Client {
     pub async fn spawn(exe: &Path, args: &[&str], timeout: Duration) -> Result<Self, Fail> {
-        let mut cmd = std::process::Command::new(exe);
-        cmd.args(args).creation_flags(CREATE_NO_WINDOW).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null());
-        let mut child = cmd.spawn().map_err(|_| Fail::Spawn)?;
+        let mut cmd = Command::new(exe);
+        cmd.args(args).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null());
+        let (mut child, job) = job::spawn(cmd).map_err(|_| Fail::Spawn)?;
         let (stdin, stdout) = (child.stdin.take(), child.stdout.take());
-        let kill = Kill(Arc::new(Mutex::new(child)));
+        let proc = Proc { child: Arc::new(Mutex::new(child)), _job: job };
         let (Some(stdin), Some(stdout)) = (stdin, stdout) else { return Err(Fail::Spawn) };
-        let stdin = tokio::process::ChildStdin::from_std(stdin).map_err(|_| Fail::Spawn)?;
-        let stdout = tokio::process::ChildStdout::from_std(stdout).map_err(|_| Fail::Spawn)?;
         let svc = tokio::time::timeout(timeout, ().serve((stdout, stdin))).await.map_err(|_| Fail::Timeout)?.map_err(|_| Fail::Closed)?;
         let mut live = LIVE.lock();
         live.retain(|w| w.strong_count() > 0);
-        live.push(Arc::downgrade(&kill.0));
+        live.push(Arc::downgrade(&proc.child));
         drop(live);
-        Ok(Self { svc, _child: kill, timeout })
+        Ok(Self { svc, _proc: proc, timeout })
     }
 
     async fn call(&self, tool: &'static str, args: Value) -> Result<Value, Fail> {
@@ -212,7 +205,7 @@ impl Client {
 
     #[cfg(test)]
     fn kill(&self) {
-        let _ = self._child.0.lock().kill();
+        let _ = self._proc.child.lock().start_kill();
     }
 }
 
@@ -343,7 +336,7 @@ pub fn on_panel_close() {
 /// Sortie d'Oniris : tue Zenytt même si un relevé est en cours.
 pub fn shutdown() {
     for c in LIVE.lock().drain(..).filter_map(|w| w.upgrade()) {
-        let _ = c.lock().kill();
+        let _ = c.lock().start_kill();
     }
 }
 
@@ -471,6 +464,21 @@ mod tests {
         let mut sites = vec![oniris_core::Site { name: "Blog".into(), url: "https://BLOG.example.com/".into(), slow_ms: 1500 }];
         assert_eq!(oniris_core::merge_domains(&mut sites, &domains), 1);
         assert_eq!(sites[1].url, "https://shop.example.net");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn le_job_tue_le_serveur_quand_le_client_disparait() {
+        let exe = fake();
+        let mut p = Poller::new(MCP_ARGS, Duration::from_secs(10));
+        p.poll(&exe).await.unwrap();
+        let child = p.client.as_ref().unwrap()._proc.child.clone(); // garde le Child vivant : seul le Job peut tuer
+        assert!(child.lock().try_wait().unwrap().is_none(), "vivant");
+        p.stop();
+        let t = Instant::now();
+        while child.lock().try_wait().unwrap().is_none() {
+            assert!(t.elapsed() < Duration::from_secs(5), "processus encore vivant après la fermeture du Job");
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
     }
 
     #[tokio::test(flavor = "multi_thread")]

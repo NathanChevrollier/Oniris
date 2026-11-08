@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ExternalLink, Trash2, X } from "lucide-react";
-import { ipc } from "../../lib/ipc";
-import { DEFAULT_SETTINGS, useSettings, type Settings } from "../../lib/settings";
+import { DEFAULT_SETTINGS, useSettings } from "../../lib/settings";
+import { useSave } from "../../lib/useSave";
 import { accountsIpc, errorText } from "../accounts/api";
 import { irisIpc, onIrisPull, type HistoryItem, type IrisStatus, type Memory } from "./api";
 import { VoiceSection } from "../voice/VoiceSection";
@@ -10,20 +10,6 @@ import "./iris.css";
 
 const MAX_PERSONALITY = 2000;
 const lines = (s: string) => s.split("\n").map((l) => l.trim()).filter(Boolean);
-
-/** Relit les réglages juste avant d'écrire (comme /météo) ; le texte de refus de Rust s'affiche tel quel. */
-export function useSave() {
-  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  const save = async (patch: Partial<Settings>) => {
-    try {
-      const fresh = await ipc.getSettings();
-      await ipc.saveSettings({ ...fresh, ...patch });
-      setMsg({ ok: true, text: "Enregistré." });
-    } catch (e) { setMsg({ ok: false, text: errorText(e, "Enregistrement impossible.") }); }
-  };
-  const note = msg && <p className={msg.ok ? "acc-ok" : "err"} role={msg.ok ? "status" : "alert"}>{msg.text}</p>;
-  return [save, note] as const;
-}
 
 function Brains({ status, reload }: { status: IrisStatus | null; reload: () => void }) {
   const s = useSettings();

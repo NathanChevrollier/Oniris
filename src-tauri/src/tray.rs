@@ -4,7 +4,7 @@ use crate::windows;
 use std::sync::atomic::Ordering;
 use tauri::menu::{CheckMenuItemBuilder, MenuBuilder, MenuItemBuilder};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Listener, Manager};
 use tauri_plugin_autostart::ManagerExt as _;
 use tauri_plugin_notification::NotificationExt as _;
 
@@ -16,12 +16,20 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
     let clipboard = CheckMenuItemBuilder::with_id("clipboard", "Historique du presse-papiers").checked(clip_on).build(app)?;
     let quit = MenuItemBuilder::with_id("quit", "Quitter").build(app)?;
     let menu = MenuBuilder::new(app).items(&[&open, &settings, &pause, &clipboard, &quit]).build()?;
+    // Un enregistrement fait depuis le panneau (ou ailleurs) : les cases cochées suivent l'état réel.
+    let (pause_item, clipboard_item, handle) = (pause.clone(), clipboard.clone(), app.clone());
+    app.listen("oniris://settings", move |_| {
+        let st = handle.state::<AppState>();
+        let (clip, paused) = menu_checks(&st.settings.read(), st.voice_paused.load(Ordering::SeqCst));
+        let _ = clipboard_item.set_checked(clip);
+        let _ = pause_item.set_checked(paused);
+    });
     let mut tray = TrayIconBuilder::with_id("oniris")
         .tooltip("Oniris")
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(move |app, ev| match ev.id().as_ref() {
-            // « Paramètres » : la section viendra au plan 7, on ouvre le panneau.
+            // « Paramètres » ouvre le panneau, où la feuille Paramètres est un bouton de l'en-tête.
             "open" | "settings" => {
                 if let Err(e) = windows::open_panel(app) {
                     tracing::error!("tray: ouverture du panneau : {e}");
@@ -63,6 +71,11 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
     Ok(())
 }
 
+/// Cases cochées du menu (presse-papiers, voix en pause) pour des réglages et un état de pause donnés.
+fn menu_checks(s: &oniris_core::Settings, voice_paused: bool) -> (bool, bool) {
+    (s.clipboard_enabled, voice_paused)
+}
+
 /// Ne touche à l'OS que si l'état souhaité diffère de l'état courant.
 fn autostart_action(desired: bool, current: bool) -> Option<bool> {
     (desired != current).then_some(desired)
@@ -102,7 +115,14 @@ pub fn notify(app: &AppHandle, title: &str, body: &str) {
 
 #[cfg(test)]
 mod tests {
-    use super::autostart_action;
+    use super::{autostart_action, menu_checks};
+    #[test]
+    fn le_menu_suit_les_reglages_enregistres() {
+        let mut s = oniris_core::Settings::default();
+        assert_eq!(menu_checks(&s, false), (true, false));
+        s.clipboard_enabled = false;
+        assert_eq!(menu_checks(&s, true), (false, true));
+    }
     #[test]
     fn autostart_n_agit_que_si_different() {
         assert_eq!(autostart_action(true, false), Some(true));

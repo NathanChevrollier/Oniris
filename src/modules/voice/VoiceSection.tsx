@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useSettings, type Settings } from "../../lib/settings";
 import { errorText } from "../accounts/api";
-import { useSave } from "../iris/IrisSheet";
+import { useSave } from "../../lib/useSave";
 import { onVoiceInstall, voiceIpc, type VoiceStatus } from "./api";
 import "./voice.css";
 

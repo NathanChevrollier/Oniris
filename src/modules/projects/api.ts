@@ -34,6 +34,9 @@ export const projectsIpc = {
     return () => { un.then((f) => f()); };
   },
   list: (): Promise<Project[]> => isTauri ? invoke("projects_list", {}) : Promise.resolve(fakeProjects()),
+  /** Projets masqués (réglages) : le cache Rust les garde, `projects_list` les filtre sauf demande. */
+  listHidden: async (): Promise<Project[]> =>
+    isTauri ? (await invoke<Project[]>("projects_list", { includeHidden: true })).filter((p) => p.hidden) : [],
   pin: (path: string, pinned: boolean): Promise<void> => isTauri ? invoke("projects_pin", { path, pinned }) : Promise.resolve(),
   hide: (path: string, hidden: boolean): Promise<void> => isTauri ? invoke("projects_hide", { path, hidden }) : Promise.resolve(),
   setRoots: (roots: string[]): Promise<void> => isTauri ? invoke("projects_set_roots", { roots }) : Promise.resolve(),

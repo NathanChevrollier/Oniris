@@ -15,12 +15,17 @@ import "./pill.css";
 /** Après une fermeture, le curseur peut se retrouver sur la pilule : ce survol-là ne rouvre pas le panneau. */
 const HOVER_REARM_MS = 600;
 
+/** Seul abonné au niveau du micro (dizaines d'événements par seconde) : la pilule autour ne se redessine pas. */
+export function VoiceOrb({ thinking }: { thinking: boolean }) {
+  const voice = useVoice();
+  return <Orb state={orbFor(voice.phase, thinking)} size={24} level={voice.level} />;
+}
+
 export function Pill() {
   const settings = useSettings();
   const now = useNow(60_000);
   const [panelOpen, setPanelOpen] = useState(false);
   const [thinking, setThinking] = useState(false);
-  const voice = useVoice();
   const root = useRef<HTMLDivElement>(null);
   const hover = useRef<ReturnType<typeof setTimeout>>(undefined);
   const closedAt = useRef(-Infinity);
@@ -66,7 +71,7 @@ export function Pill() {
         <span className="slot-music" hidden />
         <span className="slot-mails" hidden />
         <PillToast />
-        <Orb state={orbFor(voice.phase, thinking)} size={24} level={voice.level} />
+        <VoiceOrb thinking={thinking} />
       </button>
     </div>
   );

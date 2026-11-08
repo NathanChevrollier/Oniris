@@ -32,6 +32,11 @@ body.closed .card{animation:none}
 /* Écran trop court : seule la grille défile, en-tête, frise et barre de commande restent visibles. */
 .inner>.grid{flex-shrink:1;min-height:220px;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.18) transparent}
 .inner>.grid:hover{scrollbar-color:rgba(255,255,255,.4) transparent}
+/* Écran de 1080 px ou moins : tout le panneau tient sans défilement (aucune carte masquée) — espacements réduits et contenu à 76 %. */
+@media (max-height:1100px){
+  .inner{zoom:.76;max-height:calc((100vh - 28px)/.76);padding:14px 22px 10px;gap:8px}
+  .inner>.grid{gap:10px}
+}
 /* Encore du contenu plus bas (classe posée par CardGrid) : fondu doux du bord inférieur. */
 .inner>.grid.more{-webkit-mask-image:linear-gradient(to bottom,#000 calc(100% - 56px),transparent);mask-image:linear-gradient(to bottom,#000 calc(100% - 56px),transparent)}
 

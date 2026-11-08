@@ -264,20 +264,24 @@ export function CommandPalette() {
     }
   };
 
+  // Les effets ci-dessous ne dépendent que de leur déclencheur : ils lisent les gestionnaires du rendu courant ici.
+  const handlers = useRef({ reset, edit });
+  useEffect(() => { handlers.current = { reset, edit }; });
+
   // Ouverture : focus dans la barre, sans recherche ; fermeture : on repart d'une barre vide.
-  useEffect(() => { if (open) input.current?.focus(); else reset(); }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (open) input.current?.focus(); else handlers.current.reset(); }, [open]);
 
   useEffect(() => {
     const onKey = (e: globalThis.KeyboardEvent) => {
       if (!(e.ctrlKey && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "p")) return;
       e.preventDefault(); // pas d'impression
       input.current?.focus();
-      edit("p ");
+      handlers.current.edit("p ");
     };
     window.addEventListener("keydown", onKey);
     const un = listen<IndexStatus>("oniris://index", (e) => setIndexed(e.payload.state === "indexing" ? e.payload.done : null));
     return () => { window.removeEventListener("keydown", onKey); un.then((f) => f()); };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   usePaletteFocus((t) => { input.current?.focus(); edit(t); });
 
@@ -291,8 +295,10 @@ export function CommandPalette() {
 
   return (
     <div className="palette">
-      {/* Toujours monté : les zones d'annonce (status, alert) doivent exister avant que leur contenu change. */}
-      <div className={visible ? "pal-pop show" : "pal-pop"}>
+      {/* Zones d'annonce toujours montées (elles doivent exister avant que leur contenu change) ; la fenêtre, elle, n'existe qu'avec du contenu. */}
+      <div className="sr-only"><span role="alert">{error}</span><span role="status">{error ? null : msg}</span></div>
+      {visible && (
+        <div className="pal-pop">
           {hits.length > 0 && (
             <ul className="pal-list" id="pal-list" role="listbox" aria-label="Résultats">
               {hits.map((h, i) => {
@@ -316,13 +322,14 @@ export function CommandPalette() {
               })}
             </ul>
           )}
-          <div className="pal-foot">
-            <span role="alert">{error}</span>
-            <span role="status">{error ? null : msg}</span>
+          <div className="pal-foot" aria-hidden>
+            <span className="pal-err">{error}</span>
+            <span>{error ? null : msg}</span>
             {note == null && showHint && <span className="pal-idx">indexation…{indexed != null && ` ${indexed.toLocaleString("fr-FR")} fichiers`}</span>}
             {note == null && !showHint && hits[sel]?.item.kind === "project" && <span className="pal-tip">Ctrl+↵ reprendre avec Claude</span>}
           </div>
-      </div>
+        </div>
+      )}
       <CommandBar inputRef={input} value={text} onClaude={() => askIris(text, true)} role="combobox" aria-expanded={hits.length > 0} aria-controls={hits.length ? "pal-list" : undefined}
         aria-autocomplete="list" aria-activedescendant={hits.length ? `pal-opt-${sel}` : undefined}
         onChange={(e) => edit(e.target.value)} onKeyDown={onKeyDown}

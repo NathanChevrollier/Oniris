@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { X } from "lucide-react";
 import { useSettings, type HotkeySetting, type Settings } from "../../lib/settings";
 import { useSave } from "../../lib/useSave";
@@ -14,10 +14,10 @@ function Section<K extends keyof Settings>({ title, keys, children }: {
   title: string; keys: K[]; children: (d: Pick<Settings, K>, set: (p: Partial<Pick<Settings, K>>) => void) => ReactNode;
 }) {
   const s = useSettings();
-  const src = Object.fromEntries(keys.map((k) => [k, s[k]])) as Pick<Settings, K>;
-  const key = JSON.stringify(src);
+  const key = JSON.stringify(Object.fromEntries(keys.map((k) => [k, s[k]])));
+  const src = useMemo<Pick<Settings, K>>(() => JSON.parse(key), [key]); // stable tant que ses champs ne changent pas
   const [d, setD] = useState(src);
-  useEffect(() => setD(src), [key]); // eslint-disable-line react-hooks/exhaustive-deps -- `key` résume `src`
+  useEffect(() => setD(src), [src]);
   const [save, note] = useSave();
   return (
     <>

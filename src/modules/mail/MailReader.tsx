@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Archive, ArrowLeft, ExternalLink, ImageIcon, Paperclip, Reply, Sparkles, Trash2 } from "lucide-react";
 import type { ToolOutcome } from "../../lib/ipc";
 import { useToolAction } from "../../lib/toolAction";
@@ -54,12 +54,10 @@ export function MailReader({ mail, draft, onDraft, onClose, autoDraft = false, o
       setDrafting(false);
     }
   };
-  useEffect(() => {
-    if (!autoDraft) return;
-    onAutoDraft?.();
-    void iris(mailIpc.draftReply(mail.account_id, mail.id));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoDraft]);
+  // Le brouillon part sur le front montant de `autoDraft` seulement : le rendu courant est lu par la ref.
+  const autoRun = useRef(() => {});
+  useEffect(() => { autoRun.current = () => { onAutoDraft?.(); void iris(mailIpc.draftReply(mail.account_id, mail.id)); }; });
+  useEffect(() => { if (autoDraft) autoRun.current(); }, [autoDraft]);
   const gone = async (call: Promise<ToolOutcome>) => { if (await run(call)) onClose(); };
 
   return (

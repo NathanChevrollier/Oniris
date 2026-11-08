@@ -2,13 +2,25 @@ import { render, screen, cleanup, act, fireEvent } from "@testing-library/react"
 import { it, expect, vi, afterEach, beforeEach } from "vitest";
 import { Pill } from "./Pill";
 import { ipc, type PanelState } from "../lib/ipc";
+import type { VoiceEvent } from "../modules/voice/api";
 import { timersIpc } from "../modules/timers/api";
 
 let panelState: (p: PanelState) => void = () => {};
 vi.mock("../lib/ipc", async (orig) => ({
   ...(await orig<typeof import("../lib/ipc")>()),
   onPanelState: (cb: (p: PanelState) => void) => { panelState = cb; return Promise.resolve(() => {}); },
+  listen: (name: string, cb: (e: { payload: unknown }) => void) => {
+    if (name === "oniris://voice") voiceCb = (payload) => cb({ payload });
+    return Promise.resolve(() => {});
+  },
 }));
+
+let voiceCb: (e: VoiceEvent) => void = () => {};
+const settingsReads = vi.fn();
+vi.mock("../lib/settings", async (orig) => {
+  const m = await orig<typeof import("../lib/settings")>();
+  return { ...m, useSettings: () => { settingsReads(); return m.useSettings(); } };
+});
 
 let roCb: ResizeObserverCallback = () => {};
 const fire = (w: number) =>
@@ -91,4 +103,13 @@ it("emplacements cachés de la musique (plan 3) et des mails (plan 4)", () => {
   const { container } = render(<Pill />);
   expect(container.querySelector(".slot-music")).not.toBeVisible();
   expect(container.querySelector(".slot-mails")).not.toBeVisible();
+});
+
+it("le niveau du micro ne redessine que l'orbe, pas la pilule", () => {
+  render(<Pill />);
+  const orb = () => document.querySelector(".orb") as HTMLElement;
+  const before = settingsReads.mock.calls.length;
+  for (const level of [0.2, 0.5, 0.9]) act(() => voiceCb({ phase: "listening", level }));
+  expect(orb().style.getPropertyValue("--level")).toBe("0.9");
+  expect(settingsReads.mock.calls.length).toBe(before);
 });

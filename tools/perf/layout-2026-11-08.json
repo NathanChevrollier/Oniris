@@ -1,0 +1,1332 @@
+{
+  "date": "2026-11-08",
+  "url": "http://localhost:5199/panel.html",
+  "sizes": [
+    {
+      "name": "2560x1440",
+      "width": 2560,
+      "height": 1440,
+      "deviceScaleFactor": 1,
+      "required": true,
+      "ok": true,
+      "states": {
+        "repos": {
+          "viewport": {
+            "w": 2560,
+            "h": 1440,
+            "dpr": 1
+          },
+          "grid": {
+            "client": 974,
+            "scroll": 974,
+            "more": false
+          },
+          "inner": {
+            "client": 1350,
+            "scroll": 1350
+          },
+          "cards": [
+            {
+              "title": "En lectureSpotify",
+              "h": 453,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Mails2 boîtes",
+              "h": 453,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Novembre",
+              "h": 453,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "ProjetsTous les projets (3)",
+              "h": 269,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Ce PC",
+              "h": 269,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "VPS et favoris",
+              "h": 269,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Notes",
+              "h": 228,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Presse-papiers",
+              "h": 228,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "MinuteurArrêter",
+              "h": 228,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            }
+          ]
+        },
+        "conversation": {
+          "viewport": {
+            "w": 2560,
+            "h": 1440,
+            "dpr": 1
+          },
+          "grid": {
+            "client": 974,
+            "scroll": 974,
+            "more": false
+          },
+          "inner": {
+            "client": 1350,
+            "scroll": 1350
+          },
+          "cards": [
+            {
+              "title": "En lectureSpotify",
+              "h": 453,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Mails2 boîtes",
+              "h": 453,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Novembre",
+              "h": 453,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "ProjetsTous les projets (3)",
+              "h": 269,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Ce PC",
+              "h": 269,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "VPS et favoris",
+              "h": 269,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Notes",
+              "h": 228,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Presse-papiers",
+              "h": 228,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "MinuteurArrêter",
+              "h": 228,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            }
+          ]
+        },
+        "feuille-accounts": {
+          "viewport": {
+            "w": 2560,
+            "h": 1440,
+            "dpr": 1
+          },
+          "grid": {
+            "client": 974,
+            "scroll": 974,
+            "more": false
+          },
+          "inner": {
+            "client": 1350,
+            "scroll": 1350
+          },
+          "cards": [
+            {
+              "title": "En lectureSpotify",
+              "h": 453,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Mails2 boîtes",
+              "h": 453,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Novembre",
+              "h": 453,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "ProjetsTous les projets (3)",
+              "h": 269,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Ce PC",
+              "h": 269,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "VPS et favoris",
+              "h": 269,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Notes",
+              "h": 228,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Presse-papiers",
+              "h": 228,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "MinuteurArrêter",
+              "h": 228,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            }
+          ]
+        },
+        "feuille-iris": {
+          "viewport": {
+            "w": 2560,
+            "h": 1440,
+            "dpr": 1
+          },
+          "grid": {
+            "client": 974,
+            "scroll": 974,
+            "more": false
+          },
+          "inner": {
+            "client": 1350,
+            "scroll": 1350
+          },
+          "cards": [
+            {
+              "title": "En lectureSpotify",
+              "h": 453,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Mails2 boîtes",
+              "h": 453,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Novembre",
+              "h": 453,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "ProjetsTous les projets (3)",
+              "h": 269,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Ce PC",
+              "h": 269,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "VPS et favoris",
+              "h": 269,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Notes",
+              "h": 228,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Presse-papiers",
+              "h": 228,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "MinuteurArrêter",
+              "h": 228,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            }
+          ]
+        },
+        "feuille-journal": {
+          "viewport": {
+            "w": 2560,
+            "h": 1440,
+            "dpr": 1
+          },
+          "grid": {
+            "client": 974,
+            "scroll": 974,
+            "more": false
+          },
+          "inner": {
+            "client": 1350,
+            "scroll": 1350
+          },
+          "cards": [
+            {
+              "title": "En lectureSpotify",
+              "h": 453,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Mails2 boîtes",
+              "h": 453,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Novembre",
+              "h": 453,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "ProjetsTous les projets (3)",
+              "h": 269,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Ce PC",
+              "h": 269,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "VPS et favoris",
+              "h": 269,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Notes",
+              "h": 228,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Presse-papiers",
+              "h": 228,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "MinuteurArrêter",
+              "h": 228,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            }
+          ]
+        },
+        "feuille-settings": {
+          "viewport": {
+            "w": 2560,
+            "h": 1440,
+            "dpr": 1
+          },
+          "grid": {
+            "client": 974,
+            "scroll": 984,
+            "more": false
+          },
+          "inner": {
+            "client": 1350,
+            "scroll": 1350
+          },
+          "cards": [
+            {
+              "title": "En lectureSpotify",
+              "h": 453,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Mails2 boîtes",
+              "h": 453,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Novembre",
+              "h": 453,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "ProjetsTous les projets (3)",
+              "h": 269,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Ce PC",
+              "h": 269,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "VPS et favoris",
+              "h": 269,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Notes",
+              "h": 228,
+              "overflowsGrid": true,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Presse-papiers",
+              "h": 228,
+              "overflowsGrid": true,
+              "overflowsSelf": false
+            },
+            {
+              "title": "MinuteurArrêter",
+              "h": 228,
+              "overflowsGrid": true,
+              "overflowsSelf": false
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "1920x1080@1.25",
+      "width": 1920,
+      "height": 1080,
+      "deviceScaleFactor": 1.25,
+      "required": true,
+      "ok": true,
+      "states": {
+        "repos": {
+          "viewport": {
+            "w": 1920,
+            "h": 1080,
+            "dpr": 1.25
+          },
+          "grid": {
+            "client": 971,
+            "scroll": 971,
+            "more": false
+          },
+          "inner": {
+            "client": 1330,
+            "scroll": 1330
+          },
+          "cards": [
+            {
+              "title": "En lectureSpotify",
+              "h": 344,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Mails2 boîtes",
+              "h": 344,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Novembre",
+              "h": 344,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "ProjetsTous les projets (3)",
+              "h": 205,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Ce PC",
+              "h": 205,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "VPS et favoris",
+              "h": 205,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Notes",
+              "h": 174,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Presse-papiers",
+              "h": 174,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "MinuteurArrêter",
+              "h": 174,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            }
+          ]
+        },
+        "conversation": {
+          "viewport": {
+            "w": 1920,
+            "h": 1080,
+            "dpr": 1.25
+          },
+          "grid": {
+            "client": 971,
+            "scroll": 971,
+            "more": false
+          },
+          "inner": {
+            "client": 1330,
+            "scroll": 1330
+          },
+          "cards": [
+            {
+              "title": "En lectureSpotify",
+              "h": 344,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Mails2 boîtes",
+              "h": 344,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Novembre",
+              "h": 344,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "ProjetsTous les projets (3)",
+              "h": 205,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Ce PC",
+              "h": 205,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "VPS et favoris",
+              "h": 205,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Notes",
+              "h": 174,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Presse-papiers",
+              "h": 174,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "MinuteurArrêter",
+              "h": 174,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            }
+          ]
+        },
+        "feuille-accounts": {
+          "viewport": {
+            "w": 1920,
+            "h": 1080,
+            "dpr": 1.25
+          },
+          "grid": {
+            "client": 971,
+            "scroll": 971,
+            "more": false
+          },
+          "inner": {
+            "client": 1330,
+            "scroll": 1330
+          },
+          "cards": [
+            {
+              "title": "En lectureSpotify",
+              "h": 344,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Mails2 boîtes",
+              "h": 344,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Novembre",
+              "h": 344,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "ProjetsTous les projets (3)",
+              "h": 205,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Ce PC",
+              "h": 205,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "VPS et favoris",
+              "h": 205,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Notes",
+              "h": 174,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Presse-papiers",
+              "h": 174,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "MinuteurArrêter",
+              "h": 174,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            }
+          ]
+        },
+        "feuille-iris": {
+          "viewport": {
+            "w": 1920,
+            "h": 1080,
+            "dpr": 1.25
+          },
+          "grid": {
+            "client": 971,
+            "scroll": 971,
+            "more": false
+          },
+          "inner": {
+            "client": 1330,
+            "scroll": 1330
+          },
+          "cards": [
+            {
+              "title": "En lectureSpotify",
+              "h": 344,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Mails2 boîtes",
+              "h": 344,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Novembre",
+              "h": 344,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "ProjetsTous les projets (3)",
+              "h": 205,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Ce PC",
+              "h": 205,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "VPS et favoris",
+              "h": 205,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Notes",
+              "h": 174,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Presse-papiers",
+              "h": 174,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "MinuteurArrêter",
+              "h": 174,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            }
+          ]
+        },
+        "feuille-journal": {
+          "viewport": {
+            "w": 1920,
+            "h": 1080,
+            "dpr": 1.25
+          },
+          "grid": {
+            "client": 971,
+            "scroll": 981,
+            "more": true
+          },
+          "inner": {
+            "client": 1330,
+            "scroll": 1330
+          },
+          "cards": [
+            {
+              "title": "En lectureSpotify",
+              "h": 344,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Mails2 boîtes",
+              "h": 344,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Novembre",
+              "h": 344,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "ProjetsTous les projets (3)",
+              "h": 205,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Ce PC",
+              "h": 205,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "VPS et favoris",
+              "h": 205,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Notes",
+              "h": 174,
+              "overflowsGrid": true,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Presse-papiers",
+              "h": 174,
+              "overflowsGrid": true,
+              "overflowsSelf": false
+            },
+            {
+              "title": "MinuteurArrêter",
+              "h": 174,
+              "overflowsGrid": true,
+              "overflowsSelf": false
+            }
+          ]
+        },
+        "feuille-settings": {
+          "viewport": {
+            "w": 1920,
+            "h": 1080,
+            "dpr": 1.25
+          },
+          "grid": {
+            "client": 971,
+            "scroll": 981,
+            "more": false
+          },
+          "inner": {
+            "client": 1330,
+            "scroll": 1330
+          },
+          "cards": [
+            {
+              "title": "En lectureSpotify",
+              "h": 344,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Mails2 boîtes",
+              "h": 344,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Novembre",
+              "h": 344,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "ProjetsTous les projets (3)",
+              "h": 205,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Ce PC",
+              "h": 205,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "VPS et favoris",
+              "h": 205,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Notes",
+              "h": 174,
+              "overflowsGrid": true,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Presse-papiers",
+              "h": 174,
+              "overflowsGrid": true,
+              "overflowsSelf": false
+            },
+            {
+              "title": "MinuteurArrêter",
+              "h": 174,
+              "overflowsGrid": true,
+              "overflowsSelf": false
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "1536x864@1.25",
+      "width": 1536,
+      "height": 864,
+      "deviceScaleFactor": 1.25,
+      "required": false,
+      "ok": false,
+      "states": {
+        "repos": {
+          "viewport": {
+            "w": 1536,
+            "h": 864,
+            "dpr": 1.25
+          },
+          "grid": {
+            "client": 741,
+            "scroll": 971,
+            "more": true
+          },
+          "inner": {
+            "client": 1100,
+            "scroll": 1100
+          },
+          "cards": [
+            {
+              "title": "En lectureSpotify",
+              "h": 344,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Mails2 boîtes",
+              "h": 344,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Novembre",
+              "h": 344,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "ProjetsTous les projets (3)",
+              "h": 205,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Ce PC",
+              "h": 205,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "VPS et favoris",
+              "h": 205,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Notes",
+              "h": 174,
+              "overflowsGrid": true,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Presse-papiers",
+              "h": 174,
+              "overflowsGrid": true,
+              "overflowsSelf": false
+            },
+            {
+              "title": "MinuteurArrêter",
+              "h": 174,
+              "overflowsGrid": true,
+              "overflowsSelf": false
+            }
+          ]
+        },
+        "conversation": {
+          "viewport": {
+            "w": 1536,
+            "h": 864,
+            "dpr": 1.25
+          },
+          "grid": {
+            "client": 741,
+            "scroll": 971,
+            "more": true
+          },
+          "inner": {
+            "client": 1100,
+            "scroll": 1100
+          },
+          "cards": [
+            {
+              "title": "En lectureSpotify",
+              "h": 344,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Mails2 boîtes",
+              "h": 344,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Novembre",
+              "h": 344,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "ProjetsTous les projets (3)",
+              "h": 205,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Ce PC",
+              "h": 205,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "VPS et favoris",
+              "h": 205,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Notes",
+              "h": 174,
+              "overflowsGrid": true,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Presse-papiers",
+              "h": 174,
+              "overflowsGrid": true,
+              "overflowsSelf": false
+            },
+            {
+              "title": "MinuteurArrêter",
+              "h": 174,
+              "overflowsGrid": true,
+              "overflowsSelf": false
+            }
+          ]
+        },
+        "feuille-accounts": {
+          "viewport": {
+            "w": 1536,
+            "h": 864,
+            "dpr": 1.25
+          },
+          "grid": {
+            "client": 741,
+            "scroll": 971,
+            "more": true
+          },
+          "inner": {
+            "client": 1100,
+            "scroll": 1100
+          },
+          "cards": [
+            {
+              "title": "En lectureSpotify",
+              "h": 344,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Mails2 boîtes",
+              "h": 344,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Novembre",
+              "h": 344,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "ProjetsTous les projets (3)",
+              "h": 205,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Ce PC",
+              "h": 205,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "VPS et favoris",
+              "h": 205,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Notes",
+              "h": 174,
+              "overflowsGrid": true,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Presse-papiers",
+              "h": 174,
+              "overflowsGrid": true,
+              "overflowsSelf": false
+            },
+            {
+              "title": "MinuteurArrêter",
+              "h": 174,
+              "overflowsGrid": true,
+              "overflowsSelf": false
+            }
+          ]
+        },
+        "feuille-iris": {
+          "viewport": {
+            "w": 1536,
+            "h": 864,
+            "dpr": 1.25
+          },
+          "grid": {
+            "client": 741,
+            "scroll": 971,
+            "more": true
+          },
+          "inner": {
+            "client": 1100,
+            "scroll": 1100
+          },
+          "cards": [
+            {
+              "title": "En lectureSpotify",
+              "h": 344,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Mails2 boîtes",
+              "h": 344,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Novembre",
+              "h": 344,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "ProjetsTous les projets (3)",
+              "h": 205,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Ce PC",
+              "h": 205,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "VPS et favoris",
+              "h": 205,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Notes",
+              "h": 174,
+              "overflowsGrid": true,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Presse-papiers",
+              "h": 174,
+              "overflowsGrid": true,
+              "overflowsSelf": false
+            },
+            {
+              "title": "MinuteurArrêter",
+              "h": 174,
+              "overflowsGrid": true,
+              "overflowsSelf": false
+            }
+          ]
+        },
+        "feuille-journal": {
+          "viewport": {
+            "w": 1536,
+            "h": 864,
+            "dpr": 1.25
+          },
+          "grid": {
+            "client": 741,
+            "scroll": 981,
+            "more": true
+          },
+          "inner": {
+            "client": 1100,
+            "scroll": 1100
+          },
+          "cards": [
+            {
+              "title": "En lectureSpotify",
+              "h": 344,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Mails2 boîtes",
+              "h": 344,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Novembre",
+              "h": 344,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "ProjetsTous les projets (3)",
+              "h": 205,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Ce PC",
+              "h": 205,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "VPS et favoris",
+              "h": 205,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Notes",
+              "h": 174,
+              "overflowsGrid": true,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Presse-papiers",
+              "h": 174,
+              "overflowsGrid": true,
+              "overflowsSelf": false
+            },
+            {
+              "title": "MinuteurArrêter",
+              "h": 174,
+              "overflowsGrid": true,
+              "overflowsSelf": false
+            }
+          ]
+        },
+        "feuille-settings": {
+          "viewport": {
+            "w": 1536,
+            "h": 864,
+            "dpr": 1.25
+          },
+          "grid": {
+            "client": 741,
+            "scroll": 981,
+            "more": false
+          },
+          "inner": {
+            "client": 1100,
+            "scroll": 1100
+          },
+          "cards": [
+            {
+              "title": "En lectureSpotify",
+              "h": 344,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Mails2 boîtes",
+              "h": 344,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Novembre",
+              "h": 344,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "ProjetsTous les projets (3)",
+              "h": 205,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Ce PC",
+              "h": 205,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "VPS et favoris",
+              "h": 205,
+              "overflowsGrid": false,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Notes",
+              "h": 174,
+              "overflowsGrid": true,
+              "overflowsSelf": false
+            },
+            {
+              "title": "Presse-papiers",
+              "h": 174,
+              "overflowsGrid": true,
+              "overflowsSelf": false
+            },
+            {
+              "title": "MinuteurArrêter",
+              "h": 174,
+              "overflowsGrid": true,
+              "overflowsSelf": false
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

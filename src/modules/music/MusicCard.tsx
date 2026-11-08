@@ -124,9 +124,10 @@ export function MusicCard({ onAccounts, onColors }: { onAccounts?: () => void; o
     [now.data, seeked],
   );
 
-  const colors = useMemo(() => safeColors(now.data?.colors), [now.data]);
-  const colorKey = colors.join();
-  useEffect(() => { onColors?.(colors); }, [colorKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Tableau stable tant que les couleurs ne changent pas (la clé les résume).
+  const colorKey = JSON.stringify(safeColors(now.data?.colors));
+  const colors = useMemo<string[]>(() => JSON.parse(colorKey), [colorKey]);
+  useEffect(() => { onColors?.(colors); }, [colors, onColors]);
 
   // Playlists (cache seul côté Rust) : rechargées à l'ouverture, au changement de piste, ou tant qu'elles ne sont pas là.
   // Appareils (appel Spotify) : seulement connecté, au changement de piste, à l'ouverture et au focus du sélecteur.
@@ -272,15 +273,15 @@ export function MusicCard({ onAccounts, onColors }: { onAccounts?: () => void; o
 export function Ambient({ colors }: { colors: string[] }) {
   const [layers, setLayers] = useState<{ id: number; colors: string[]; out: boolean }[]>([]);
   const seq = useRef(0);
-  const safe = safeColors(colors);
-  const key = safe.join();
+  const key = JSON.stringify(safeColors(colors));
+  const safe = useMemo<string[]>(() => JSON.parse(key), [key]);
   useEffect(() => {
     const id = ++seq.current;
     if (id === 1 && safe.length < 3) return; // rien à fondre au premier rendu : aucune minuterie
     setLayers((ls) => [...ls.map((l) => ({ ...l, out: true })), ...(safe.length >= 3 ? [{ id, colors: safe, out: false }] : [])]);
     const t = setTimeout(() => setLayers((ls) => ls.filter((l) => !l.out)), 1300);
     return () => clearTimeout(t);
-  }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [safe]);
   return (
     <>
       <div className="ambient"><i /><i /><i /></div>

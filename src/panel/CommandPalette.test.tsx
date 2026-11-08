@@ -75,7 +75,8 @@ it("projet : Entrée ouvre le dossier, Ctrl+Entrée reprend avec Claude", async 
   await userEvent.keyboard("{Control>}{Enter}{/Control}");
   expect(resume).toHaveBeenCalledWith("C:\\p\\Oniris", "normal");
   expect(open).not.toHaveBeenCalled();
-  expect(await screen.findByText("Lance Claude manuellement : claude --continue")).toBeInTheDocument();
+  await act(async () => {});
+  expect(screen.getByRole("status")).toHaveTextContent("Lance Claude manuellement : claude --continue");
   await userEvent.keyboard("{Enter}");
   expect(open).toHaveBeenCalledWith("project", "C:\\p\\Oniris");
 });
@@ -275,6 +276,17 @@ it("une Entrée en attente est oubliée si l'utilisateur retape avant la répons
   await act(async () => pending[1]({ req: reqs[1], hits: HITS, indexing: false }));
   expect(open).not.toHaveBeenCalled();
   expect(screen.getAllByRole("option")).toHaveLength(3);
+});
+
+it("la fenêtre de résultats n'est montée que s'il y a quelque chose à montrer", async () => {
+  answer([hit("note", "2", "Réunion", "x")]);
+  const { container } = render(<CommandPalette />);
+  expect(container.querySelector(".pal-pop")).toBeNull();
+  await userEvent.type(bar(), "reu", { skipClick: true });
+  await screen.findByRole("option");
+  expect(container.querySelector(".pal-pop")).not.toBeNull();
+  await userEvent.keyboard("{Escape}");
+  expect(container.querySelector(".pal-pop")).toBeNull();
 });
 
 it("zones d'annonce (status, alert) toujours montées : seul leur contenu change", async () => {

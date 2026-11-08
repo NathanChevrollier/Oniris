@@ -184,6 +184,8 @@ mod tests {
         assert_eq!(f.writes.borrow().len(), 1);
         sync_with(&f, &ob(true, Some(false)), false).unwrap();
         assert_eq!(*f.writes.borrow(), ["enable", "disable"]);
+        sync_with(&f, &ob(true, Some(false)), true).unwrap(); // « Non » à l'accueil, puis coché dans Paramètres
+        assert_eq!(*f.writes.borrow(), ["enable", "disable", "enable"]);
     }
     #[test]
     fn le_menu_suit_les_reglages_enregistres() {

@@ -54,7 +54,7 @@ export function Welcome({ covered, onActive, onGo }: { covered?: boolean; onActi
           </form>
         </>}
         {step === 2 && <>
-          <p>Lancer Oniris avec Windows ? Rien n'est inscrit dans Windows sans ta réponse ; tu pourras changer d'avis dans les paramètres.</p>
+          <p>Lancer Oniris avec Windows ? Rien de nouveau n'est inscrit dans Windows sans ta réponse ; tu pourras changer d'avis dans les paramètres.</p>
           <div className="wl-actions">
             <button type="button" className="acc-btn primary" onClick={() => void go({ autostart_consent: true, step: 3 })}>Oui</button>
             <button type="button" className="acc-btn" onClick={() => void go({ autostart_consent: false, step: 3 })}>Non</button>

@@ -96,3 +96,15 @@ it("les liens ouvrent les feuilles IRIS et Comptes", async () => {
   await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Ouvrir IRIS" }));
   expect(go).toHaveBeenCalledWith("iris");
 });
+
+it("une valeur hors bornes part quand même à Rust, qui seul formule le refus", async () => {
+  vi.spyOn(ipc, "getSettings").mockResolvedValue(DEFAULT_SETTINGS);
+  const save = vi.spyOn(ipc, "saveSettings").mockRejectedValue("la relève doit être de 2 à 5 minutes");
+  setup();
+  const poll = screen.getByLabelText("Relève (minutes)");
+  await userEvent.clear(poll);
+  await userEvent.type(poll, "9");
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer · Mails" }));
+  await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ mail_poll_minutes: 9 })));
+  expect((await screen.findByRole("alert")).textContent).toBe("la relève doit être de 2 à 5 minutes");
+});

@@ -19,7 +19,8 @@ const only = opt("--only", null); // une seule taille, par son nom
 const CDP_PORT = 9444;
 const SIZES = [
   { name: "2560x1440", width: 2560, height: 1440, deviceScaleFactor: 1, required: true },
-  { name: "1920x1080@1.25", width: 1920, height: 1080, deviceScaleFactor: 1.25, required: true },
+  // 1920×1080 : informatif aussi (décision P7-R1), seule la 2560×1440 conditionne le code de sortie.
+  { name: "1920x1080@1.25", width: 1920, height: 1080, deviceScaleFactor: 1.25, required: false },
   // 1080p physique à 125 % de mise à l'échelle Windows : informatif (864 px CSS de haut).
   { name: "1536x864@1.25", width: 1536, height: 864, deviceScaleFactor: 1.25, required: false },
 ];

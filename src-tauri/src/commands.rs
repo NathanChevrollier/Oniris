@@ -65,6 +65,9 @@ pub fn apply_settings(app: &AppHandle, mut settings: Settings) -> Result<(), Str
     if old.weather_city != settings.weather_city {
         crate::modules::weather::city_changed(app, &settings.weather_city);
     }
+    if old.projects_roots != settings.projects_roots {
+        crate::modules::projects::refresh(app); // carte Projets remplie dès la fin de l'accueil ou des Paramètres
+    }
     app.emit("oniris://settings", settings).map_err(|e| e.to_string())
 }
 

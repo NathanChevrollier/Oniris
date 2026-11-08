@@ -1,5 +1,6 @@
 use super::index::Entry;
 use super::{FileIndex, Item, ItemKind, UsageMap};
+use nucleo_matcher::chars::{normalize, to_lower_case};
 use nucleo_matcher::pattern::{CaseMatching, Normalization, Pattern};
 use nucleo_matcher::{Config, Matcher, Utf32Str};
 use std::cmp::Reverse;
@@ -14,6 +15,8 @@ const HALF_LIFE_MS: f64 = 7.0 * 86_400_000.0;
 const NAME_WEIGHT: u32 = 2;
 /// Bonus quand le nom commence par la requête (insensible à la casse).
 const PREFIX_BONUS: u32 = 100;
+/// Score d'une note trouvée par son corps seul (tous les mots présents) : sous un titre bien noté.
+const NOTE_BODY_SCORE: u32 = 50;
 /// Sous ce nombre d'entrées par fil, le parallélisme ne rapporte rien.
 const MIN_CHUNK: usize = 20_000;
 const SEPS: [char; 2] = ['/', '\\'];
@@ -32,6 +35,11 @@ pub fn frecency(score: f64, last_ms: i64, now: i64) -> f64 {
 
 fn bonus_of(score: f64, last_ms: i64, now: i64) -> f32 {
     (FRECENCY_WEIGHT * frecency(score, last_ms, now).ln_1p()) as f32
+}
+
+/// Minuscules sans accents (même repli que la normalisation de nucleo).
+fn fold(s: &str) -> String {
+    s.chars().map(|c| to_lower_case(normalize(c))).collect()
 }
 
 fn file_item(e: &Entry) -> Item {
@@ -141,9 +149,21 @@ pub fn query_at(index: &FileIndex, sources: &[&[Item]], usage: &UsageMap, q: &st
         }
     });
     let base = index.entries.len();
+    // Mots cherchés tels quels dans le texte des notes (syntaxe ^ ' $ de nucleo retirée).
+    let note_words: Vec<String> = pos_words
+        .iter()
+        .map(|w| fold(w.trim_start_matches(['^', '\'']).trim_end_matches('$')))
+        .filter(|w| !w.is_empty())
+        .collect();
     for (j, it) in extra.iter().enumerate() {
         let t = pattern.score(Utf32Str::new(&it.title, &mut buf), &mut matcher);
-        let s = pattern.score(Utf32Str::new(&it.subtitle, &mut buf), &mut matcher);
+        let s = if it.kind == ItemKind::Note {
+            // Sur un long texte, la sous-séquence floue trouve presque tout : chaque mot doit y figurer.
+            let text = fold(&format!("{} {}", it.title, it.subtitle));
+            (!note_words.is_empty() && note_words.iter().all(|w| text.contains(w.as_str()))).then_some(NOTE_BODY_SCORE)
+        } else {
+            pattern.score(Utf32Str::new(&it.subtitle, &mut buf), &mut matcher)
+        };
         if t.is_none() && s.is_none() {
             continue;
         }
@@ -323,6 +343,24 @@ mod tests {
         assert_eq!(query_at(&e, &[&extra], &u, "zen", 5, NOW).len(), 1);
         assert_eq!(query_at(&e, &[&extra], &u, "vps", 5, NOW).len(), 1);
         assert!(query_at(&e, &[&extra], &u, "xyz", 5, NOW).is_empty());
+    }
+
+    #[test]
+    fn note_longue_trouvee_par_mot_entier_pas_par_sous_sequence() {
+        let corps = "Liste du marché\nAcheter des tomates, du pain complet et du fromage pour le dîner de samedi. \
+            Penser à appeler la boulangerie avant midi, vérifier le prix des légumes et prendre des œufs frais. \
+            Ne pas oublier les pommes, le beurre, la farine et un bouquet de fleurs pour la table du salon.";
+        let (first, rest) = corps.split_once('\n').unwrap();
+        let extra = vec![Item { kind: ItemKind::Note, key: "1".into(), title: first.into(), subtitle: rest.into() }];
+        let (e, u) = (FileIndex::new(), UsageMap::new());
+        let go = |q: &str| query_at(&e, &[&extra], &u, q, 5, NOW).len();
+        assert_eq!(go("rdv"), 0);
+        assert_eq!(go("rapport"), 0);
+        assert_eq!(go("boulangerie"), 1, "mot du corps");
+        assert_eq!(go("BOULANGERIE dîner"), 1, "plusieurs mots, casse ignorée");
+        assert_eq!(go("diner legumes"), 1, "accents ignorés");
+        assert_eq!(go("marche"), 1, "mot du titre");
+        assert_eq!(go("boulangerie rdv"), 0, "un mot absent suffit à écarter");
     }
 
     /// Lancer : `cargo test -p oniris-core --release search_perf -- --ignored --nocapture`

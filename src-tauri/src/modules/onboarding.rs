@@ -21,11 +21,12 @@ pub fn load(c: &rusqlite::Connection) -> Onboarding {
 }
 
 /// État souhaité de l'entrée Run : `None` = n'y toucher en aucun cas (accueil en cours ou sans choix).
+/// Une fois l'accueil terminé avec un choix, le réglage fait foi (« Non » puis coché dans Paramètres → écrit).
 pub fn autostart_target(ob: &Onboarding, setting: bool) -> Option<bool> {
     if !ob.done {
         return None;
     }
-    ob.autostart_consent.map(|consent| consent && setting)
+    ob.autostart_consent.map(|_| setting)
 }
 
 /// État de reprise et dossier de projets proposé (s'il existe).
@@ -77,8 +78,9 @@ mod tests {
     #[test]
     fn oui_ecrit_non_retire() {
         assert_eq!(autostart_target(&ob(true, Some(true)), true), Some(true));
-        assert_eq!(autostart_target(&ob(true, Some(false)), true), Some(false));
+        assert_eq!(autostart_target(&ob(true, Some(false)), false), Some(false));
         assert_eq!(autostart_target(&ob(true, Some(true)), false), Some(false)); // réglage décoché plus tard
+        assert_eq!(autostart_target(&ob(true, Some(false)), true), Some(true)); // « Non » puis coché plus tard
     }
     #[test]
     fn etat_absent_ou_abime_vaut_defaut() {

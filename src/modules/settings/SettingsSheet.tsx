@@ -9,7 +9,8 @@ import "../iris/iris.css";
 import "../voice/voice.css";
 import "./settings.css";
 
-/** Brouillon d'une section : réinitialisé seulement quand l'un de SES champs change côté réglages. */
+/** Brouillon d'une section : réinitialisé seulement quand l'un de SES champs change côté réglages.
+ *  `noValidate` : Rust est la seule source des messages de refus (pas de bulle du navigateur). */
 function Section<K extends keyof Settings>({ title, keys, children }: {
   title: string; keys: K[]; children: (d: Pick<Settings, K>, set: (p: Partial<Pick<Settings, K>>) => void) => ReactNode;
 }) {
@@ -22,7 +23,7 @@ function Section<K extends keyof Settings>({ title, keys, children }: {
   return (
     <>
       <h3>{title}</h3>
-      <form className="iris-grid" onSubmit={(e) => { e.preventDefault(); void save(d); }}>
+      <form className="iris-grid" noValidate onSubmit={(e) => { e.preventDefault(); void save(d); }}>
         {children(d, (p) => setD({ ...d, ...p }))}
         <button type="submit" className="acc-btn primary">Enregistrer · {title}</button>
       </form>

@@ -155,13 +155,15 @@ pub fn run() {
             let mut st = match state::AppState::open(app.handle()) {
                 Ok(st) => st,
                 Err(e) => {
-                    tracing::error!("démarrage impossible : {e}");
+                    // Catégorie seulement : le texte brut peut contenir le chemin de la base (nom d'utilisateur).
+                    let kind = startup_error_kind(e.as_ref());
+                    tracing::error!("démarrage impossible : {kind}");
                     show_startup_error(&format!(
-                        "Oniris n'a pas pu démarrer : {}. Le journal est dans {}.",
-                        startup_error_kind(e.as_ref()),
+                        "Oniris n'a pas pu démarrer : {kind}. Le journal est dans {}.",
                         logging::log_dir().display()
                     ));
-                    return Err(e);
+                    drop(guard); // vide le journal : `exit` ne lance pas les destructeurs
+                    std::process::exit(1);
                 }
             };
             st._log_guard = guard;
@@ -223,9 +225,9 @@ pub fn run() {
 /// Boîte native synchrone : sûre sur le fil principal avant la boucle d'événements (le plugin dialog y bloquerait).
 fn show_startup_error(text: &str) {
     use ::windows::core::{w, PCWSTR};
-    use ::windows::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONERROR, MB_OK};
+    use ::windows::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONERROR, MB_OK, MB_SETFOREGROUND, MB_TOPMOST};
     let wide: Vec<u16> = text.encode_utf16().chain(Some(0)).collect();
-    unsafe { MessageBoxW(None, PCWSTR(wide.as_ptr()), w!("Oniris"), MB_OK | MB_ICONERROR) };
+    unsafe { MessageBoxW(None, PCWSTR(wide.as_ptr()), w!("Oniris"), MB_OK | MB_ICONERROR | MB_SETFOREGROUND | MB_TOPMOST) };
 }
 
 /// Catégorie fixe affichée à l'utilisateur ; jamais le texte brut de l'erreur (chemins, SQL).

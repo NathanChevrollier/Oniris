@@ -66,11 +66,14 @@ fn wants(scope: Option<ItemKind>, k: ItemKind) -> bool {
 /// Reconstruit le cache des notes (appelé sur `Topic::Notes`, jamais en tenant le verrou de la base).
 pub fn refresh_notes(app: &AppHandle) {
     if let Some(st) = app.try_state::<AppState>() {
-        *st.notes.write() = Arc::new(note_items(&st.db));
+        // Verrou du cache pris avant la lecture : un instantané plus ancien ne peut pas écraser un plus récent.
+        let mut cache = st.notes.write();
+        *cache = Arc::new(note_items(&st.db));
     }
 }
 
-/// Première ligne en titre, le reste (une ligne) en sous-titre, tous deux entiers : le classement flou voit tout le texte.
+/// Première ligne en titre, le reste (une ligne) en sous-titre, tous deux entiers : le titre est classé en flou,
+/// le texte entier par mots présents (voir `oniris_core::search`).
 /// L'affichage est raccourci à `CLIP` caractères dans `run`, pas ici.
 pub fn note_items(db: &Db) -> Vec<Item> {
     let found = notes::recent(&db.lock(), NOTES_CACHED);

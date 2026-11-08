@@ -68,9 +68,17 @@ pub struct Pipeline {
     speaker: Arc<dyn Speaker>,
     turns: Arc<dyn Turns>,
     conf: Arc<dyn Fn() -> Conf + Send + Sync>,
+    /// Appelée sous le verrou d'état pour les phases : ne doit jamais rappeler le pipeline.
     ui: Arc<dyn Fn(Ui) + Send + Sync>,
+    /// Vrai pendant Speaking (lu par le crochet clavier pour Échap).
+    speaking: &'static AtomicBool,
+    /// Micro fermé d'office au-delà (PttEnd perdu) : jamais d'écoute sans touche tenue.
+    max_hold: Duration,
     state: Mutex<State>,
 }
+
+/// Maintien maximal de la touche.
+const MAX_HOLD: Duration = Duration::from_secs(30);
 
 fn ms(d: Duration) -> u64 { d.as_millis() as u64 }
 
@@ -84,19 +92,37 @@ fn toast_text(shown: &[Segment]) -> String {
     format!("{}…", text.chars().take(TOAST_MAX - 1).collect::<String>())
 }
 
+pub enum Input { Start, End, Escape }
+
 impl Pipeline {
     fn current(&self, press: u64) -> bool { self.state.lock().press == press }
 
+    /// Phase émise seulement si `press` est toujours l'appui courant (vérifié et émis sous le même verrou).
     fn phase(&self, press: u64, p: VoicePhase) {
-        if self.current(press) {
+        let s = self.state.lock();
+        if s.press == press {
+            self.speaking.store(p == VoicePhase::Speaking, Ordering::SeqCst);
             (self.ui)(Ui::Phase(p, None));
         }
     }
 
     fn toast(&self, text: impl Into<String>) { (self.ui)(Ui::Toast(text.into())) }
 
+    /// Une entrée du crochet, dans l'ordre d'arrivée ; la suite d'un appui part en tâche de fond.
+    pub async fn handle(self: &Arc<Self>, i: Input) {
+        match i {
+            Input::Start => self.start().await,
+            Input::End => {
+                if let Some(rec) = self.end().await {
+                    tokio::spawn(self.clone().process(rec));
+                }
+            }
+            Input::Escape => self.speaker.stop(),
+        }
+    }
+
     /// Début d'appui : coupe IRIS si elle parle, puis ouvre le micro et préchauffe Whisper.
-    pub async fn start(&self) {
+    pub async fn start(self: &Arc<Self>) {
         let press = {
             let mut s = self.state.lock();
             s.press += 1;
@@ -105,11 +131,9 @@ impl Pipeline {
         };
         self.speaker.stop(); // barge-in : avant d'ouvrir le micro
         let conf = (self.conf)();
-        if conf.paused {
-            return self.toast("Voix en pause");
-        }
-        if !conf.installed {
-            return self.toast("Voix non installée");
+        if conf.paused || !conf.installed {
+            self.phase(press, VoicePhase::Idle); // une voix coupée ne laisse pas la pilule en Speaking
+            return self.toast(if conf.paused { "Voix en pause" } else { "Voix non installée" });
         }
         self.phase(press, VoicePhase::Listening);
         let (mic, ui) = (self.mic.clone(), self.ui.clone());
@@ -120,6 +144,14 @@ impl Pipeline {
                 self.state.lock().rec = Some(rec);
                 let stt = self.stt.clone();
                 tokio::spawn(async move { stt.warm().await });
+                let p = self.clone();
+                tokio::spawn(async move {
+                    tokio::time::sleep(p.max_hold).await;
+                    if let Some(rec) = p.take(Some(press)).await {
+                        tracing::warn!("voix : maintien trop long, micro fermé");
+                        p.process(rec).await;
+                    }
+                });
             }
             Ok(Err(e)) => {
                 self.phase(press, VoicePhase::Idle);
@@ -132,35 +164,61 @@ impl Pipeline {
         }
     }
 
-    /// Fin d'appui : ferme le micro ; `None` si rien n'était enregistré (pause, micro absent).
+    /// Fin d'appui : ferme le micro ; `None` si rien n'était enregistré (pause, micro absent, délai dépassé).
     pub async fn end(&self) -> Option<Recorded> {
+        self.take(None).await
+    }
+
+    /// Ferme le micro de l'appui courant (de `only` seulement, s'il est donné).
+    async fn take(&self, only: Option<u64>) -> Option<Recorded> {
         let (press, rec) = {
             let mut s = self.state.lock();
+            if only.is_some_and(|p| p != s.press) {
+                return None;
+            }
             (s.press, s.rec.take()?)
         };
         let samples = tokio::task::spawn_blocking(move || rec.stop()).await.ok()?;
         Some((press, samples))
     }
 
+    /// Texte entendu, ou `None` (trop court, rien de net, erreur déjà signalée).
+    async fn hear(&self, press: u64, samples: &[f32], speech: u32) -> Option<String> {
+        if speech < MIN_SPEECH_MS {
+            self.phase(press, VoicePhase::Idle);
+            return None;
+        }
+        self.phase(press, VoicePhase::Transcribing);
+        let raw = self.stt.transcribe(audio::wav_16k_mono(samples)).await;
+        self.phase(press, VoicePhase::Idle);
+        match raw {
+            Ok(raw) => stt::clean(&raw),
+            Err(e) => {
+                self.toast(format!("Je n'ai pas pu t'entendre : {e}."));
+                None
+            }
+        }
+    }
+
     /// Transcription, tour d'IRIS, puis toast et voix (ou panneau).
     pub async fn process(self: Arc<Self>, (press, samples): Recorded) {
         let t0 = Instant::now();
         let speech = audio::speech_ms(&samples, 0.01);
-        if speech < MIN_SPEECH_MS {
-            return self.phase(press, VoicePhase::Idle);
-        }
-        self.phase(press, VoicePhase::Transcribing);
-        let raw = self.stt.transcribe(audio::wav_16k_mono(&samples)).await;
+        let text = self.hear(press, &samples, speech).await;
+        // Whisper a été préchauffé : en plein écran, il s'arrête quelle que soit l'issue.
         self.stt.finish((self.conf)().fullscreen).await;
-        self.phase(press, VoicePhase::Idle);
-        let text = match raw {
-            Ok(raw) => stt::clean(&raw),
-            Err(e) => return self.toast(format!("Je n'ai pas pu t'entendre : {e}.")),
-        };
         let Some(text) = text else { return };
         let t1 = Instant::now();
         tracing::info!(speech_ms = speech, ms = ms(t1 - t0), chars = text.chars().count(), "voix transcrite");
-        let Some(r) = self.turns.run(text).await else { return };
+        if !self.current(press) {
+            return; // un nouvel appui a pris la main
+        }
+        let Some(r) = self.turns.run(text).await else {
+            if self.current(press) {
+                self.toast("Je n'ai pas pu traiter ta demande.");
+            }
+            return;
+        };
         let timing = Timing {
             speech_to_text_ms: ms(t1 - t0),
             text_to_tool_ms: r.first_tool.map(|t| ms(t.saturating_duration_since(t1))),
@@ -168,11 +226,16 @@ impl Pipeline {
         };
         (self.ui)(Ui::Timing(timing));
         if !self.current(press) {
-            return; // un nouvel appui a pris la main
+            return;
+        }
+        if r.pending {
+            return (self.ui)(Ui::OpenPanel);
         }
         let conf = (self.conf)();
-        let short = speakable(&r.shown, &conf.user_name).filter(|s| !r.pending && !s.starts_with(TO_PANEL));
-        let Some(say) = short else { return (self.ui)(Ui::OpenPanel) };
+        let Some(say) = speakable(&r.shown, &conf.user_name) else { return }; // réponse vide : rien à montrer
+        if say.starts_with(TO_PANEL) {
+            return (self.ui)(Ui::OpenPanel);
+        }
         self.toast(toast_text(&r.shown));
         if !conf.tts {
             return;
@@ -189,8 +252,6 @@ impl Pipeline {
 }
 
 // --- Branchement Tauri ---
-
-pub enum Input { Start, End, Escape }
 
 /// Lu par le crochet clavier : Échap n'est observé que pendant que IRIS parle.
 pub static SPEAKING: AtomicBool = AtomicBool::new(false);
@@ -274,7 +335,6 @@ struct Toast { text: String }
 fn emit_ui(app: &AppHandle, u: Ui) {
     match u {
         Ui::Phase(phase, level) => {
-            SPEAKING.store(phase == VoicePhase::Speaking, Ordering::SeqCst);
             let _ = app.emit("oniris://voice", PhaseEvent { phase, level });
         }
         Ui::Toast(text) => {
@@ -321,6 +381,8 @@ pub fn start(app: &AppHandle) {
         turns: Arc::new(VoiceTurns(app.clone())),
         conf: conf.clone(),
         ui: Arc::new(move |u| emit_ui(&h, u)),
+        speaking: &SPEAKING,
+        max_hold: MAX_HOLD,
         state: Mutex::default(),
     });
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
@@ -329,15 +391,7 @@ pub fn start(app: &AppHandle) {
     }
     tauri::async_runtime::spawn(async move {
         while let Some(i) = rx.recv().await {
-            match i {
-                Input::Start => p.start().await,
-                Input::End => {
-                    if let Some(rec) = p.end().await {
-                        tauri::async_runtime::spawn(p.clone().process(rec));
-                    }
-                }
-                Input::Escape => p.speaker.stop(),
-            }
+            p.handle(i).await;
         }
     });
 }
@@ -411,7 +465,7 @@ mod tests {
         }
     }
 
-    struct Fx { p: Arc<Pipeline>, log: Log, ui: Arc<Mutex<Vec<Ui>>>, _dir: Option<tempfile::TempDir> }
+    struct Fx { p: Arc<Pipeline>, log: Log, ui: Arc<Mutex<Vec<Ui>>>, speaking: &'static AtomicBool, _dir: Option<tempfile::TempDir> }
 
     impl Fx {
         fn toasts(&self) -> Vec<String> {
@@ -420,6 +474,21 @@ mod tests {
         fn has(&self, entry: &str) -> bool { self.log.lock().iter().any(|l| l == entry) }
         fn last_phase(&self) -> Option<VoicePhase> {
             self.ui.lock().iter().rev().find_map(|u| match u { Ui::Phase(p, None) => Some(*p), _ => None })
+        }
+        /// Lance un appui dont la voix dure jusqu'à `stop()` ; rend la tâche de sa suite une fois en Speaking.
+        async fn speaking_press(&self) -> tokio::task::JoinHandle<()> {
+            self.p.start().await;
+            let rec = self.p.end().await.unwrap();
+            let task = tokio::spawn(self.p.clone().process(rec));
+            for _ in 0..100 {
+                if self.last_phase() == Some(VoicePhase::Speaking) {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+            assert_eq!(self.last_phase(), Some(VoicePhase::Speaking));
+            assert!(self.speaking.load(Ordering::SeqCst));
+            task
         }
         /// Un appui complet, suite comprise.
         async fn press(&self) {
@@ -430,12 +499,12 @@ mod tests {
         }
     }
 
-    struct Opts { conf: Conf, secs: f32, mic_fails: bool, heard: &'static str, long_speech: bool, turns: Option<Arc<dyn Turns>> }
+    struct Opts { conf: Conf, secs: f32, mic_fails: bool, heard: &'static str, long_speech: bool, turns: Option<Arc<dyn Turns>>, max_hold: Duration }
 
     impl Default for Opts {
         fn default() -> Self {
             let conf = Conf { installed: true, tts: true, volume: 80, user_name: "Nathan".into(), ..Conf::default() };
-            Self { conf, secs: 1.0, mic_fails: false, heard: "Quel temps fait-il ?", long_speech: false, turns: None }
+            Self { conf, secs: 1.0, mic_fails: false, heard: "Quel temps fait-il ?", long_speech: false, turns: None, max_hold: Duration::from_secs(30) }
         }
     }
 
@@ -443,6 +512,7 @@ mod tests {
         let ui: Arc<Mutex<Vec<Ui>>> = Arc::default();
         let u = ui.clone();
         let conf = o.conf;
+        let speaking: &'static AtomicBool = Box::leak(Box::new(AtomicBool::new(false)));
         let turns = o.turns.unwrap_or_else(|| Arc::new(FakeTurns { log: log.clone(), reply: "Il fait beau.", pending: false }));
         let p = Arc::new(Pipeline {
             mic: Arc::new(FakeMic { log: log.clone(), secs: o.secs, fail: o.mic_fails }),
@@ -451,9 +521,11 @@ mod tests {
             turns,
             conf: Arc::new(move || conf.clone()),
             ui: Arc::new(move |x| u.lock().push(x)),
+            speaking,
+            max_hold: o.max_hold,
             state: Mutex::default(),
         });
-        Fx { p, log, ui, _dir: None }
+        Fx { p, log, ui, speaking, _dir: None }
     }
 
     fn simple(o: Opts) -> Fx { fx(o, Log::default()) }
@@ -513,21 +585,78 @@ mod tests {
     #[tokio::test]
     async fn barge_in_coupe_la_voix_avant_d_ouvrir_le_micro() {
         let f = simple(Opts { long_speech: true, ..Opts::default() });
-        f.p.start().await;
-        let rec = f.p.end().await.unwrap();
-        let task = tokio::spawn(f.p.clone().process(rec));
-        for _ in 0..100 {
-            if f.last_phase() == Some(VoicePhase::Speaking) {
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
-        assert_eq!(f.last_phase(), Some(VoicePhase::Speaking));
+        let task = f.speaking_press().await;
         f.p.start().await;
         tokio::time::timeout(Duration::from_secs(2), task).await.expect("la voix coupée termine la suite").unwrap();
         let log = f.log.lock().clone();
         assert_eq!(&log[log.len() - 3..], ["speak", "stop", "mic"]);
         assert_eq!(f.last_phase(), Some(VoicePhase::Listening), "l'ancien appui ne repasse pas en Idle");
+        assert!(!f.speaking.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn appui_en_pause_pendant_la_voix_repasse_en_idle() {
+        let paused = Arc::new(AtomicBool::new(false));
+        let mut f = simple(Opts { long_speech: true, ..Opts::default() });
+        let (c, base) = (paused.clone(), Opts::default().conf);
+        Arc::get_mut(&mut f.p).unwrap().conf = Arc::new(move || Conf { paused: c.load(Ordering::SeqCst), ..base.clone() });
+        let task = f.speaking_press().await;
+        paused.store(true, Ordering::SeqCst);
+        f.p.start().await;
+        tokio::time::timeout(Duration::from_secs(2), task).await.unwrap().unwrap();
+        assert_eq!(f.last_phase(), Some(VoicePhase::Idle));
+        assert!(!f.speaking.load(Ordering::SeqCst));
+        assert_eq!(f.toasts(), ["Il fait beau.", "Voix en pause"]);
+    }
+
+    #[tokio::test]
+    async fn echap_coupe_la_voix() {
+        let f = simple(Opts { long_speech: true, ..Opts::default() });
+        let task = f.speaking_press().await;
+        f.p.handle(Input::Escape).await;
+        tokio::time::timeout(Duration::from_secs(2), task).await.expect("la voix coupée termine la suite").unwrap();
+        assert!(f.has("stop"));
+        assert_eq!(f.last_phase(), Some(VoicePhase::Idle));
+        assert!(!f.speaking.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn sans_fin_d_appui_le_micro_se_ferme_seul() {
+        let f = simple(Opts { max_hold: Duration::from_millis(50), ..Opts::default() });
+        f.p.handle(Input::Start).await;
+        for _ in 0..200 {
+            if f.has("speak") {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert!(f.has("stt") && f.has("speak"), "traité comme relâché : {:?}", f.log.lock());
+        assert!(f.p.end().await.is_none(), "un PttEnd tardif ne trouve plus de micro ouvert");
+    }
+
+    #[tokio::test]
+    async fn plein_ecran_appui_court_arrete_aussi_whisper() {
+        let f = simple(Opts { secs: 0.2, conf: Conf { fullscreen: true, ..Opts::default().conf }, ..Opts::default() });
+        f.press().await;
+        assert!(!f.has("stt") && f.has("finish:true"));
+    }
+
+    #[tokio::test]
+    async fn tour_echoue_un_toast_et_reponse_vide_rien() {
+        struct NoTurn;
+        #[async_trait]
+        impl Turns for NoTurn {
+            async fn run(&self, _: String) -> Option<TurnResult> { None }
+        }
+        let f = simple(Opts { turns: Some(Arc::new(NoTurn)), ..Opts::default() });
+        f.press().await;
+        assert_eq!(f.toasts(), ["Je n'ai pas pu traiter ta demande."]);
+        let log = Log::default();
+        let f = fx(Opts { turns: Some(Arc::new(FakeTurns { log: log.clone(), reply: " ", pending: false })), ..Opts::default() }, log);
+        f.press().await;
+        assert!(f.toasts().is_empty() && !f.has("speak"));
+        assert!(!f.ui.lock().contains(&Ui::OpenPanel));
+        assert_eq!(f.last_phase(), Some(VoicePhase::Idle));
     }
 
     #[tokio::test]

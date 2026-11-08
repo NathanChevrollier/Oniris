@@ -1,10 +1,10 @@
 # Confidentialité d'Oniris
 
-Version 5 — 7 novembre 2026. Ce document décrit simplement ce qu'Oniris fait de tes données. Il est mis à jour à chaque nouveauté qui touche à ta vie privée.
+Version 6 — 8 novembre 2026. Ce document décrit simplement ce qu'Oniris fait de tes données. Il est mis à jour à chaque nouveauté qui touche à ta vie privée.
 
 ## En bref
 
-Oniris range tout chez toi, sur ton PC. Il n'envoie aucune statistique d'usage, et il n'y a aucun compte à créer pour l'utiliser. Oniris ne contacte Internet que pour ce que tu as choisi d'activer : la météo (si tu as choisi une ville), les icônes de tes favoris, les sondes de tes sites et, si tu connectes tes comptes, Google (Gmail et Agenda) et Spotify. Les comptes ne sont jamais obligatoires : sans eux, rien de tout cela n'est contacté. IRIS, l'assistante, réfléchit d'abord **sur ton PC** ; elle ne passe par Claude (donc par Anthropic) que dans les cas décrits plus bas.
+Oniris range tout chez toi, sur ton PC. Il n'envoie aucune statistique d'usage, et il n'y a aucun compte à créer pour l'utiliser. Oniris ne contacte Internet que pour ce que tu as choisi d'activer : la météo (si tu as choisi une ville), les icônes de tes favoris, les sondes de tes sites, le téléchargement de la voix (sur ton clic) et, si tu connectes tes comptes, Google (Gmail et Agenda) et Spotify. Les comptes ne sont jamais obligatoires : sans eux, rien de tout cela n'est contacté. IRIS, l'assistante, réfléchit d'abord **sur ton PC** ; elle ne passe par Claude (donc par Anthropic) que dans les cas décrits plus bas.
 
 ## Où sont tes données
 
@@ -14,7 +14,9 @@ Tout est stocké en local, dans le dossier `%APPDATA%\Oniris` :
 - l'instantané de l'index de recherche `index.bin` : la liste des **chemins complets** de tous les fichiers et dossiers indexés (voir « Recherche de fichiers ») ;
 - les journaux techniques (`logs`) : ils ne contiennent ni le texte de tes notes, ni celui de tes rappels, ni celui de ton presse-papiers, ni adresse mail, sujet, titre d'événement ou de morceau, ni jeton. Seulement des identifiants, des compteurs, des codes de réponse et des messages d'erreur.
 
-Supprimer ce dossier efface tout ce qu'Oniris sait de toi.
+- les fichiers de la voix, dans un dossier à part, `%LOCALAPPDATA%\Oniris\voice` : les programmes Whisper et Piper et leurs modèles (de l'ordre de 300 Mo avec le modèle rapide, 700 Mo avec le précis). Ce ne sont pas des données personnelles ; supprimer ce dossier retire la voix, que tu peux réinstaller ensuite.
+
+Supprimer le dossier `%APPDATA%\Oniris` efface tout ce qu'Oniris sait de toi.
 
 ## Ce que garde la base
 
@@ -175,6 +177,25 @@ Claude ne reçoit aucun outil propre : il n'agit que par les outils d'Oniris, av
 - Les **préférences** (« retiens que ma playlist de sport, c'est X ») ne sont enregistrées que si tu les demandes ; elles sont visibles, modifiables et supprimables dans les réglages. IRIS ne tire aucun profil de ton usage.
 - Les extraits de mails qu'IRIS a lus pendant un tour ne sont pas gardés dans la conversation : seules des références y figurent.
 
+## IRIS : la voix
+
+La voix est facultative et se passe entièrement **sur ton PC**.
+
+- **Micro** : il n'est ouvert que pendant que tu maintiens Alt+Espace, et se referme au relâchement (au plus 30 secondes d'affilée). Oniris n'écoute jamais en continu et n'a pas de mot d'activation. Le son reste **en mémoire** : il n'est écrit ni sur le disque, ni dans la base, ni dans les journaux, et n'est envoyé nulle part.
+- **Transcription** : [Whisper](https://github.com/ggml-org/whisper.cpp) tourne sur ton processeur, en local (`127.0.0.1`). Le programme se lance au premier usage et s'arrête après quelques minutes d'inactivité, ou tout de suite en jeu ou en plein écran.
+- **Synthèse** : [Piper](https://github.com/rhasspy/piper) lit les réponses d'IRIS à voix haute, en local, avec une voix française. Tu peux le désactiver (réponses écrites seulement) et régler le volume. Les textes lus ne sont gardés nulle part et n'apparaissent pas dans les journaux.
+- **Ce que tu dis à IRIS** est transcrit en texte, puis suit **exactement le même chemin qu'une demande écrite** (voir « IRIS : le cerveau local » et « IRIS : Claude ») : local par défaut, et Claude seulement dans les cas décrits plus haut. Le texte transcrit s'ajoute à la conversation, dans `oniris.db`, comme un message écrit.
+- **Pause** : « Mettre la voix en pause » dans le menu de l'icône d'Oniris coupe l'écoute.
+
+## IRIS : le téléchargement de la voix
+
+Oniris ne télécharge la voix que **sur ton clic** (« Installer la voix » dans les réglages d'IRIS) :
+
+- les programmes viennent de **GitHub** (Whisper, Piper) ; les modèles de Whisper et la voix de Piper viennent de **Hugging Face** ;
+- chaque fichier est vérifié (taille et empreinte SHA-256) avant d'être gardé ;
+- GitHub et Hugging Face voient, comme tout site web, l'adresse IP de ta connexion et le nom des fichiers demandés ; Oniris n'envoie rien d'autre, et ne les recontacte pas ensuite (sauf si tu passes au modèle « précis », qui demande un fichier de plus) ;
+- tout est rangé dans `%LOCALAPPDATA%\Oniris\voice`.
+
 ## Journal des commandes et des fichiers
 
 IRIS peut exécuter une commande PowerShell, gérer des fichiers et lancer, fermer ou mettre au premier plan une application, toujours dans des limites fixes (pas d'administrateur, dossiers système et `%APPDATA%\Oniris` protégés, suppressions envoyées à la **Corbeille** et jamais définitives). Le journal des actions garde pour cela la **commande exacte**, les **chemins complets** des fichiers concernés et les noms d'applications, pour que tu puisses voir ce qui s'est passé et annuler quand c'est possible. Le résultat, lui, est raccourci. Les journaux techniques, eux, ne contiennent ni commande ni chemin. Le journal d'actions n'est pas encore purgé automatiquement.
@@ -183,4 +204,4 @@ IRIS peut exécuter une commande PowerShell, gérer des fichiers et lancer, ferm
 
 Ces fonctions n'existent pas encore. Chacune ajoutera sa propre section ici avant d'être disponible. Outlook n'est pas prévu : seul Gmail est géré.
 
-- La voix d'IRIS (écoute et parole) : à venir. Il faudra alors préciser où sont traités le son et les textes.
+- Le mot d'activation « IRIS » (écoute continue, mains libres) : à venir, peut-être. Il demandera une section dédiée avant d'exister ; pour l'instant l'écoute ne se fait que pendant le maintien du raccourci.

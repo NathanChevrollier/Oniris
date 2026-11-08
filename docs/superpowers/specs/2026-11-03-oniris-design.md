@@ -85,6 +85,7 @@ L'utilisateur a choisi un mélange de la pilule permanente et du panneau qui des
 
 - **Maintenir Alt+Espace** (push-to-talk) : on parle, on relâche, et IRIS traite la demande. Un appui bref ouvre ou ferme simplement le panneau.
 - **[choix de conception]** Mot d'activation « IRIS » en option, **désactivé par défaut** : il implique une écoute continue (coût CPU et vie privée). Quand il est activé, il ne doit déclencher aucune transcription, ni rien envoyer, avant la détection. Aucun modèle prêt à l'emploi ne reconnaît « IRIS » en français : il faut entraîner un modèle sur mesure, gratuitement (par exemple openWakeWord à partir d'échantillons synthétiques générés avec Piper). C'est un chantier de recherche à part, placé **en dernier**. Le push-to-talk suffit à rendre IRIS complète sans lui. Les solutions qui demandent un compte et une clé d'éditeur (Porcupine) sont exclues.
+- **[décision du 2026-11-08]** Le mot d'activation « IRIS » est **reporté à un plan 8 optionnel de recherche** : le push-to-talk suffit, et l'entraînement du modèle (Python, échantillons synthétiques, réseau) n'est pas faisable dans le plan 6. La feuille IRIS affiche « Mot d'activation : bientôt », désactivé.
 - Pendant l'écoute, la sphère s'anime au rythme de la voix. Une commande simple s'exécute sans ouvrir le panneau, avec une confirmation discrète dans la pilule (« Playlist Focus lancée »). Une réponse longue ouvre le panneau.
 
 ### 4.4 Démarrage et présence
@@ -228,9 +229,10 @@ Chaque module occupe une carte du panneau, alimente le briefing quand c'est pert
 
 - **Écrit** : la barre de commande du panneau.
 - **Voix** : push-to-talk (Alt+Espace maintenu), mot d'activation en option (§4.3).
+- **[décision du 2026-11-08]** Whisper tourne sur le **processeur** avec le binaire officiel de whisper.cpp (tag `b5454`, `whisper-server.exe`) : aucun binaire Windows Vulkan n'est publié et le PC n'a ni CMake ni SDK Vulkan. Modèle par défaut `small` (q5_1, 190 Mo), option `turbo` (574 Mo). L'accélération Vulkan est notée pour le plan 7, seulement si la latence mesurée dépasse 1 s. Piper `2023.11.14-2` avec `fr_FR-siwis-medium` (processeur, aucune VRAM). Les fichiers sont téléchargés sur clic, épinglés par taille et SHA-256, dans `%LOCALAPPDATA%\Oniris\voice`.
 - **Reconnaissance vocale locale** avec **Whisper** (famille whisper.cpp / faster-whisper), accélérée sur le GPU AMD via Vulkan ou ROCm. Le modèle n'est chargé que pour la transcription, puis libéré après quelques minutes d'inactivité.
 - **Synthèse vocale locale** avec **Piper** et une voix féminine française. Elle peut être désactivée (réponses écrites seulement) et le volume est réglable.
-- **Barge-in** : si l'utilisateur reparle ou appuie sur Échap, IRIS se tait.
+- **Barge-in** : si l'utilisateur reparle ou appuie sur Échap, IRIS se tait. **[décision du 2026-11-08]** Chaque appui sur le raccourci la fait taire, même voix en pause ou non installée. Le micro est coupé au bout de 30 s de maintien. Les tours vocaux s'affichent dans le panneau, et un message bref (réussite, échec) apparaît dans la pilule.
 
 ### 7.3 Deux cerveaux, zéro coût
 

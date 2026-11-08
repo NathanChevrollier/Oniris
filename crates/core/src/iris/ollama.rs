@@ -241,6 +241,40 @@ mod tests {
         assert!(took < Duration::from_secs(1), "{took:?}");
     }
 
+    /// Vraie chaîne voix (R8 : hors des tests courants). `ONIRIS_TEST_WAV` : WAV 16 kHz mono « mets la musique en pause » ;
+    /// `ONIRIS_TEST_WHISPER` : whisper-server déjà lancé (défaut http://127.0.0.1:8178) ; `ONIRIS_TEST_MODEL` : modèle Ollama.
+    /// Un tour de chauffe charge Whisper et le modèle, le second tour (transcription puis appel d'outil) est mesuré : moins de 1 s.
+    #[tokio::test]
+    #[ignore]
+    async fn voix_latence_reelle() {
+        let wav = std::fs::read(std::env::var("ONIRIS_TEST_WAV").expect("ONIRIS_TEST_WAV : chemin du WAV de test")).expect("lecture du WAV");
+        let whisper = std::env::var("ONIRIS_TEST_WHISPER").unwrap_or_else(|_| "http://127.0.0.1:8178".into());
+        let model = std::env::var("ONIRIS_TEST_MODEL").unwrap_or_else(|_| "qwen3:8b".into());
+        let brain = Ollama::new(&model, 5);
+        let http = reqwest::Client::new();
+        let tool = PlannerTool {
+            wire: "music__toggle".into(),
+            description: "Met la musique en pause ou la relance.".into(),
+            schema: json!({ "type": "object", "properties": {} }),
+        };
+        let run = |text: String| ChatRequest {
+            model: model.clone(),
+            messages: vec![Msg { role: Role::User, content: text, tool_calls: vec![] }],
+            tools: vec![tool.clone()],
+            keep_alive_min: 5,
+        };
+        let heard = crate::voice::stt::transcribe(&http, &whisper, wav.clone()).await.expect("chauffe Whisper");
+        brain.chat(run(heard), &mut |_| {}).await.expect("chauffe du modèle");
+        let t = std::time::Instant::now();
+        let heard = crate::voice::stt::transcribe(&http, &whisper, wav).await.expect("transcription");
+        let heard = crate::voice::stt::clean(&heard).expect("aucune parole reconnue");
+        let r = brain.chat(run(heard), &mut |_| {}).await.expect("tour mesuré");
+        let took = t.elapsed();
+        println!("voix_latence_reelle ({model}) : {took:?}, appels d'outils : {:?}", r.tool_calls);
+        assert!(!r.tool_calls.is_empty(), "aucun appel d'outil");
+        assert!(took < Duration::from_secs(1), "{took:?}");
+    }
+
     fn client(s: &MockServer) -> Ollama { Ollama::with_base(&s.uri(), "qwen3:8b", 7, Duration::from_secs(5), Duration::from_secs(5)) }
     fn ndjson(lines: &[Value]) -> ResponseTemplate {
         ResponseTemplate::new(200).set_body_string(lines.iter().map(|l| format!("{l}\n")).collect::<String>())

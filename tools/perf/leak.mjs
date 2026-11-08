@@ -10,10 +10,10 @@ export function slope(samples) {
   return den === 0 ? null : (num / den) * 3_600_000;
 }
 
-// Exclut la fenêtre de chauffe (skipMs depuis le 1er échantillon) puis juge la pente.
-export function verdict(samples, { skipMs = 3_600_000, thresholdMbPerH = 1 } = {}) {
-  const t0 = samples[0]?.t ?? 0;
-  const kept = samples.filter((p) => p.t - t0 >= skipMs);
-  const s = slope(kept);
+// Exclut la fenêtre de chauffe puis juge la pente.
+// t = ms écoulées depuis le début du run. Moins de minSamples points après chauffe : pas de verdict.
+export function verdict(samples, { skipMs = 3_600_000, thresholdMbPerH = 1, minSamples = 12 } = {}) {
+  const kept = samples.filter((p) => p.t >= skipMs);
+  const s = kept.length < minSamples ? null : slope(kept);
   return { slopeMbPerH: s, used: kept.length, leak: s !== null && s > thresholdMbPerH, insufficient: s === null };
 }

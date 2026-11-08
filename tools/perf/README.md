@@ -63,8 +63,9 @@ Même prérequis que `measure.mjs` (app lancée avec `WEBVIEW2_ADDITIONAL_BROWSE
 node tools/perf/budgets.mjs
 ```
 Il lance `measure.mjs` (ouverture, RAM, CPU ; écrit `results-<date>.json`) puis ajoute :
-- la **VRAM dédiée** d'Oniris et de ses processus WebView2 (compteur Windows `GPU Process Memory`, via `Get-Counter`) ; si le compteur n'existe pas : `non mesurable`, sans verdict ;
-- le nombre de **processus voix/IA vivants** (`whisper-server`, `piper`, runner `ollama`, `claude`) ; le service `ollama` seul ne compte pas. Au repos : 0.
+- la **VRAM dédiée des processus voix/IA** (`whisper-server`, `piper`, runner `ollama`, `claude`), compteur Windows `GPU Process Memory` via `Get-Counter` : c'est la VRAM de modèle au repos du §9, budget 0. Un processus sans instance de compteur compte 0 ; si le jeu de compteurs n'existe pas sur la machine : `non mesurable`, sans verdict ;
+- la VRAM d'Oniris + WebView2, **à titre informatif** (sans budget) ;
+- le nombre de **processus voix/IA vivants** (mêmes noms) ; le service `ollama` seul ne compte pas. Au repos : 0. Attention : Claude Code ou Claude Desktop en cours d'exécution compte comme un processus `claude` (les fermer avant de mesurer).
 
 Le tableau donne, pour chaque ligne du §9, **OK** (budget tenu) ou **HORS BUDGET** (à corriger) : ouverture p95 < 100 ms, CPU < 0,5 %, RAM < 200 Mo (repère), VRAM 0, processus voix/IA 0. `INVALIDE`/`NON MESURABLE` : ne rien conclure.
 **Le build release donne les chiffres qui font foi** (le build dev gonfle RAM et latence). Ce build est long et demande votre accord : voir « Mesure release » plus haut.
@@ -74,7 +75,8 @@ Lancer l'app (dev ou release), puis :
 ```powershell
 node tools/perf/soak.mjs --hours 24 --every-min 5
 ```
-- Prend 24 h (`--hours N`, défaut 24) ; un échantillon toutes les 5 min (`--every-min M`) de la RAM privée et du CPU d'Oniris + WebView2, dans `tools/perf/soak-<date>.csv` (`t_ms,ram_mb,cpu_pct,processes`). Utiliser l'app normalement ou la laisser au repos.
-- Verdict : pente de la RAM en Mo/h par régression linéaire, **première heure exclue** (chauffe). **FUITE** si la pente dépasse 1 Mo/h, sinon **OK**.
+- Prend 24 h (`--hours N`, défaut 24) ; un échantillon toutes les 5 min (`--every-min M`) de la RAM privée et du CPU d'Oniris + WebView2, dans `tools/perf/soak-<date>-<HHMM>.csv` (`t_ms,ram_mb,cpu_pct,processes`). Utiliser l'app normalement ou la laisser au repos.
+- Verdict : pente de la RAM en Mo/h par régression linéaire, **première heure exclue** (chauffe, comptée depuis le début du run), au moins 12 échantillons ensuite (sinon « pas assez de mesures »). **FUITE** si la pente dépasse 1 Mo/h, sinon **OK**.
+- Si Oniris disparaît, l'échantillon est ignoré avec un avertissement ; après 3 absences consécutives le test s'arrête avec un verdict partiel.
 - **Ctrl+C** arrête et écrit un verdict partiel (il faut plus d'une heure de mesures pour qu'il soit calculable).
 - Test de la régression : `node --test tools/perf/soak.test.mjs`.

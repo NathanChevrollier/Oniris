@@ -9,30 +9,39 @@ import { verdict } from "./leak.mjs";
 const arg = (name, def) => { const i = process.argv.indexOf(name); return i > 0 ? Number(process.argv[i + 1]) : def; };
 const hours = arg("--hours", 24), everyMin = arg("--every-min", 5);
 if (!(hours > 0) || !(everyMin > 0)) { console.error("usage : node soak.mjs [--hours N] [--every-min M]"); process.exit(2); }
-const file = join(dirname(fileURLToPath(import.meta.url)), `soak-${new Date().toISOString().slice(0, 10)}.csv`);
-writeFileSync(file, "t_ms,ram_mb,cpu_pct,processes\n");
-
 const samples = [];
+let file = "";
 const report = (partial) => {
   const v = verdict(samples);
   const tag = partial ? " (partiel)" : "";
-  if (v.insufficient) console.log(`Verdict${tag} : pas assez de mesures après la 1re heure exclue (${samples.length} échantillons au total).`);
+  if (v.insufficient) console.log(`Verdict${tag} : pas assez de mesures après la 1re heure exclue (${samples.length} échantillons au total, 12 requis après chauffe).`);
   else console.log(`Verdict${tag} : pente ${v.slopeMbPerH.toFixed(2)} Mo/h sur ${v.used} échantillons -> ${v.leak ? "FUITE (> 1 Mo/h)" : "OK (pas de fuite)"}`);
   console.log(`-> ${file}`);
 };
-process.on("SIGINT", () => { report(true); process.exit(0); });
+const trySnap = () => { try { const x = snapshot(); return x.count ? x : null; } catch { return null; } };
 
-let prev = snapshot();
-if (!prev.count) { console.error("oniris.exe introuvable : lancer l'app d'abord."); process.exit(1); }
+let prev = trySnap();
+if (!prev) { console.error("oniris.exe introuvable : lancer l'app d'abord."); process.exit(1); }
+process.on("SIGINT", () => { report(true); process.exit(0); });
+const stamp = new Date().toISOString().slice(0, 16).replace("T", "-").replace(":", "");
+file = join(dirname(fileURLToPath(import.meta.url)), `soak-${stamp}.csv`);
+writeFileSync(file, "t_ms,ram_mb,cpu_pct,processes\n");
 const t0 = Date.now(), end = t0 + hours * 3_600_000, cores = cpus().length;
-let prevT = t0;
+let prevT = t0, misses = 0;
 while (Date.now() < end) {
   await sleep(Math.min(everyMin * 60_000, Math.max(0, end - Date.now())));
-  const cur = snapshot(), now = Date.now();
-  const cpuPct = ((cur.cpuSeconds - prev.cpuSeconds) / ((now - prevT) / 1000) / cores) * 100;
+  const cur = trySnap(), now = Date.now();
+  if (!cur) {
+    console.warn(`Oniris absent (${++misses}/3), échantillon ignoré.`);
+    if (misses >= 3) { report(true); process.exit(0); }
+    continue;
+  }
+  misses = 0;
+  const dCpu = cur.cpuSeconds - prev.cpuSeconds;
+  const cpuPct = dCpu >= 0 ? (dCpu / ((now - prevT) / 1000) / cores) * 100 : ""; // < 0 : redémarrage, CPU ignoré
   const s = { t: now - t0, mb: cur.privateBytes / 1048576 };
   samples.push(s);
-  appendFileSync(file, `${s.t},${s.mb.toFixed(1)},${cpuPct.toFixed(3)},${cur.count}\n`);
+  appendFileSync(file, `${s.t},${s.mb.toFixed(1)},${cpuPct === "" ? "" : cpuPct.toFixed(3)},${cur.count}\n`);
   prev = cur; prevT = now;
 }
 report(false);

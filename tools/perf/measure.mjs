@@ -4,7 +4,8 @@ import { execFileSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import { cpus } from "node:os";
 import { dirname, join } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
+import { isMain } from "./perf-lib.mjs";
 
 const PORT = 9333;
 export const BUDGET = { openP95Ms: 100, cpuPct: 0.5, ramMb: 200 };
@@ -72,7 +73,7 @@ export async function measure() {
 // 0 échantillon (jamais armé / tout en timeout) ou > 10 % de timeouts : la mesure ne vaut rien.
 export const isInvalid = (open) => open.samples === 0 || open.timeouts > 3;
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (isMain(import.meta.url, process.argv[1])) {
   const { open, cpuPct, ramMb, file } = await measure();
   console.log(`
 ${"Mesure".padEnd(22)}${"Valeur".padEnd(12)}${"Budget".padEnd(10)}`);

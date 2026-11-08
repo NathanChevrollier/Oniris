@@ -371,6 +371,8 @@ Principes :
 
 ## 12. Ce qui est laissé au constructeur
 
+- **[décision du 2026-11-08, plan 7]** Le démarrage automatique n'est écrit dans la clé `Run` qu'après le consentement donné une fois au premier lancement. La version est **1.0.0**. Le panneau n'est pas zoomé pour tenir en 1080p : l'écran de l'utilisateur est en 2560×1440 (cible de la spec) et un zoom ramènerait le texte à environ 10 px ; en 1080p la grille défile, rien n'est caché. L'installeur NSIS est par utilisateur, en français, et garde les dossiers de données à la désinstallation.
+
 - Le découpage en étapes de travail et leur ordre : l'utilisateur veut le projet complet, sans livraisons intermédiaires, mais la construction peut être séquencée librement.
 - Les choix de bibliothèques précis (index de fichiers, extraction de couleurs, client OAuth, liaison Whisper et Piper, etc.), dans le respect des budgets et du coût nul.
 - Le choix exact des modèles (LLM local, taille du modèle Whisper, voix Piper féminine française), avec des mesures de latence et de qualité en français à l'appui.

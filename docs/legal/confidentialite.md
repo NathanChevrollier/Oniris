@@ -1,6 +1,6 @@
 # Confidentialité d'Oniris
 
-Version 6 — 8 novembre 2026. Ce document décrit simplement ce qu'Oniris fait de tes données. Il est mis à jour à chaque nouveauté qui touche à ta vie privée.
+Version 7 — 8 novembre 2026. Ce document décrit simplement ce qu'Oniris fait de tes données. Il est mis à jour à chaque nouveauté qui touche à ta vie privée.
 
 ## En bref
 
@@ -199,6 +199,12 @@ Oniris ne télécharge la voix que **sur ton clic** (« Installer la voix » dan
 ## Journal des commandes et des fichiers
 
 IRIS peut exécuter une commande PowerShell, gérer des fichiers et lancer, fermer ou mettre au premier plan une application, toujours dans des limites fixes (pas d'administrateur, dossiers système et `%APPDATA%\Oniris` protégés, suppressions envoyées à la **Corbeille** et jamais définitives). Le journal des actions garde pour cela la **commande exacte**, les **chemins complets** des fichiers concernés et les noms d'applications, pour que tu puisses voir ce qui s'est passé et annuler quand c'est possible. Le résultat, lui, est raccourci. Les journaux techniques, eux, ne contiennent ni commande ni chemin. Le journal d'actions n'est pas encore purgé automatiquement.
+
+## Démarrage avec Windows et désinstallation
+
+- **Démarrage automatique** : Oniris ne s'ajoute au démarrage de Windows (clé `Run` de ton compte, valeur « Oniris ») qu'**après ton accord**, demandé une seule fois au premier lancement. Tant que tu n'as pas fini l'accueil ni répondu, rien n'est écrit. Tu peux le changer ensuite dans les réglages.
+- **Journaux techniques** : ils sont dans `%APPDATA%\Oniris\logs` et ne contiennent aucun contenu venant de toi (voir « Où sont tes données »).
+- **Installeur** : il s'installe pour ton compte seulement (pas d'administrateur), en français. À la désinstallation, il retire la valeur « Oniris » de la clé `Run` mais **garde volontairement** `%APPDATA%\Oniris` et `%LOCALAPPDATA%\Oniris` (tes données et la voix), pour qu'une réinstallation retrouve tout. Pour tout effacer, supprime ces deux dossiers toi-même.
 
 ## À venir
 

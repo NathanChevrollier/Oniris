@@ -1,0 +1,43 @@
+# Oniris
+
+Oniris est un tableau de bord personnel pour Windows 11 : une petite pilule toujours présente et un panneau plein écran qui s'ouvre d'un raccourci. Il regroupe agenda et rappels, notes, minuteur, presse-papiers, recherche de fichiers, favoris, projets, mails Gmail, musique (Spotify), sondes de sites, et **IRIS**, une assistante qui réfléchit d'abord sur ton PC et qu'on peut commander à la voix. Tout est rangé en local. Application Tauri 2 (Rust + React).
+
+## Prérequis
+
+- Windows 11.
+- Facultatif : [Ollama](https://ollama.com) pour qu'IRIS réfléchisse en local ; Claude Code comme second cerveau d'IRIS.
+- Facultatif : un compte Google (Gmail, Agenda) et un compte Spotify, connectés avec tes propres applications. Sans eux, Oniris fonctionne sans rien contacter.
+
+## Installation
+
+Deux voies :
+
+- Lancer l'installeur `Oniris_1.0.0_x64-setup.exe` : il est en français et s'installe pour ton compte, sans administrateur.
+- Le construire toi-même : `pnpm install`, `pnpm build`, puis `pnpm tauri build`. L'installeur sort dans `target\release\bundle\nsis\`. Le build est long.
+
+La désinstallation retire l'entrée de démarrage automatique et **garde** `%APPDATA%\Oniris` et `%LOCALAPPDATA%\Oniris`.
+
+## Premier lancement
+
+Un accueil guidé te fait choisir tes réglages et te demande, une seule fois, si Oniris doit démarrer avec Windows : rien n'est ajouté au démarrage sans ton accord. Un appui bref sur Alt+Espace ouvre ou ferme le panneau ; en le maintenant, tu parles à IRIS (la voix se télécharge sur ton clic).
+
+## Données et confidentialité
+
+Tes données restent sur ton PC, dans `%APPDATA%\Oniris` (la voix dans `%LOCALAPPDATA%\Oniris\voice`). Aucune statistique d'usage n'est envoyée. Détails complets : [docs/legal/confidentialite.md](docs/legal/confidentialite.md).
+
+## Mesures
+
+Le banc de performances (ouverture du panneau, RAM, CPU, VRAM, fuite sur 24 h, mise en page) est dans `tools/perf`, voir [tools/perf/README.md](tools/perf/README.md). La liste de vérification globale est dans [docs/verifications/plan-07-finitions.md](docs/verifications/plan-07-finitions.md).
+
+## Développement
+
+```powershell
+pnpm install
+pnpm test                      # Vitest
+cargo test --workspace         # tests Rust
+cargo clippy --workspace --all-targets -- -D warnings
+pnpm lint
+pnpm build                     # vérification TypeScript + build du frontend
+```
+
+Aucun secret personnel n'est nécessaire pour le développement : les tests utilisent de faux serveurs et de faux programmes.

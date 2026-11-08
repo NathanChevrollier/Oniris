@@ -99,6 +99,7 @@ fn main() {
         "music_transfer",
         "voice_status",
         "voice_install",
+        "voice_devices",
         "perf_frame",
         "perf_open_cycles",
     ]);

@@ -85,6 +85,7 @@
     "allow-iris-cancel",
     "allow-voice-status",
     "allow-voice-install",
+    "allow-voice-devices",
     "allow-mail-open-web",
     "allow-mail-open-link",
     "allow-mail-status",

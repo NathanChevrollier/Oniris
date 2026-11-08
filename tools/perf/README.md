@@ -50,7 +50,7 @@ Fermer ensuite Oniris (zone de notification > Quitter). Note : le build dev incl
 _Aucun pour l'instant._
 
 ## Mise en page (`layout.mjs`)
-Mesure le panneau dans Edge headless contre un serveur Vite (données factices, aucune fenêtre ni IPC réels) à 2560×1440 et 1920×1080 (échelle 1,25), plus 1536×864 à titre indicatif : grille sans `.more` ni débordement de carte.
+Mesure le panneau dans Edge headless contre un serveur Vite (données factices, aucune fenêtre ni IPC réels) à 2560×1440, plus 1920×1080 (échelle 1,25) et 1536×864 à titre indicatif (décision P7-R1) : grille sans `.more` ni débordement de carte.
 ```powershell
 node node_modules/vite/bin/vite.js --port 5199 --strictPort   # autre terminal ; l'arrêter ensuite (taskkill /T)
 node tools/perf/layout.mjs http://localhost:5199/panel.html --shots <dossier-de-captures>

@@ -25,15 +25,18 @@ L'installeur sort dans `target\release\bundle\nsis\` (le dossier `target` du wor
 
 ## 3. Budgets
 
-Lance l'app installée avec le port de débogage, puis (le panneau clignote 30 fois, ne touche à rien pendant environ 3 minutes ; ferme Claude Code et Claude Desktop avant) :
+`budgets.mjs` appelle `perf_open_cycles`, qui n'existe qu'en build de debug ou avec la feature `perf` : l'app installée ne l'a pas. On mesure donc le build release de mesure décrit dans `tools/perf/README.md`. **Build long : à lancer sur ton accord.** À la racine du dépôt, puis (le panneau clignote 30 fois, ne touche à rien pendant environ 3 minutes ; ferme Claude Code et Claude Desktop avant ; quitte l'Oniris installé) :
 
 ```powershell
+pnpm build
+cargo build --release -p oniris --features perf,custom-protocol
 $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--remote-debugging-port=9333"
-& "$env:LOCALAPPDATA\Oniris\oniris.exe"
+.\target\release\oniris.exe
+# puis, dans un autre terminal :
 node tools/perf/budgets.mjs
 ```
 
-(Adapte le chemin de l'exécutable à l'endroit où l'installeur a posé Oniris.) Tableau attendu :
+Ferme ensuite ce build (zone de notification > Quitter) et relance l'Oniris installé pour la suite. Tableau attendu :
 
 | Mesure | Budget | Verdict attendu |
 |---|---|---|
@@ -44,12 +47,12 @@ node tools/perf/budgets.mjs
 | Processus voix/IA | 0 | OK |
 
 - [ ] Tous les verdicts sont OK. Sinon : plan 7b (feuille de route).
-- [ ] Mesure aussi la latence de la recherche avec beaucoup de longues notes (recherche floue sur le texte complet).
+- [ ] Mesure aussi la latence de la recherche avec beaucoup de longues notes (titre en flou, mots cherchés dans tout le texte).
 - [ ] Le compteur VRAM `Get-Counter` fonctionne sur ta machine, et la détection des processus `ollama` runner et `claude` aussi.
 
 ## 4. Fuite mémoire sur 24 h
 
-Laisse l'app tourner (usage normal ou repos), puis :
+Sur l'app **installée** (pas le build de mesure), laisse-la tourner (usage normal ou repos), puis :
 
 ```powershell
 node tools/perf/soak.mjs --hours 24

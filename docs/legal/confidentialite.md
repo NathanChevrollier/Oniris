@@ -204,7 +204,7 @@ IRIS peut exécuter une commande PowerShell, gérer des fichiers et lancer, ferm
 
 - **Démarrage automatique** : Oniris ne s'ajoute au démarrage de Windows (clé `Run` de ton compte, valeur « Oniris ») qu'**après ton accord**, demandé une seule fois au premier lancement. Tant que tu n'as pas fini l'accueil ni répondu, rien n'est écrit. Tu peux le changer ensuite dans les réglages.
 - **Journaux techniques** : ils sont dans `%APPDATA%\Oniris\logs` et ne contiennent aucun contenu venant de toi (voir « Où sont tes données »).
-- **Installeur** : il s'installe pour ton compte seulement (pas d'administrateur), en français. À la désinstallation, il retire la valeur « Oniris » de la clé `Run` mais **garde volontairement** `%APPDATA%\Oniris` et `%LOCALAPPDATA%\Oniris` (tes données et la voix), pour qu'une réinstallation retrouve tout. Pour tout effacer, supprime ces deux dossiers toi-même.
+- **Installeur** : il s'installe pour ton compte seulement (pas d'administrateur), en français. À la désinstallation, il retire la valeur « Oniris » de la clé `Run` mais **garde volontairement** `%APPDATA%\Oniris` et `%LOCALAPPDATA%\Oniris` (tes données et la voix), pour qu'une réinstallation retrouve tout. Pour tout effacer, supprime ces deux dossiers toi-même, ainsi que `%LOCALAPPDATA%\dev.oniris.app` (cache WebView2 : images et icônes récupérées en https).
 
 ## À venir
 

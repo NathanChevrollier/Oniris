@@ -100,6 +100,8 @@ fn main() {
         "voice_status",
         "voice_install",
         "voice_devices",
+        "onboarding_get",
+        "onboarding_set",
         "perf_frame",
         "perf_open_cycles",
     ]);

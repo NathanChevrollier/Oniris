@@ -43,7 +43,7 @@ export function hotkeyFromEvent(e: { code: string; altKey: boolean; ctrlKey: boo
 }
 const hotkeyText = (h: HotkeySetting) => [h.ctrl && "Ctrl", h.alt && "Alt", h.shift && "Maj", h.win && "Win", h.key].filter(Boolean).join(" + ");
 
-function Folders({ label, value, onChange }: { label: string; value: string[]; onChange: (v: string[]) => void }) {
+export function Folders({ label, value, onChange }: { label: string; value: string[]; onChange: (v: string[]) => void }) {
   const add = async () => { const p = await projectsIpc.browse().catch(() => null); if (p && !value.includes(p)) onChange([...value, p]); };
   return (
     <div className="iris-field set-wide"><b>{label}</b>

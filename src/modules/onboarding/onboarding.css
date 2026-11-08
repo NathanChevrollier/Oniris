@@ -1,0 +1,7 @@
+.welcome{z-index:39}
+.welcome .acc-body{display:flex;flex-direction:column;gap:12px;justify-content:center;flex:1}
+.welcome h2{font-size:26px}
+.welcome p{font-size:14px;color:var(--txt2);line-height:1.5}
+.welcome .wl-dots{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--txt3)}
+.welcome .wl-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.welcome kbd{padding:1px 7px;border-radius:7px;border:1px solid var(--line2);background:rgba(255,255,255,.06);font:12px var(--font)}

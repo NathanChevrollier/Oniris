@@ -22,6 +22,7 @@ import { IrisSheet } from "../modules/iris/IrisSheet";
 import { JournalSheet } from "../modules/iris/JournalSheet";
 import { SettingsSheet } from "../modules/settings/SettingsSheet";
 import { AccountsSheet } from "../modules/accounts/AccountsSheet";
+import { Welcome } from "../modules/onboarding/Welcome";
 import { CardGrid } from "./CardGrid";
 import { CommandPalette } from "./CommandPalette";
 import { ConfirmQueue } from "./ConfirmQueue";
@@ -57,6 +58,7 @@ export function Panel() {
   useEffect(() => {
     if (pendingCount > 0) { setAccountsOpen(false); setIrisOpen(false); setJournalOpen(false); setSettingsOpen(false); }
   }, [pendingCount]);
+  const [welcome, setWelcome] = useState(false);
   const [colors, setColors] = useState<string[]>(NO_COLORS);
   const settings = useSettings();
   const now = useNow(60_000, open);
@@ -88,7 +90,7 @@ export function Panel() {
       <div className="scrim" onClick={() => ipc.panelClose()} />
       <section className="panel" aria-label="Oniris">
         <Ambient colors={colors} />
-        <div className="inner" inert={accountsOpen || irisOpen || journalOpen || settingsOpen}>
+        <div className="inner" inert={welcome || accountsOpen || irisOpen || journalOpen || settingsOpen}>
           <Header name={settings.user_name} onAccounts={openAccounts} onIris={openIris} onJournal={openJournal} onSettings={openSettings} />
           <IrisReply />
           <Timeline startHour={settings.timeline_start_hour} endHour={settings.timeline_end_hour} items={[...items, ...dots]} />
@@ -97,6 +99,7 @@ export function Panel() {
           <CommandPalette />
           <div className="handle" />
         </div>
+        <Welcome covered={accountsOpen || irisOpen} onActive={setWelcome} onGo={goFromSettings} />
         <AccountsSheet open={accountsOpen} onClose={closeAccounts} onAutoOpen={openAccounts} />
         <IrisSheet open={irisOpen} onClose={closeIris} />
         <JournalSheet open={journalOpen} onClose={closeJournal} />

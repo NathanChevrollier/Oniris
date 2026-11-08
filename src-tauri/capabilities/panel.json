@@ -86,6 +86,8 @@
     "allow-voice-status",
     "allow-voice-install",
     "allow-voice-devices",
+    "allow-onboarding-get",
+    "allow-onboarding-set",
     "allow-mail-open-web",
     "allow-mail-open-link",
     "allow-mail-status",

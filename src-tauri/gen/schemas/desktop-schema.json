@@ -585,6 +585,18 @@
           "markdownDescription": "Enables the notes_to_reminder command without any pre-configured scope."
         },
         {
+          "description": "Enables the onboarding_get command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-onboarding-get",
+          "markdownDescription": "Enables the onboarding_get command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the onboarding_set command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-onboarding-set",
+          "markdownDescription": "Enables the onboarding_set command without any pre-configured scope."
+        },
+        {
           "description": "Enables the panel_close command without any pre-configured scope.",
           "type": "string",
           "const": "allow-panel-close",
@@ -1183,6 +1195,18 @@
           "type": "string",
           "const": "deny-notes-to-reminder",
           "markdownDescription": "Denies the notes_to_reminder command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the onboarding_get command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-onboarding-get",
+          "markdownDescription": "Denies the onboarding_get command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the onboarding_set command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-onboarding-set",
+          "markdownDescription": "Denies the onboarding_set command without any pre-configured scope."
         },
         {
           "description": "Denies the panel_close command without any pre-configured scope.",

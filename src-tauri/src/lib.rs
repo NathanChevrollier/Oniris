@@ -119,6 +119,8 @@ pub fn run() {
             modules::voice::install::voice_status,
             modules::voice::install::voice_install,
             modules::voice::capture::voice_devices,
+            modules::onboarding::onboarding_get,
+            modules::onboarding::onboarding_set,
             modules::mail::mail_open_web,
             modules::mail::mail_open_link,
             modules::mail::mail_status,
@@ -189,6 +191,16 @@ pub fn run() {
             modules::voice::pipeline::start(app.handle());
             hotkey::start_hook(app.handle().clone(), hotkey_cfg);
             fullscreen::start_watcher(app.handle().clone());
+            // Accueil non terminé : le panneau s'ouvre dessus, une fois par lancement (le temps que la page charge).
+            if !modules::onboarding::load(&app.state::<state::AppState>().db.lock()).done {
+                let h = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+                    if let Err(e) = windows::open_panel(&h) {
+                        tracing::error!("accueil : ouverture du panneau : {e}");
+                    }
+                });
+            }
             Ok(())
         })
         .build(tauri::generate_context!())
@@ -274,6 +286,7 @@ mod tests {
             ("mail.rs", include_str!("modules/mail.rs")),
             ("music.rs", include_str!("modules/music.rs")),
             ("notes.rs", include_str!("modules/notes.rs")),
+            ("onboarding.rs", include_str!("modules/onboarding.rs")),
             ("projects.rs", include_str!("modules/projects.rs")),
             ("reminders.rs", include_str!("modules/reminders.rs")),
             ("search.rs", include_str!("modules/search.rs")),

@@ -110,11 +110,11 @@ it("panneau fermé : ni minuterie ni appel IPC, seulement des abonnements", () =
   usePanelStore.setState({ open: false });
   const getSettings = vi.spyOn(ipc, "getSettings");
   render(<Panel />);
-  // Seule lecture : les réglages (`useSettings`), au montage de la fenêtre, jamais ensuite.
+  // Seules lectures : les réglages (`useSettings`) et l'état du premier lancement, au montage de la fenêtre, jamais ensuite.
   const settingsReads = getSettings.mock.calls.length;
   act(() => { vi.advanceTimersByTime(5 * 60_000); });
   expect(vi.getTimerCount()).toBe(0);
-  expect(invokeMock).not.toHaveBeenCalled();
+  expect(invokeMock.mock.calls.map(([c]) => c)).toEqual(["onboarding_get"]);
   expect(getSettings).toHaveBeenCalledTimes(settingsReads);
   expect(vi.mocked(listen).mock.calls.map(([e]) => e)).not.toContain("oniris://system");
 });

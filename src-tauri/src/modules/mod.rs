@@ -18,6 +18,7 @@ pub mod search;
 pub mod sites;
 pub mod smtc;
 pub mod notes;
+pub mod onboarding;
 pub mod timers;
 pub mod system;
 pub mod voice;

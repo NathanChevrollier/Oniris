@@ -4,11 +4,11 @@ import { execFileSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import { cpus } from "node:os";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const PORT = 9333;
-const BUDGET = { openP95Ms: 100, cpuPct: 0.5, ramMb: 200 };
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+export const BUDGET = { openP95Ms: 100, cpuPct: 0.5, ramMb: 200 };
+export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Somme RAM privée + temps CPU (s) d'oniris.exe et de tous ses descendants (msedgewebview2.exe...).
 const PS = `
@@ -21,10 +21,11 @@ do { $n = $ids.Count
 $p = Get-Process -Id @($ids) -ErrorAction SilentlyContinue
 [pscustomobject]@{
   count = @($p).Count
+  pids = @($ids)
   privateBytes = ($p | Measure-Object PrivateMemorySize64 -Sum).Sum
   cpuSeconds = ($p | ForEach-Object { $_.TotalProcessorTime.TotalSeconds } | Measure-Object -Sum).Sum
 } | ConvertTo-Json -Compress`;
-const snapshot = () => {
+export const snapshot = () => {
   const out = execFileSync("powershell", ["-NoProfile", "-Command", PS], { encoding: "utf8" });
   return JSON.parse(out);
 };
@@ -50,26 +51,36 @@ async function openCycles(n) {
 
 const row = (k, v, budget, ok, invalid = false) => console.log(`${k.padEnd(22)}${String(v).padEnd(12)}${budget.padEnd(10)}${invalid ? "INVALIDE" : ok ? "OK" : "DÉPASSÉ"}`);
 
-console.log("Ouverture : 30 cycles (le panneau va clignoter)...");
-const open = await openCycles(30);
-console.log("Repos 60 s, panneau fermé...");
-await sleep(60_000);
-const a = snapshot();
-await sleep(60_000);
-const b = snapshot();
-const cores = cpus().length;
-const cpuPct = ((b.cpuSeconds - a.cpuSeconds) / 60 / cores) * 100;
-const ramMb = b.privateBytes / 1048576;
+// Ouverture (30 cycles) puis repos 2 x 60 s : RAM privée et CPU moyen. Écrit results-<date>.json.
+export async function measure() {
+  console.log("Ouverture : 30 cycles (le panneau va clignoter)...");
+  const open = await openCycles(30);
+  console.log("Repos 60 s, panneau fermé...");
+  await sleep(60_000);
+  const a = snapshot();
+  await sleep(60_000);
+  const b = snapshot();
+  const cores = cpus().length;
+  const cpuPct = ((b.cpuSeconds - a.cpuSeconds) / 60 / cores) * 100;
+  const ramMb = b.privateBytes / 1048576;
+  const result = { date: new Date().toISOString(), open, ramMb, cpuPct, cores, processes: b.count, budget: BUDGET };
+  const file = join(dirname(fileURLToPath(import.meta.url)), `results-${result.date.slice(0, 10)}.json`);
+  writeFileSync(file, JSON.stringify(result, null, 2));
+  return { ...result, file, pids: b.pids };
+}
 
-const result = { date: new Date().toISOString(), open, ramMb, cpuPct, cores, processes: b.count, budget: BUDGET };
-const file = join(dirname(fileURLToPath(import.meta.url)), `results-${result.date.slice(0, 10)}.json`);
-writeFileSync(file, JSON.stringify(result, null, 2));
-
-console.log(`\n${"Mesure".padEnd(22)}${"Valeur".padEnd(12)}${"Budget".padEnd(10)}`);
 // 0 échantillon (jamais armé / tout en timeout) ou > 10 % de timeouts : la mesure ne vaut rien.
-const invalid = open.samples === 0 || open.timeouts > 3;
-row("Ouverture p95 (ms)", open.p95_ms.toFixed(1), `< ${BUDGET.openP95Ms}`, open.p95_ms < BUDGET.openP95Ms, invalid);
-row("Timeouts (/30)", open.timeouts, "<= 3", open.timeouts <= 3, invalid);
-row("CPU repos (%)", cpuPct.toFixed(3), `< ${BUDGET.cpuPct}`, cpuPct < BUDGET.cpuPct);
-row("RAM privée (Mo)", ramMb.toFixed(0), `< ${BUDGET.ramMb}`, ramMb < BUDGET.ramMb);
-console.log(`échantillons ${open.samples}, timeouts ${open.timeouts}, p50 ${open.p50_ms} ms, max ${open.max_ms} ms\n-> ${file}`);
+export const isInvalid = (open) => open.samples === 0 || open.timeouts > 3;
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const { open, cpuPct, ramMb, file } = await measure();
+  console.log(`
+${"Mesure".padEnd(22)}${"Valeur".padEnd(12)}${"Budget".padEnd(10)}`);
+  const invalid = isInvalid(open);
+  row("Ouverture p95 (ms)", open.p95_ms.toFixed(1), `< ${BUDGET.openP95Ms}`, open.p95_ms < BUDGET.openP95Ms, invalid);
+  row("Timeouts (/30)", open.timeouts, "<= 3", open.timeouts <= 3, invalid);
+  row("CPU repos (%)", cpuPct.toFixed(3), `< ${BUDGET.cpuPct}`, cpuPct < BUDGET.cpuPct);
+  row("RAM privée (Mo)", ramMb.toFixed(0), `< ${BUDGET.ramMb}`, ramMb < BUDGET.ramMb);
+  console.log(`échantillons ${open.samples}, timeouts ${open.timeouts}, p50 ${open.p50_ms} ms, max ${open.max_ms} ms
+-> ${file}`);
+}

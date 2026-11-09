@@ -18,7 +18,8 @@ from scipy.signal import resample_poly
 SR = 16000
 CHUNK = 1280  # 80 ms : le pas d'openWakeWord
 THRESHOLDS = [0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
-REFRACTORY = int(2.0 * SR / CHUNK)  # 2 s sans redéclenchement, comme dans Oniris
+REFRACTORY = int(2.0 * SR / CHUNK)
+NAME = "iris"  # modèle évalué (--model)  # 2 s sans redéclenchement, comme dans Oniris
 AUDIO = {".wav", ".flac", ".mp3", ".ogg"}
 
 
@@ -36,7 +37,7 @@ def scores(model, pcm: np.ndarray) -> np.ndarray:
     model.reset()
     out = []
     for i in range(0, len(pcm) - CHUNK + 1, CHUNK):
-        out.append(model.predict(pcm[i : i + CHUNK])["iris"])
+        out.append(model.predict(pcm[i : i + CHUNK])[NAME])
     return np.array(out)
 
 
@@ -89,13 +90,16 @@ def main() -> None:
     ap.add_argument("--ww", type=Path, required=True)
     ap.add_argument("--recordings", type=Path, default=None)
     ap.add_argument("--long", nargs="*", default=[])
+    ap.add_argument("--model", default="iris")
     a = ap.parse_args()
+    global NAME
+    NAME = a.model
     out = a.ww / "output"
-    model = Model(wakeword_models=[str(out / "iris.onnx")], inference_framework="onnx")
+    model = Model(wakeword_models=[str(out / f"{NAME}.onnx")], inference_framework="onnx")
     load_bed(a.ww)
     print("Fond des tests : " + ("ton ambiance enregistrée" if _bed is not None else "bruit faible"))
 
-    test = out / "iris"
+    test = out / NAME
     synth = [clip_max(model, f) for f in sorted((test / "positive_test").glob("pos_*.wav"))]
     own = [clip_max(model, f) for f in sorted((test / "positive_test").glob("own_*.wav"))]
     neg = [clip_max(model, f) for f in sorted((test / "negative_test").glob("*.wav"))]
@@ -127,7 +131,7 @@ def main() -> None:
     # Objectif du plan 8 : ≥ 90 % sur ta voix et ≤ 0.1 faux déclenchement par heure de vraie vie.
     ok = [r for r in rows if (r["rappel_ta_voix"] or 0) >= 0.9 and r["faux_par_heure"] is not None and r["faux_par_heure"] <= 0.1]
     print(f"\nSeuil conseillé : {ok[0]['seuil']}" if ok else "\nAucun seuil n'atteint l'objectif (≥ 90 % ta voix, ≤ 0.1 faux/h) : voir README, « Si le modèle est mauvais ».")
-    (out / "eval.json").write_text(json.dumps({"hours_long": hours, "rows": rows}, indent=2), encoding="utf-8")
+    (out / f"eval_{NAME}.json").write_text(json.dumps({"hours_long": hours, "rows": rows}, indent=2), encoding="utf-8")
 
 
 if __name__ == "__main__":

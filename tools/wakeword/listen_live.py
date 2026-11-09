@@ -40,11 +40,12 @@ def main() -> None:
     ap.add_argument("--threshold", type=float, default=0.5)
     ap.add_argument("--save-from", type=float, default=0.3, help="garde aussi les quasi-déclenchements dès ce score")
     ap.add_argument("--out", type=Path, default=Path(os.environ["USERPROFILE"]) / "oniris-wakeword" / "recordings")
-    ap.add_argument("--test", action="store_true", help="tu dis « Iris » : mesure du rappel")
+    ap.add_argument("--test", action="store_true", help="tu dis le mot d'activation : mesure du rappel")
+    ap.add_argument("--model", default="iris", help="iris (« Iris » seul) ou dis_iris (« Dis Iris » / « Hé Iris »)")
     a = ap.parse_args()
 
     model = Model(
-        wakeword_models=[str(a.models / "iris.onnx")],
+        wakeword_models=[str(a.models / f"{a.model}.onnx")],
         inference_framework="onnx",
         melspec_model_path=str(a.models / "melspectrogram.onnx"),
         embedding_model_path=str(a.models / "embedding_model.onnx"),
@@ -67,7 +68,7 @@ def main() -> None:
             while True:
                 chunk = q.get()
                 ring.append(chunk)
-                score = float(model.predict(chunk)["iris"])
+                score = float(model.predict(chunk)[a.model])
                 now = time.time()
                 if score >= a.save_from and now - last_hit >= REFRACTORY:
                     last_hit = now

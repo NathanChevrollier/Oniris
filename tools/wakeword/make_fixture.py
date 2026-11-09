@@ -29,10 +29,11 @@ def main() -> None:
     ap.add_argument("--ww", type=Path, required=True)
     ap.add_argument("--repo", type=Path, required=True)
     ap.add_argument("--seed", type=int, default=8)
+    ap.add_argument("--model", default="iris")
     a = ap.parse_args()
     repo = a.repo.resolve()
     res = a.ww / "openWakeWord" / "openwakeword" / "resources" / "models"
-    model_path = a.ww / "output" / "iris.onnx"
+    model_path = a.ww / "output" / f"{a.model}.onnx"
 
     dst = repo / "src-tauri" / "resources" / "wake"
     dst.mkdir(parents=True, exist_ok=True)
@@ -43,7 +44,7 @@ def main() -> None:
     (dst / "SHA256SUMS").write_text("\n".join(sums) + "\n", encoding="utf-8")
 
     rng = random.Random(a.seed)
-    test = a.ww / "output" / "iris"
+    test = a.ww / "output" / a.model
     positives = sorted((test / "positive_test").glob("pos_*.wav"))
     rng.shuffle(positives)
     neg = rng.choice(sorted((test / "negative_test").glob("neg_*.wav")))
@@ -55,13 +56,13 @@ def main() -> None:
         pcm = np.concatenate([sil(2.5), read(pos), sil(1.5), read(neg), sil(1.0)])
         pcm = pcm[: len(pcm) // CHUNK * CHUNK]
         model.reset()
-        scores = [float(model.predict(pcm[i : i + CHUNK])["iris"]) for i in range(0, len(pcm), CHUNK)]
+        scores = [float(model.predict(pcm[i : i + CHUNK])[a.model]) for i in range(0, len(pcm), CHUNK)]
         if max(scores) >= 0.7:
             break
     else:
         raise SystemExit("Aucun positif de test ne dépasse 0,7 : le modèle n'est pas prêt.")
 
-    fx = repo / "src-tauri" / "tests" / "fixtures" / "wake"
+    fx = repo / "src-tauri" / "tests" / "fixtures" / "wake" / a.model
     fx.mkdir(parents=True, exist_ok=True)
     sf.write(fx / "sequence.wav", pcm, SR, subtype="PCM_16")
     oww = subprocess.run(["git", "-C", str(a.ww / "openWakeWord"), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()

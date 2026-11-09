@@ -22,7 +22,12 @@ from scipy.signal import resample_poly
 
 SR = 16000
 TARGET = "iris"
-POSITIVE_TEXTS = ["Iris", "Iris.", "Iris !", "Iris ?", "Iris,", "Iris…", "iris"]
+# Phrases positives et enregistrements personnels de chaque modèle (--model).
+MODELS = {
+    "iris": (["Iris", "Iris.", "Iris !", "Iris ?", "Iris,", "Iris…", "iris"], ["iris_*.wav"]),
+    "dis_iris": (["Dis Iris", "Dis, Iris", "Dis Iris !", "Dis Iris ?", "Hé Iris", "Hé, Iris", "Hé Iris !", "Hé Iris ?"],
+                 ["dis_*.wav", "he_*.wav"]),
+}
 
 _voices = []  # (PiperVoice, nb de locuteurs), chargées une fois par processus
 
@@ -126,10 +131,10 @@ def jobs_for(split_dir: Path, n: int, texts: list, rng: random.Random, voice_spe
     return out
 
 
-def add_own(recordings: Path, out: Path, n_pos: int, rng: random.Random) -> None:
-    own = sorted(recordings.glob("iris_*.wav")) if recordings else []
+def add_own(recordings: Path, out: Path, n_pos: int, rng: random.Random, globs: list) -> None:
+    own = sorted(f for g in globs for f in recordings.glob(g)) if recordings else []
     if not own:
-        print("Aucun enregistrement personnel (iris_*.wav) : positifs 100 % synthétiques.")
+        print(f"Aucun enregistrement personnel ({', '.join(globs)}) : positifs 100 % synthétiques.")
         return
     rng.shuffle(own)
     cut = max(1, len(own) // 5)
@@ -168,9 +173,11 @@ def main() -> None:
     ap.add_argument("--n-test", type=int, default=2000)
     ap.add_argument("--workers", type=int, default=6)
     ap.add_argument("--seed", type=int, default=8)
+    ap.add_argument("--model", choices=sorted(MODELS), default="iris")
     a = ap.parse_args()
 
-    out = a.ww / "output" / "iris"
+    out = a.ww / "output" / a.model
+    positive_texts, own_globs = MODELS[a.model]
     negatives = read_negatives(Path(__file__).with_name("negatives_fr.txt"))
     voice_dir = a.ww / "voices"
 
@@ -181,8 +188,8 @@ def main() -> None:
 
     rng = random.Random(a.seed)
     jobs = (
-        jobs_for(out / "positive_train", a.n_train, POSITIVE_TEXTS, rng, speakers, "pos")
-        + jobs_for(out / "positive_test", a.n_test, POSITIVE_TEXTS, rng, speakers, "pos")
+        jobs_for(out / "positive_train", a.n_train, positive_texts, rng, speakers, "pos")
+        + jobs_for(out / "positive_test", a.n_test, positive_texts, rng, speakers, "pos")
         + jobs_for(out / "negative_train", a.n_train, negatives, rng, speakers, "neg")
         + jobs_for(out / "negative_test", a.n_test, negatives, rng, speakers, "neg")
     )
@@ -206,7 +213,7 @@ def main() -> None:
         print(f"{errors} clips en erreur.")
     print(f"{done} clips générés ({len(jobs) - done} déjà présents ou trop courts).")
 
-    add_own(a.recordings, out, a.n_train, rng)
+    add_own(a.recordings, out, a.n_train, rng, own_globs)
     add_hard_negatives(a.recordings, out)
     for d in ("positive_train", "positive_test", "negative_train", "negative_test"):
         print(f"{d} : {len(list((out / d).glob('*.wav')))}")

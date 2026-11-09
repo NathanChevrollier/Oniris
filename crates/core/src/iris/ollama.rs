@@ -215,12 +215,12 @@ mod tests {
     fn req(tools: Vec<PlannerTool>) -> ChatRequest {
         ChatRequest { model: "qwen3:8b".into(), messages: vec![Msg { role: Role::User, content: "salut".into(), tool_calls: vec![] }], tools, keep_alive_min: 5 }
     }
-    /// Vrai Ollama local (R8 : hors des tests courants). `ONIRIS_TEST_MODEL` change le modèle (défaut `qwen3:8b`).
+    /// Vrai Ollama local (R8 : hors des tests courants). `ONIRIS_TEST_MODEL` change le modèle (défaut `qwen3:14b`).
     /// Un premier tour charge le modèle, le second est mesuré : budget de 1 s, modèle chargé.
     #[tokio::test]
     #[ignore]
     async fn iris_latence_reelle() {
-        let model = std::env::var("ONIRIS_TEST_MODEL").unwrap_or_else(|_| "qwen3:8b".into());
+        let model = std::env::var("ONIRIS_TEST_MODEL").unwrap_or_else(|_| "qwen3:14b".into());
         let brain = Ollama::new(&model, 5);
         let tool = PlannerTool {
             wire: "music__play_playlist".into(),
@@ -249,7 +249,7 @@ mod tests {
     async fn voix_latence_reelle() {
         let wav = std::fs::read(std::env::var("ONIRIS_TEST_WAV").expect("ONIRIS_TEST_WAV : chemin du WAV de test")).expect("lecture du WAV");
         let whisper = std::env::var("ONIRIS_TEST_WHISPER").unwrap_or_else(|_| "http://127.0.0.1:8178".into());
-        let model = std::env::var("ONIRIS_TEST_MODEL").unwrap_or_else(|_| "qwen3:8b".into());
+        let model = std::env::var("ONIRIS_TEST_MODEL").unwrap_or_else(|_| "qwen3:14b".into());
         let brain = Ollama::new(&model, 5);
         let http = reqwest::Client::new();
         let tool = PlannerTool {

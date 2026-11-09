@@ -19,7 +19,7 @@ Ouvre le panneau avec Alt+Espace. Les logs sont dans `%APPDATA%\Oniris\logs`. Le
 ## 1. Ollama, modèle et latence
 
 - [ ] ⚠️ à vérifier en priorité : installe [Ollama](https://ollama.com) pour Windows (version compatible avec ta RX 7800 XT) et vérifie qu'il tourne (icône dans la zone de notification).
-- [ ] Dans les réglages d'IRIS, l'état du cerveau local passe de « Ollama introuvable » ou « modèle absent » à « prêt » après installation. Clique sur « Télécharger le modèle » : une progression s'affiche, `qwen3:8b` arrive, l'état passe à « prêt ». Ferme le panneau pendant le téléchargement : il continue.
+- [ ] Dans les réglages d'IRIS, l'état du cerveau local passe de « Ollama introuvable » ou « modèle absent » à « prêt » après installation. Clique sur « Télécharger le modèle » : une progression s'affiche, `qwen3:14b` arrive, l'état passe à « prêt ». Ferme le panneau pendant le téléchargement : il continue.
 - [ ] Mesure la latence réelle (modèle chargé, budget : moins de 1 s) :
 
   ```powershell

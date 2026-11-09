@@ -195,7 +195,7 @@ impl Default for Settings {
             iris_claude_model: String::new(),
             iris_shell_allowlist: DEFAULT_SHELL_ALLOWLIST.map(String::from).to_vec(),
             iris_work_dirs: Vec::new(),
-            iris_local_model: "qwen3:8b".into(),
+            iris_local_model: "qwen3:14b".into(),
             iris_claude_auto: false,
             iris_unload_minutes: 5,
             iris_personality: crate::iris::prompt::PERSONALITY.into(),

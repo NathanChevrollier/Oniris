@@ -111,7 +111,7 @@ export const DEFAULT_SETTINGS: Settings = {
   iris_claude_model: "",
   iris_shell_allowlist: ["git status", "Get-ChildItem", "Get-Location", "Get-Date"],
   iris_work_dirs: [],
-  iris_local_model: "qwen3:8b",
+  iris_local_model: "qwen3:14b",
   iris_claude_auto: false,
   iris_unload_minutes: 5,
   iris_personality: "Tu es IRIS, l'assistante d'Oniris. Tu tutoies {prénom} et l'appelles par son prénom. Ton ton est chaleureux, concis, avec une pointe d'humour discrète ; jamais servile, jamais bavarde. Une ou deux phrases suffisent pour une action simple.",

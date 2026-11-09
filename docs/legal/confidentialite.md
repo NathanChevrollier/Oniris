@@ -149,7 +149,7 @@ Si Zenytt est installé sur ce PC, Oniris lance son serveur en lecture seule (`Z
 
 ## IRIS : le cerveau local
 
-IRIS comprend d'abord tes demandes avec un modèle de langage qui tourne **sur ton PC**, via [Ollama](https://ollama.com) (par défaut `qwen3:8b`). Oniris ne parle à Ollama que sur ton propre PC (`127.0.0.1`) : ce que tu dis à IRIS et ce que le modèle lit ou répond ne sort pas de ta machine. Certaines demandes simples (« suivant », « rappelle-moi de… ») sont même comprises sans modèle. Le modèle se charge à ta première demande et se décharge après quelques minutes d'inactivité, et jamais pendant un jeu ou une app en plein écran.
+IRIS comprend d'abord tes demandes avec un modèle de langage qui tourne **sur ton PC**, via [Ollama](https://ollama.com) (par défaut `qwen3:14b`). Oniris ne parle à Ollama que sur ton propre PC (`127.0.0.1`) : ce que tu dis à IRIS et ce que le modèle lit ou répond ne sort pas de ta machine. Certaines demandes simples (« suivant », « rappelle-moi de… ») sont même comprises sans modèle. Le modèle se charge à ta première demande et se décharge après quelques minutes d'inactivité, et jamais pendant un jeu ou une app en plein écran.
 
 Le tri de tes mails, le briefing du matin et les brouillons « en local » utilisent aussi ce cerveau. Le résultat du tri (une étiquette et un court résumé par mail) est gardé dans `oniris.db` avec l'en-tête du mail ; il disparaît avec le compte.
 

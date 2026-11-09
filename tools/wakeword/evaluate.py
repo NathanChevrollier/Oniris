@@ -40,9 +40,30 @@ def scores(model, pcm: np.ndarray) -> np.ndarray:
     return np.array(out)
 
 
+# Fond sonore des tests : jamais de silence numérique (un vrai micro n'en produit pas, et le modèle
+# n'en a jamais entendu à l'entraînement) ; ton ambiance enregistrée si elle existe, sinon un bruit faible.
+_bed = None
+_rng = np.random.default_rng(8)
+
+
+def load_bed(ww: Path) -> None:
+    global _bed
+    amb = sorted((ww / "data" / "ambient").glob("*.wav"))
+    _bed = np.concatenate([load(f) for f in amb]) if amb else None
+
+
+def bed(n: int) -> np.ndarray:
+    if _bed is not None and len(_bed) > n:
+        i = int(_rng.integers(0, len(_bed) - n))
+        return _bed[i : i + n].astype(np.float32)
+    return _rng.normal(0, 60, n).astype(np.float32)
+
+
 def clip_max(model, path: Path) -> float:
-    pad = np.zeros(SR, dtype=np.int16)
-    return float(scores(model, np.concatenate([pad, load(path), pad])).max())
+    clip = load(path).astype(np.float32)
+    pcm = bed(SR + len(clip) + SR)
+    pcm[SR : SR + len(clip)] += clip
+    return float(scores(model, np.clip(pcm, -32768, 32767).astype(np.int16)).max())
 
 
 def activations(s: np.ndarray, t: float) -> int:
@@ -71,6 +92,8 @@ def main() -> None:
     a = ap.parse_args()
     out = a.ww / "output"
     model = Model(wakeword_models=[str(out / "iris.onnx")], inference_framework="onnx")
+    load_bed(a.ww)
+    print("Fond des tests : " + ("ton ambiance enregistrée" if _bed is not None else "bruit faible"))
 
     test = out / "iris"
     synth = [clip_max(model, f) for f in sorted((test / "positive_test").glob("pos_*.wav"))]

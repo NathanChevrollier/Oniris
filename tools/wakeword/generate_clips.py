@@ -187,7 +187,10 @@ def main() -> None:
         + jobs_for(out / "negative_test", a.n_test, negatives, rng, speakers, "neg")
     )
     done, errors = 0, 0
-    with mp.get_context("spawn").Pool(a.workers, initializer=load_voices, initargs=(str(voice_dir),)) as pool:
+    # Un worker Piper grossit sans cesse (≈ 1,4 Go après 30 min) : on le recycle tous les 400 clips,
+    # sinon WSL manque de mémoire, tue un worker, et le Pool attend pour toujours ses clips perdus.
+    ctx = mp.get_context("spawn")
+    with ctx.Pool(a.workers, initializer=load_voices, initargs=(str(voice_dir),), maxtasksperchild=400) as pool:
         for i, made in enumerate(pool.imap_unordered(synth, jobs, chunksize=32), 1):
             if isinstance(made, str):
                 errors += 1

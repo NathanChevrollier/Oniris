@@ -25,7 +25,7 @@ if run clips; then
   echo "== 1/5 Bruits de fond (avec ton ambiance si elle existe : $REC)"
   python "$KIT/prepare_background.py" --ww "$WW" --recordings "$REC"
   echo "== 1/5 Clips français (≈ 30-60 min)"
-  python "$KIT/generate_clips.py" --ww "$WW" --recordings "$REC" --workers "$(( $(nproc) / 2 ))"
+  python "$KIT/generate_clips.py" --ww "$WW" --recordings "$REC" --workers 6
 fi
 if run features; then
   echo "== 2/5 Augmentation + caractéristiques (≈ 1 h)"

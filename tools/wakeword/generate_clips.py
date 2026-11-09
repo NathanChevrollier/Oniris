@@ -9,10 +9,11 @@ Tes propres enregistrements (record_samples.py) sont ajoutés aux positifs : 80 
 Relançable : un clip déjà présent est sauté.
 """
 import argparse
+import json
+import multiprocessing as mp
 import random
 import shutil
 from math import gcd
-from multiprocessing import Pool
 from pathlib import Path
 
 import numpy as np
@@ -29,10 +30,16 @@ _voices = []  # (PiperVoice, nb de locuteurs), chargées une fois par processus
 def load_voices(voice_dir: str) -> None:
     from piper import PiperVoice
 
-    _voices.clear()  # un fork hérite de la liste du parent
     for p in sorted(Path(voice_dir).glob("*.onnx")):
         v = PiperVoice.load(str(p))
         _voices.append((v, max(1, int(v.config.num_speakers or 1))))
+
+
+def speakers_of(voice_dir: Path) -> list:
+    """Locuteurs par voix, lus dans les .onnx.json : le processus principal ne charge jamais onnxruntime
+    (une session ONNX dupliquée par fork bloque les workers)."""
+    return [max(1, int(json.loads(Path(f"{p}.json").read_text(encoding="utf-8")).get("num_speakers") or 1))
+            for p in sorted(voice_dir.glob("*.onnx"))]
 
 
 def read_negatives(path: Path) -> list:
@@ -68,7 +75,15 @@ def write(path: Path, x: np.ndarray) -> None:
     sf.write(path, (x * 32767).astype(np.int16), SR, subtype="PCM_16")
 
 
-def synth(job) -> bool:
+def synth(job):
+    """Rend True (créé), False (déjà là ou trop court) ou le texte de l'erreur."""
+    try:
+        return _synth(job)
+    except Exception as e:
+        return f"{type(e).__name__}: {e}"
+
+
+def _synth(job) -> bool:
     path, text, vi, speaker, ls, ns, nw = job
     path = Path(path)
     if path.exists():
@@ -159,11 +174,10 @@ def main() -> None:
     negatives = read_negatives(Path(__file__).with_name("negatives_fr.txt"))
     voice_dir = a.ww / "voices"
 
-    load_voices(str(voice_dir))  # pour connaître les locuteurs ; les workers rechargent
-    if not _voices:
+    speakers = speakers_of(voice_dir)
+    if not speakers:
         raise SystemExit(f"Aucune voix dans {voice_dir} : lance setup.sh.")
-    speakers = [n for _, n in _voices]
-    print(f"{len(_voices)} voix, {sum(speakers)} locuteurs.")
+    print(f"{len(speakers)} voix, {sum(speakers)} locuteurs.")
 
     rng = random.Random(a.seed)
     jobs = (
@@ -172,12 +186,21 @@ def main() -> None:
         + jobs_for(out / "negative_train", a.n_train, negatives, rng, speakers, "neg")
         + jobs_for(out / "negative_test", a.n_test, negatives, rng, speakers, "neg")
     )
-    with Pool(a.workers, initializer=load_voices, initargs=(str(voice_dir),)) as pool:
-        done = 0
+    done, errors = 0, 0
+    with mp.get_context("spawn").Pool(a.workers, initializer=load_voices, initargs=(str(voice_dir),)) as pool:
         for i, made in enumerate(pool.imap_unordered(synth, jobs, chunksize=32), 1):
-            done += made
-            if i % 2000 == 0:
-                print(f"  {i}/{len(jobs)}")
+            if isinstance(made, str):
+                errors += 1
+                if errors <= 3:
+                    print(f"  erreur : {made}", flush=True)
+                if errors == 50 and done == 0:
+                    raise SystemExit("50 erreurs sans aucun clip : arrêt.")
+            else:
+                done += made
+            if i % 500 == 0:
+                print(f"  {i}/{len(jobs)} ({done} créés)", flush=True)
+    if errors:
+        print(f"{errors} clips en erreur.")
     print(f"{done} clips générés ({len(jobs) - done} déjà présents ou trop courts).")
 
     add_own(a.recordings, out, a.n_train, rng)

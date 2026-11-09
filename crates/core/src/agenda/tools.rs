@@ -57,7 +57,7 @@ struct ListArgs { from_ms: i64, to_ms: i64 }
 #[async_trait]
 impl Tool for CreateEvent {
     fn spec(&self) -> ToolSpec {
-        spec("agenda.create_event", "Crée un événement : { text } en français (« demain 14h dentiste ») ou { title, start_ms, end_ms?, all_day? }.",
+        spec("agenda.create_event", "Crée un événement d'agenda (rendez-vous, réunion) : { text } en français (« demain 14h dentiste ») ou { title, start_ms, end_ms?, all_day? }. Pour « rappelle-moi », utilise reminders__create.",
             json!({"type":"object","properties":{"text":{"type":"string"},"title":{"type":"string"},"start_ms":{"type":"integer"},"end_ms":{"type":"integer"},"all_day":{"type":"boolean"}}}),
             Permission::Free)
     }

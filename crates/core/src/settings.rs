@@ -197,7 +197,7 @@ impl Default for Settings {
             iris_work_dirs: Vec::new(),
             iris_local_model: "qwen3:14b".into(),
             iris_claude_auto: false,
-            iris_unload_minutes: 5,
+            iris_unload_minutes: 30,
             iris_personality: crate::iris::prompt::PERSONALITY.into(),
             voice_stt_model: "small".into(),
             voice_tts: true,
@@ -519,6 +519,7 @@ mod tests {
     #[test] fn reglages_de_la_voix() {
         let d = Settings::default();
         assert_eq!((d.voice_stt_model.as_str(), d.voice_tts, d.voice_volume, d.voice_unload_minutes, d.voice_input_device.as_str()), ("small", true, 80, 3, ""));
+        assert_eq!((d.iris_local_model.as_str(), d.iris_unload_minutes, d.iris_claude_auto), ("qwen3:14b", 30, false));
         let v = |f: fn(&mut Settings)| { let mut s = Settings::default(); f(&mut s); s.validate() };
         assert!(v(|s| s.voice_volume = 100).is_ok() && v(|s| s.voice_volume = 101).is_err());
         assert!(v(|s| s.voice_stt_model = "turbo".into()).is_ok() && v(|s| s.voice_stt_model = "medium".into()).is_err());

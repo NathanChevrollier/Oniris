@@ -36,7 +36,7 @@ pub(crate) fn split(text: &str) -> (String, Option<i64>) {
 #[async_trait]
 impl Tool for Create {
     fn spec(&self) -> ToolSpec {
-        spec("reminders.create", "Crée un rappel : { text } en français (« demain appeler la banque »). Sans date, le rappel n'a pas d'échéance.",
+        spec("reminders.create", "Crée un rappel (« rappelle-moi… ») : { text } en français, date comprise (« demain 10 h appeler la banque »). Sans date, le rappel n'a pas d'échéance.",
             json!({"type":"object","required":["text"],"properties":{"text":{"type":"string"}}}), Permission::Free)
     }
     fn describe(&self, _: &Value) -> ConfirmationText { low("Créer un rappel") }

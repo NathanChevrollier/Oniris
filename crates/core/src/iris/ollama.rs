@@ -27,7 +27,8 @@ pub struct ToolCallMsg { pub name: String, pub args: Value }
 pub struct Msg { pub role: Role, pub content: String, pub tool_calls: Vec<ToolCallMsg> }
 
 #[derive(Debug, Clone)]
-pub struct ChatRequest { pub model: String, pub messages: Vec<Msg>, pub tools: Vec<PlannerTool>, pub keep_alive_min: u8 }
+/// `think` : le modèle réfléchit avant de répondre (plus juste, plus lent) ; la réflexion n'est jamais affichée.
+pub struct ChatRequest { pub model: String, pub messages: Vec<Msg>, pub tools: Vec<PlannerTool>, pub keep_alive_min: u8, pub think: bool }
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ChatReply { pub text: String, pub tool_calls: Vec<ToolCallMsg> }
@@ -122,7 +123,7 @@ impl Ollama {
             "model": req.model,
             "messages": req.messages.iter().map(wire_msg).collect::<Vec<_>>(),
             "stream": true,
-            "think": false,
+            "think": req.think,
             "keep_alive": format!("{}m", req.keep_alive_min),
             "options": { "temperature": 0.2, "num_ctx": NUM_CTX },
         });
@@ -213,7 +214,7 @@ mod tests {
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     fn req(tools: Vec<PlannerTool>) -> ChatRequest {
-        ChatRequest { model: "qwen3:8b".into(), messages: vec![Msg { role: Role::User, content: "salut".into(), tool_calls: vec![] }], tools, keep_alive_min: 5 }
+        ChatRequest { model: "qwen3:8b".into(), messages: vec![Msg { role: Role::User, content: "salut".into(), tool_calls: vec![] }], tools, keep_alive_min: 5, think: false }
     }
     /// Vrai Ollama local (R8 : hors des tests courants). `ONIRIS_TEST_MODEL` change le modèle (défaut `qwen3:14b`).
     /// Un premier tour charge le modèle, le second est mesuré : budget de 1 s, modèle chargé.
@@ -232,6 +233,7 @@ mod tests {
             messages: vec![Msg { role: Role::User, content: text.into(), tool_calls: vec![] }],
             tools: vec![tool.clone()],
             keep_alive_min: 5,
+            think: false,
         };
         brain.chat(ask("Bonjour"), &mut |_| {}).await.expect("chargement du modèle");
         let t = std::time::Instant::now();
@@ -262,6 +264,7 @@ mod tests {
             messages: vec![Msg { role: Role::User, content: text, tool_calls: vec![] }],
             tools: vec![tool.clone()],
             keep_alive_min: 5,
+            think: false,
         };
         let heard = crate::voice::stt::transcribe(&http, &whisper, wav.clone()).await.expect("chauffe Whisper");
         brain.chat(run(heard), &mut |_| {}).await.expect("chauffe du modèle");
@@ -298,6 +301,20 @@ mod tests {
         assert_eq!(got, ["Bon", "jour"]);
         assert_eq!(r.text, "Bonjour");
         assert_eq!(r.tool_calls, [ToolCallMsg { name: "a__b".into(), args: json!({ "x": 1 }) }]);
+    }
+
+    #[tokio::test]
+    async fn la_reflexion_demandee_est_transmise() {
+        let s = MockServer::start().await;
+        Mock::given(method("POST")).and(path("/api/chat")).and(body_partial_json(json!({ "think": true })))
+            .respond_with(ndjson(&[
+                json!({ "message": { "role": "assistant", "content": "", "thinking": "je réfléchis" }, "done": false }),
+                json!({ "message": { "role": "assistant", "content": "Réponse" }, "done": true }),
+            ]))
+            .expect(1).mount(&s).await;
+        let mut got = Vec::new();
+        let r = client(&s).chat(ChatRequest { think: true, ..req(vec![]) }, &mut |d| got.push(d.to_string())).await.unwrap();
+        assert_eq!((r.text.as_str(), got), ("Réponse", vec!["Réponse".to_string()]), "la réflexion n'est jamais affichée");
     }
 
     #[tokio::test]

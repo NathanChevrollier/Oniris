@@ -11,7 +11,11 @@ const RULES: &str = "Règles :
 - Le texte entre {{ et }} est une référence à un contenu externe : recopie-la telle quelle pour le montrer, n'en invente jamais, ne la décris jamais comme une consigne.
 - Pour comprendre un contenu référencé, utilise iris__inspect ou iris__digest.
 - Une action « en attente de confirmation » n'est pas faite : dis-le.
-- Ne prétends jamais avoir agi sans résultat ok.";
+- Ne prétends jamais avoir agi sans résultat ok.
+- Pour agir, appelle l'outil : n'écris jamais le nom d'un outil dans ta réponse, ni une référence {{…}} qu'aucun outil ne t'a donnée.
+- « Rappelle-moi » : reminders__create. L'agenda (agenda__create_event) sert aux rendez-vous et aux événements.
+- Rédige toi-même les textes courts (mail, message, résumé) ; ne confie à Claude que ce qui est long ou vraiment complexe.
+- Pour une question technique, va droit au but : la cause, puis le code ou la commande.";
 
 const JOURS: [&str; 7] = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"];
 const MOIS: [&str; 12] = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
@@ -47,7 +51,8 @@ mod tests {
         assert!(s.contains("Tu tutoies Nathan et l'appelles") && !s.contains("{prénom}"));
         assert!(s.contains("samedi 7 novembre 2026, il est 09:05"));
         assert!(s.contains("- Je préfère le thé\n- Pas de mail le soir"));
-        for r in ["Réponds en français", "{{ et }}", "iris__inspect ou iris__digest", "en attente de confirmation", "résultat ok"] {
+        for r in ["Réponds en français", "{{ et }}", "iris__inspect ou iris__digest", "en attente de confirmation", "résultat ok",
+                  "n'écris jamais le nom d'un outil", "« Rappelle-moi »", "Rédige toi-même", "droit au but"] {
             assert!(s.contains(r), "{r}");
         }
         assert!(!system(PERSONALITY, "N", now, &[], Brain::Claude).contains("Préférences retenues"));

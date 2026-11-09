@@ -98,6 +98,20 @@ fn offer_claude(kind: &'static str, message: &str, sink: &Sink) -> TurnEnd {
     TurnEnd { brain: BrainUsed::Local, planner_text: message.into(), shown: vec![Segment::Text { text: message.into() }] }
 }
 
+/// Mots d'une question de raisonnement : le cerveau local réfléchit avant de répondre (quelques secondes de plus).
+/// Les actions (« mets », « rappelle-moi », « baisse ») restent instantanées.
+const REASONING: [&str; 18] = [
+    "pourquoi", "explique", "expliquer", "explique-moi", "difference", "compare", "comparer", "analyse", "analyser",
+    "erreur", "bug", "cause", "optimiser", "conseille", "conseil", "avantages", "inconvenients", "strategie",
+];
+
+/// La demande appelle un raisonnement plutôt qu'une action.
+pub fn wants_reasoning(text: &str) -> bool {
+    text.split(|c: char| !c.is_alphanumeric() && c != '-')
+        .map(crate::when::norm)
+        .any(|w| REASONING.contains(&w.as_str()))
+}
+
 /// Le message commence par « demande à Claude » : un appel explicite.
 pub fn asks_claude(text: &str) -> bool { claude_request(text).is_some() }
 
@@ -151,10 +165,11 @@ impl Agent {
         messages.extend(ctx.history.iter().map(|(r, t)| msg(*r, t.clone())));
         messages.push(msg(Role::User, text.clone()));
         let tools = exec.tools(if local_only { &["iris.ask_claude"] } else { &[] });
+        let think = wants_reasoning(&text);
         // Un outil du courtier a tourné ce tour-ci : déléguer à Claude risquerait de refaire l'action.
         let mut acted = false;
         for step in 0..MAX_STEPS {
-            let req = ChatRequest { model: self.model.clone(), messages: messages.clone(), tools: tools.clone(), keep_alive_min: self.keep_alive_min };
+            let req = ChatRequest { model: self.model.clone(), messages: messages.clone(), tools: tools.clone(), keep_alive_min: self.keep_alive_min, think };
             let mut stream = Stream { buf: String::new(), last: None, vault: &exec.vault, sink };
             let reply = match self.local.chat(req, &mut |d: &str| stream.push(d)).await {
                 Ok(r) => r,
@@ -617,6 +632,29 @@ mod tests {
         assert_eq!(f.turn("un poème", true).await.brain, BrainUsed::Claude);
         assert_eq!(c.plans.lock().len(), 2);
         assert!(asks_claude("Demande à Claude : un poème") && !asks_claude("un poème pour Claude"));
+    }
+
+    #[test]
+    fn reflexion_seulement_pour_raisonner() {
+        for t in ["Pourquoi mon build Rust échoue ?", "Explique-moi la différence entre Arc et Rc",
+                  "J'ai une erreur borrowed value does not live long enough, une idée ?", "Compare SQLite et PostgreSQL"] {
+            assert!(wants_reasoning(t), "{t}");
+        }
+        for t in ["Mets ma playlist Focus", "Rappelle-moi d'appeler le garage jeudi à 14 h", "Baisse le son",
+                  "Comment ça va ?", "J'ai des mails non lus de Paul ?"] {
+            assert!(!wants_reasoning(t), "{t}");
+        }
+    }
+
+    #[tokio::test]
+    async fn le_cerveau_local_reflechit_sur_une_question_de_raisonnement() {
+        let seen = Arc::new(Mutex::new(vec![]));
+        let s = seen.clone();
+        let l = local(move |_, req| { s.lock().push(req.think); text("ok") });
+        let f = fx(l, claude(Ok("x"), false));
+        f.turn("Pourquoi mon build échoue ?", false).await;
+        f.turn("Raconte une blague", false).await;
+        assert_eq!(*seen.lock(), vec![true, false]);
     }
 
     #[tokio::test]

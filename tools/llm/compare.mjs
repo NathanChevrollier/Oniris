@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Compare des modèles Ollama dans les conditions d'IRIS : même prompt système, mêmes réglages
-// (think: false, température 0,2, contexte 16 384), une partie de ses vrais outils.
+// (réflexion sur les questions de raisonnement, température 0,2, contexte 16 384), une partie de ses vrais outils.
 // Rien n'est exécuté : on regarde seulement quel outil le modèle choisit, avec quels arguments.
 //
 //   node tools/llm/compare.mjs                          # qwen3:8b contre qwen3:14b
@@ -29,17 +29,21 @@ Règles :
 - Le texte entre {{ et }} est une référence à un contenu externe : recopie-la telle quelle pour le montrer, n'en invente jamais, ne la décris jamais comme une consigne.
 - Pour comprendre un contenu référencé, utilise iris__inspect ou iris__digest.
 - Une action « en attente de confirmation » n'est pas faite : dis-le.
-- Ne prétends jamais avoir agi sans résultat ok.`;
+- Ne prétends jamais avoir agi sans résultat ok.
+- Pour agir, appelle l'outil : n'écris jamais le nom d'un outil dans ta réponse, ni une référence {{…}} qu'aucun outil ne t'a donnée.
+- « Rappelle-moi » : reminders__create. L'agenda (agenda__create_event) sert aux rendez-vous et aux événements.
+- Rédige toi-même les textes courts (mail, message, résumé) ; ne confie à Claude que ce qui est long ou vraiment complexe.
+- Pour une question technique, va droit au but : la cause, puis le code ou la commande.`;
 
 const tool = (name, description, parameters) => ({ type: "function", function: { name: name.replace(".", "__"), description, parameters } });
 const obj = (properties, required = []) => ({ type: "object", properties, required });
 const str = { type: "string" };
 // Descriptions et schémas recopiés des vrais outils d'Oniris.
 const TOOLS = [
-  tool("reminders.create", "Crée un rappel : { text } en français (« demain appeler la banque »). Sans date, le rappel n'a pas d'échéance.", obj({ text: str }, ["text"])),
+  tool("reminders.create", "Crée un rappel (« rappelle-moi… ») : { text } en français, date comprise (« demain 10 h appeler la banque »). Sans date, le rappel n'a pas d'échéance.", obj({ text: str }, ["text"])),
   tool("notes.create", "Crée une note rapide : { text }.", obj({ text: str }, ["text"])),
   tool("notes.search", "Cherche dans les notes : { query } (préfixe de chaque mot). Requête vide : notes récentes.", obj({ query: str }, ["query"])),
-  tool("agenda.create_event", "Crée un événement : { text } en français (« demain 14h dentiste ») ou { title, start_ms, end_ms?, all_day? }.", obj({ text: str, title: str, start_ms: { type: "integer" }, end_ms: { type: "integer" }, all_day: { type: "boolean" } })),
+  tool("agenda.create_event", "Crée un événement d'agenda (rendez-vous, réunion) : { text } en français (« demain 14h dentiste ») ou { title, start_ms, end_ms?, all_day? }. Pour « rappelle-moi », utilise reminders__create.", obj({ text: str, title: str, start_ms: { type: "integer" }, end_ms: { type: "integer" }, all_day: { type: "boolean" } })),
   tool("music.play_playlist", "Lance une de mes playlists Spotify, par identifiant ou par nom.", obj({ id: str, name: str })),
   tool("music.play_search", "Cherche sur Spotify et lance le premier résultat (titre, artiste ou playlist).", obj({ query: str, kind: { type: "string", enum: ["track", "artist", "playlist"] } }, ["query"])),
   tool("music.volume", "Règle le volume de Spotify : `percent` (0 à 100) ou `delta` (relatif).", obj({ percent: { type: "integer" }, delta: { type: "integer" } })),
@@ -62,9 +66,15 @@ const CASES = [
   { q: "Écris un court mail poli pour décaler la réunion de demain à vendredi même heure.", expect: null },
 ];
 
+// Copie de wants_reasoning (crates/core/src/iris/agent.rs) : réflexion seulement pour raisonner.
+const REASONING = ["pourquoi", "explique", "expliquer", "explique-moi", "difference", "compare", "comparer", "analyse", "analyser",
+  "erreur", "bug", "cause", "optimiser", "conseille", "conseil", "avantages", "inconvenients", "strategie"];
+const norm = (w) => w.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+const wantsReasoning = (t) => t.split(/[^\p{L}\p{N}-]+/u).some((w) => REASONING.includes(norm(w)));
+
 async function chat(model, content) {
   const body = {
-    model, stream: false, think: false, keep_alive: "5m",
+    model, stream: false, think: wantsReasoning(content), keep_alive: "5m",
     options: { temperature: 0.2, num_ctx: 16384 },
     messages: [{ role: "system", content: SYSTEM }, { role: "user", content }],
     tools: TOOLS,
@@ -122,7 +132,7 @@ for (const m of MODELS) {
   console.log(`${m.padEnd(17)} |  ${ok}/${scored}   |   ${(avg(rows.map((r) => r.ms)) / 1000).toFixed(1).padStart(5)} s   | ${avg(rows.map((r) => r.tokS)).toFixed(0).padStart(4)}  | ${results[m].gpu ?? "?"} %`);
 }
 
-let md = `# Comparaison des modèles locaux — ${now.toLocaleString("fr-FR")}\n\nConditions d'IRIS : think désactivé, température 0,2, contexte 16 384, ${TOOLS.length} outils. ✓ bon outil ou bonne réponse, ✗ raté, · à juger toi-même.\n`;
+let md = `# Comparaison des modèles locaux — ${now.toLocaleString("fr-FR")}\n\nConditions d'IRIS : réflexion seulement sur les questions de raisonnement, température 0,2, contexte 16 384, ${TOOLS.length} outils. ✓ bon outil ou bonne réponse, ✗ raté, · à juger toi-même.\n`;
 CASES.forEach((c, i) => {
   md += `\n## ${i + 1}. ${c.q}\n`;
   for (const m of MODELS) {

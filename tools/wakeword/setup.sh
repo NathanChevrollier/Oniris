@@ -45,6 +45,8 @@ uv pip install -e ./openWakeWord --no-deps
 # train.py lit ses drapeaux comme des chaînes : sans ce correctif il tente la conversion TFLite
 # (TensorFlow non installé) après chaque entraînement.
 sed -i 's/if args.convert_to_tflite:/if args.convert_to_tflite is True:/' openWakeWord/openwakeword/train.py
+# Nos clips viennent de generate_clips.py : cet import (devenu introuvable dans piper-sample-generator) ne sert pas.
+sed -i 's/from generate_samples import generate_samples/generate_samples = None  # oniris : clips faits par generate_clips.py/' openWakeWord/openwakeword/train.py
 {
   echo "openWakeWord $(git -C openWakeWord rev-parse HEAD)"
   echo "piper-sample-generator $(git -C piper-sample-generator rev-parse HEAD)"

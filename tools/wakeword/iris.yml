@@ -6,7 +6,8 @@ n_samples: 20000
 n_samples_val: 2000
 tts_batch_size: 50
 augmentation_batch_size: 16
-augmentation_rounds: 2
+# 1 seulement : train.py dimensionne les caractéristiques sur le nombre de fichiers, pas sur les tours.
+augmentation_rounds: 1
 piper_sample_generator_path: ./piper-sample-generator
 output_dir: ./output
 rir_paths: ["./data/rir"]

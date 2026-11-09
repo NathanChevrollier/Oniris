@@ -1,0 +1,103 @@
+# Phrases et mots négatifs en français : ce qu'Oniris ne doit PAS prendre pour « Iris ».
+# Une entrée par ligne. Les lignes vides ou commençant par # sont ignorées.
+# Aucune entrée ne doit contenir « iris » (vérifié par generate_clips.py).
+# --- Mots proches (sons i / r / s) ---
+Irène
+Isis
+Iran
+irez
+irai
+hiver
+ivre
+il rit
+y rit
+lyrique
+Ibiza
+Inès
+Doris
+Boris
+Maurice
+Clarisse
+Patrice
+Béatrice
+mairie
+souris
+guéri
+chéri
+Paris
+ici
+Eric
+Ilyès
+Cyril
+Iliade
+lys
+riz
+crise
+hérisson
+oasis
+Itis
+Idriss
+Ariane
+Elise
+Lisa
+virus
+iridium
+irrité
+il écrit
+il y a
+Isidore
+Irlande
+cerise
+église
+bises
+# --- Phrases du quotidien ---
+Tu peux mettre de la musique ?
+Je reviens dans cinq minutes.
+On mange à quelle heure ce soir ?
+Il fait vraiment froid aujourd'hui.
+J'ai oublié mes clés dans la voiture.
+Attends, je termine ce mail.
+Lance la partie, je suis prêt.
+C'est quoi le programme pour demain ?
+Il y a un bug dans le code.
+Je vais faire un café, tu en veux un ?
+Ferme la fenêtre s'il te plaît.
+On se retrouve à Paris la semaine prochaine.
+Irène m'a appelé ce matin.
+Ma sœur habite en Irlande.
+Les souris ont mangé le fromage.
+J'irai le voir demain après-midi.
+Il rit tout le temps, c'est contagieux.
+Cette crise n'en finit pas.
+J'ai acheté des cerises au marché.
+Le virus se propage vite.
+Elle s'appelle Clarisse, je crois.
+Ici, il pleut depuis trois jours.
+Tu as vu le dernier épisode ?
+Mets le minuteur sur dix minutes.
+Je compile et je reviens.
+Il est quelle heure là ?
+Bon, on y va ?
+Allô, oui, je t'entends mal.
+Merci, c'est gentil.
+Pas maintenant, je suis en réunion.
+Je crois qu'Isis est une déesse égyptienne.
+Le hérisson traverse la route.
+L'hiver arrive bientôt.
+Boris et Doris sont arrivés.
+On part à Ibiza cet été.
+C'est lyrique comme chanson.
+Il écrit un roman depuis des années.
+J'ai trop mangé de riz.
+La mairie ferme à dix-sept heures.
+Chéri, tu as vu mon téléphone ?
+Envoie-moi le fichier quand tu peux.
+Qu'est-ce que tu en penses ?
+Je suis fatigué, je vais me coucher.
+Regarde ça, c'est incroyable.
+Ouvre le terminal et lance la commande.
+Pousse la branche quand c'est prêt.
+Le build a échoué encore une fois.
+Tu veux jouer une autre partie ?
+Baisse un peu le son.
+On commande des pizzas ?

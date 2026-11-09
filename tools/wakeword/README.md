@@ -1,0 +1,121 @@
+# Entraîner le mot d'activation « Iris »
+
+Ce kit produit `iris.onnx`, un petit modèle openWakeWord qui reconnaît « Iris » en français. Il est la partie A du plan 8 ([plan](../../docs/superpowers/plans/2026-11-09-oniris-08-mot-activation.md)). Oniris l'utilise ensuite dans la partie B.
+
+- **Où :** WSL Ubuntu, déjà installé. Le calcul tourne sur le processeur : ta Radeon n'a pas CUDA, et le modèle est petit.
+- **Disque :** environ 25 Go dans `~/oniris-wakeword`, sur le disque de WSL. Ils se libèrent à la fin (voir « Nettoyage »).
+- **Temps :** compte environ une demi-journée, presque entièrement sans surveillance.
+  - Ta voix : 15 min.
+  - Téléchargements : 1 à 2 h selon la connexion.
+  - Clips : 1 h.
+  - Caractéristiques : 1 h.
+  - Entraînement : 30 à 90 min.
+  - Évaluation : 15 min.
+- **Coût :** 0 €. Pas de compte, pas de clé.
+
+## Pas à pas
+
+### 0. Ta voix (Windows, 15 min)
+
+C'est l'étape qui améliore le plus le modèle : les voix synthétiques ne suffisent pas à reconnaître la tienne.
+
+```powershell
+py -3.12 -m pip install sounddevice soundfile numpy
+py -3.12 tools\wakeword\record_samples.py
+```
+
+Tu dis « Iris » 60 fois, avec des consignes variées : plus loin, vite, en question… Le script enregistre ensuite 5 min du bruit normal de ta pièce, PC allumé, musique ou jeu si tu veux.
+
+Les fichiers vont dans `%USERPROFILE%\oniris-wakeword\recordings`, **jamais dans le dépôt**.
+
+### 1. Installation et téléchargements (WSL, 1 à 2 h)
+
+```bash
+bash /mnt/c/Users/natha/Desktop/Utilitaires/Projets/Oniris/tools/wakeword/setup.sh
+```
+
+Si la connexion coupe, relance la même commande : les téléchargements reprennent.
+
+Le script installe :
+- Python 3.10, via `uv`, dans un venv à part ;
+- openWakeWord et 5 voix Piper françaises, soit environ 130 locuteurs grâce à `fr_FR-mls` ;
+- les données d'entraînement (environ 18 Go) :
+  - caractéristiques ACAV100M (2 000 h d'audio varié, déjà converti en caractéristiques) ;
+  - 11 h de validation ;
+  - bruits AudioSet ;
+  - réverbérations MIT.
+
+Optionnel : tu peux déposer de la musique que tu écoutes souvent (.mp3, .flac, .wav) dans `~/oniris-wakeword/data/extra_src/`. Elle sert de bruit de fond.
+
+### 2. Entraînement (WSL, environ 3 h sans surveillance)
+
+```bash
+bash /mnt/c/Users/natha/Desktop/Utilitaires/Projets/Oniris/tools/wakeword/train.sh
+```
+
+Le script enchaîne 5 étapes :
+1. Clips français : 20 000 « Iris » et 20 000 négatifs (voir `negatives_fr.txt`), plus tes enregistrements.
+2. Augmentation : bruit, réverbération, volume.
+3. Entraînement : ça donne `~/oniris-wakeword/output/iris.onnx`.
+4. Évaluation.
+5. Copie des modèles et de la fixture dans le dépôt.
+
+Pour relancer une seule étape : `train.sh clips|features|model|eval|fixture`.
+
+### 3. Évaluation en conditions réelles (le plus important)
+
+Le taux de faux déclenchements se mesure sur du **vrai audio sans « Iris »** : podcasts, vidéos, une soirée de jeu en vocal, ta musique. Prends **au moins 3 h**, idéalement 10.
+
+```bash
+LONG="/mnt/c/Users/natha/Music/podcast1.mp3 /mnt/c/Users/natha/Videos/soiree.wav" bash .../train.sh eval
+```
+
+Les chemins ne doivent pas contenir d'espaces. Sinon, copie les fichiers dans un dossier et donne le dossier.
+
+Objectif du plan 8 :
+- **au moins 90 %** de tes « Iris » reconnus ;
+- **au plus 0,1 faux déclenchement par heure**, soit moins d'un par soirée.
+
+Le script conseille un seuil. Note-le : c'est la constante `WAKE_THRESHOLD` de la partie B.
+
+### 4. Passage à la partie B
+
+Une fois `train.sh fixture` passé, ces fichiers sont créés dans le dépôt :
+- `src-tauri/resources/wake/` : les 3 modèles et `SHA256SUMS` ;
+- `src-tauri/tests/fixtures/wake/` : un clip synthétique et les scores de référence. Ta voix n'y est pas.
+
+Dis-moi « partie B », avec le seuil conseillé : j'intègre le modèle dans Oniris.
+
+## Si le modèle est mauvais
+
+- **Il rate ta voix** (rappel sous 90 %) :
+  1. Enregistre 60 « Iris » de plus, dans d'autres conditions : casque, autre pièce, soir.
+  2. Supprime les positifs et les caractéristiques : `rm -rf ~/oniris-wakeword/output/iris/positive_* ~/oniris-wakeword/output/iris/*.npy`.
+  3. Relance `train.sh`.
+- **Il se déclenche tout seul** (plus de 0,1 par heure) :
+  1. Note les mots qui le trompent et ajoute-les à `negatives_fr.txt`.
+  2. Supprime les négatifs et les caractéristiques : `rm -rf ~/oniris-wakeword/output/iris/negative_* ~/oniris-wakeword/output/iris/*.npy`.
+  3. Relance.
+  4. Tu peux aussi monter `steps` à 100 000 et `max_negative_weight` à 3 000 dans `iris.yml`.
+- **Toujours insuffisant :** un mot de deux syllabes est court, donc difficile. On peut passer à « Dis Iris » ou « Hé Iris ».
+  1. Change `POSITIVE_TEXTS` dans `generate_clips.py` et `target_phrase` dans `iris.yml`.
+  2. Réenregistre-toi.
+  3. Supprime `~/oniris-wakeword/output/`, puis relance.
+
+  Ce changement demande ton accord : la spec dit « IRIS ».
+
+## Confidentialité et licences
+
+- Tes enregistrements restent sur ton PC, dans `%USERPROFILE%\oniris-wakeword\recordings`. Ils ne vont ni dans le dépôt, ni dans le modèle commité, ni sur Internet. Le modèle n'en garde qu'une empreinte statistique. Supprime le dossier quand tu as fini.
+- Les caractéristiques ACAV100M et les modèles de base openWakeWord sont publiés pour la recherche. Le modèle `iris.onnx` qui en résulte est réservé à **ton usage personnel**, pas à une distribution commerciale d'Oniris.
+- Le code d'openWakeWord est sous licence Apache 2.0, les voix Piper sous leurs licences respectives (MIT ou CC).
+
+## Nettoyage
+
+Une fois Oniris validé avec le modèle :
+
+```bash
+rm -rf ~/oniris-wakeword/data ~/oniris-wakeword/output/iris
+```
+
+Ça libère environ 22 Go. Garde `output/iris.onnx`, `versions.txt` et `venv` si tu veux réentraîner. Sous Windows, tu peux aussi supprimer `%USERPROFILE%\oniris-wakeword\recordings`.

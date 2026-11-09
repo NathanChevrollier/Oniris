@@ -67,7 +67,10 @@ echo "== Données d'entraînement (≈ 18 Go, le plus long)"
 fetch "$HF/datasets/davidscripka/openwakeword_features/resolve/main/validation_set_features.npy" data/validation_set_features.npy
 fetch "$HF/datasets/davidscripka/openwakeword_features/resolve/main/openwakeword_features_ACAV100M_2000_hrs_16bit.npy" \
       data/openwakeword_features_ACAV100M_2000_hrs_16bit.npy
-fetch "$HF/datasets/agkphysics/AudioSet/resolve/main/data/bal_train09.tar" data/bal_train09.tar
+# AudioSet est publié en parquet depuis 2025 (l'ancien bal_train09.tar renvoie 404) : un fragment ≈ 700 Mo.
+rm -f data/bal_train09.tar data/bal_train09.tar.part
+mkdir -p data/audioset
+fetch "$HF/datasets/agkphysics/AudioSet/resolve/main/data/bal_train/09.parquet" data/audioset/bal_train09.parquet
 huggingface-cli download --repo-type dataset davidscripka/MIT_environmental_impulse_responses \
   --local-dir data/mit_rirs_raw --local-dir-use-symlinks False
 

@@ -1,6 +1,6 @@
 """Convertit les sources audio brutes en WAV mono 16 kHz 16 bits, le format qu'attend openWakeWord.
 
-- data/bal_train09.tar (AudioSet, .flac)        -> data/background/
+- data/audioset/*.parquet (AudioSet)            -> data/background/
 - data/extra_src/ (tes musiques, .mp3/.flac/.wav) -> data/background/
 - data/mit_rirs_raw/ (wav ou parquet)           -> data/rir/
 - <recordings>/ambient*.wav (bruit de ta pièce)  -> data/ambient/ (morceaux de 10 s)
@@ -9,7 +9,6 @@ Relançable : un fichier déjà converti est sauté.
 """
 import argparse
 import io
-import tarfile
 from math import gcd
 from pathlib import Path
 
@@ -57,23 +56,31 @@ def convert_dir(src: Path, dst: Path) -> int:
     return n
 
 
-def rirs_from_parquet(src: Path, dst: Path) -> int:
+def from_parquet(src: Path, dst: Path) -> int:
+    """Colonne « audio » au format Hugging Face ({bytes, path}), lue par lots pour ménager la mémoire."""
     import pyarrow.parquet as pq
 
     n = 0
     for p in sorted(src.rglob("*.parquet")):
-        table = pq.read_table(p)
-        col = next((c for c in table.column_names if c.lower() == "audio"), None)
+        f = pq.ParquetFile(p)
+        col = next((c for c in f.schema_arrow.names if c.lower() == "audio"), None)
         if col is None:
-            print(f"  {p.name} : pas de colonne audio ({table.column_names})")
+            print(f"  {p.name} : pas de colonne audio ({f.schema_arrow.names})")
             continue
-        for i, cell in enumerate(table.column(col).to_pylist()):
-            out = dst / f"{p.stem}_{i:04d}.wav"
-            if out.exists() or not cell or not cell.get("bytes"):
-                continue
-            x, sr = sf.read(io.BytesIO(cell["bytes"]), dtype="float32", always_2d=False)
-            write(out, to_16k(x, sr))
-            n += 1
+        i = 0
+        for batch in f.iter_batches(batch_size=64, columns=[col]):
+            for cell in batch.column(0).to_pylist():
+                out = dst / f"{p.stem}_{i:05d}.wav"
+                i += 1
+                if out.exists() or not cell or not cell.get("bytes"):
+                    continue
+                try:
+                    x, sr = sf.read(io.BytesIO(cell["bytes"]), dtype="float32", always_2d=False)
+                except Exception as e:  # extrait illisible : on le saute
+                    print(f"  ignoré {out.name} : {e}")
+                    continue
+                write(out, to_16k(x, sr))
+                n += 1
     return n
 
 
@@ -98,20 +105,15 @@ def main() -> None:
     a = ap.parse_args()
     data = a.ww / "data"
 
-    tar = data / "bal_train09.tar"
-    raw = data / "audioset_raw"
-    if tar.exists() and not raw.exists():
-        print("Extraction AudioSet…")
-        with tarfile.open(tar) as t:
-            t.extractall(raw, filter="data")
-    if raw.exists():
-        print(f"AudioSet : {convert_dir(raw, data / 'background')} fichiers")
+    if (data / "audioset").exists():
+        print("AudioSet (quelques minutes)…")
+        print(f"AudioSet : {from_parquet(data / 'audioset', data / 'background')} fichiers")
     if (data / "extra_src").exists():
         print(f"Tes sons : {convert_dir(data / 'extra_src', data / 'background')} fichiers")
 
     rraw = data / "mit_rirs_raw"
     if rraw.exists():
-        n = convert_dir(rraw, data / "rir") + rirs_from_parquet(rraw, data / "rir")
+        n = convert_dir(rraw, data / "rir") + from_parquet(rraw, data / "rir")
         print(f"Réverbérations : {n} fichiers")
 
     (data / "ambient").mkdir(parents=True, exist_ok=True)

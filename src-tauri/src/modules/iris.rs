@@ -133,6 +133,12 @@ fn claude_for(local_only: bool, s: &Settings) -> Arc<dyn ClaudeBrain> {
     }
 }
 
+/// Claude utilisable par la quarantaine (résumé long, brouillon) : jamais en version locale ; sinon réglage
+/// automatique, ou appel explicite de ce tour (bouton Claude, « demande à Claude »).
+fn quarantine_may_use_claude(local_only: bool, force_claude: bool, text: &str, s: &Settings) -> bool {
+    !local_only && (s.iris_claude_auto || force_claude || oniris_core::iris::agent::asks_claude(text))
+}
+
 /// Événement d'un tour sur `oniris://iris`.
 #[derive(Serialize, Clone)]
 struct IrisEvent { turn: u32, #[serde(flatten)] kind: IrisEventKind }
@@ -208,7 +214,7 @@ fn start_turn(app: AppHandle, text: String, force_claude: bool, local_only: bool
         let r = run_turn(&app, turn, text, force_claude, local_only).await;
         if let Err(e) = &r {
             tracing::warn!("oniris: tour d'IRIS interrompu ({e})");
-            let kind = IrisEventKind::Error { kind: "failed", message: "IRIS n'a pas pu traiter ce message.".into(), offer_local: false };
+            let kind = IrisEventKind::Error { kind: "failed", message: "IRIS n'a pas pu traiter ce message.".into(), offer_local: false, offer_claude: false };
             let _ = app.emit("oniris://iris", IrisEvent { turn, kind });
         }
         let _ = done.send(r);
@@ -279,12 +285,17 @@ async fn run_turn(app: &AppHandle, turn: u32, text: String, force_claude: bool, 
         vault: vault.clone(),
         origin: Origin::Assistant { brain: Brain::Local },
         on_pending: Arc::new(move |p: &PendingAction| show_confirm(&handle, p)),
-        virtuals: Some(Arc::new(Quarantine { local: local.clone(), claude: claude.clone(), vault, now_ms })),
+        virtuals: Some(Arc::new(Quarantine {
+            local: local.clone(),
+            claude: if quarantine_may_use_claude(local_only, force_claude, &text, &s) { claude.clone() } else { Arc::new(NoClaude) },
+            vault,
+            now_ms,
+        })),
     });
     let at = chrono::Local::now();
     let system = prompt::system(&s.iris_personality, &s.user_name, at, &memories, Brain::Local);
     let claude_system = prompt::system(&s.iris_personality, &s.user_name, at, &memories, Brain::Claude);
-    let agent = Agent { local, claude, model: s.iris_local_model.clone(), keep_alive_min: s.iris_unload_minutes };
+    let agent = Agent { local, claude, model: s.iris_local_model.clone(), keep_alive_min: s.iris_unload_minutes, claude_auto: s.iris_claude_auto };
     let emitter = app.clone();
     let emit = move |kind: IrisEventKind| {
         let _ = emitter.emit("oniris://iris", IrisEvent { turn, kind });
@@ -622,6 +633,18 @@ mod tests {
         assert!(RealClaude::from_settings(&s).is_some(), "Claude est bien installé");
         let r = claude_for(true, &s).complete("s", "p".into(), &mut |_: &str| {}).await;
         assert_eq!(r, Err(ClaudeError::NotInstalled));
+    }
+
+    #[test]
+    fn la_quarantaine_n_appelle_claude_que_sur_demande() {
+        let on_request = Settings::default();
+        assert!(!on_request.iris_claude_auto, "sur demande par défaut");
+        let auto = Settings { iris_claude_auto: true, ..Settings::default() };
+        assert!(!quarantine_may_use_claude(false, false, "résume mes mails", &on_request));
+        assert!(quarantine_may_use_claude(false, true, "résume mes mails", &on_request));
+        assert!(quarantine_may_use_claude(false, false, "demande à Claude de résumer mes mails", &on_request));
+        assert!(quarantine_may_use_claude(false, false, "résume mes mails", &auto));
+        assert!(!quarantine_may_use_claude(true, true, "demande à Claude x", &auto), "version locale : jamais");
     }
 
     #[tokio::test]

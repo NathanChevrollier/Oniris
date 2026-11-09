@@ -19,6 +19,8 @@ const DONE: &str = "C'est fait.";
 const PENDING: &str = "Je t'ai préparé la confirmation.";
 const FAST_FAILED: &str = "Je n'ai pas pu le faire.";
 const TOO_MANY: &str = "Je m'arrête là : cette demande demande trop d'étapes.";
+/// Délégation refusée par le réglage « Claude seulement si je le demande » : IRIS propose au lieu de relayer.
+pub const CLAUDE_OFFER: &str = "Cette demande me dépasse un peu. Je peux la confier à Claude si tu veux.";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -38,7 +40,8 @@ pub enum IrisEventKind {
     Reply { segments: Vec<Segment>, done: bool },
     ToolUsed { tool: String },
     Pending { action_id: i64 },
-    Error { kind: &'static str, message: String, offer_local: bool },
+    /// `offer_claude` : le panneau propose « Demander à Claude » (jamais relayé sans ce clic).
+    Error { kind: &'static str, message: String, offer_local: bool, offer_claude: bool },
 }
 
 /// `local_only` : « Version simple en local », jamais de relais vers Claude (ni préfixe, ni délégation).
@@ -57,6 +60,8 @@ pub struct Agent {
     pub claude: Arc<dyn ClaudeBrain>,
     pub model: String,
     pub keep_alive_min: u8,
+    /// Faux : Claude seulement sur demande explicite (bouton, préfixe) ; délégation et repli deviennent des propositions.
+    pub claude_auto: bool,
 }
 
 /// Réponse en flux : `Reply` partiel au plus toutes les 50 ms, sans jamais couper une référence.
@@ -83,9 +88,18 @@ fn finish(brain: BrainUsed, text: String, vault: &Mutex<Vault>, sink: &Sink) -> 
 }
 
 fn fail(brain: BrainUsed, kind: &'static str, message: &str, offer_local: bool, sink: &Sink) -> TurnEnd {
-    sink(IrisEventKind::Error { kind, message: message.into(), offer_local });
+    sink(IrisEventKind::Error { kind, message: message.into(), offer_local, offer_claude: false });
     TurnEnd { brain, planner_text: message.into(), shown: vec![Segment::Text { text: message.into() }] }
 }
+
+/// Propose Claude sans rien lui envoyer ; le message tient lieu de réponse (lu aussi par la voix).
+fn offer_claude(kind: &'static str, message: &str, sink: &Sink) -> TurnEnd {
+    sink(IrisEventKind::Error { kind, message: message.into(), offer_local: false, offer_claude: true });
+    TurnEnd { brain: BrainUsed::Local, planner_text: message.into(), shown: vec![Segment::Text { text: message.into() }] }
+}
+
+/// Le message commence par « demande à Claude » : un appel explicite.
+pub fn asks_claude(text: &str) -> bool { claude_request(text).is_some() }
 
 /// `demande à Claude …` : la demande sans ce préfixe (le message entier s'il ne reste rien).
 fn claude_request(text: &str) -> Option<String> {
@@ -145,8 +159,11 @@ impl Agent {
             let reply = match self.local.chat(req, &mut |d: &str| stream.push(d)).await {
                 Ok(r) => r,
                 // Avant toute action seulement : relancer chez Claude ne refait rien.
+                Err(BrainError::Unavailable | BrainError::NoModel) if step == 0 && !local_only && !self.claude_auto => {
+                    return offer_claude("local_unavailable", "IRIS locale est indisponible (Ollama éteint ou modèle absent).", sink);
+                }
                 Err(BrainError::Unavailable | BrainError::NoModel) if step == 0 && !local_only => {
-                    sink(IrisEventKind::Error { kind: "local_unavailable", message: "IRIS locale est indisponible : je passe la main à Claude.".into(), offer_local: false });
+                    sink(IrisEventKind::Error { kind: "local_unavailable", message: "IRIS locale est indisponible : je passe la main à Claude.".into(), offer_local: false, offer_claude: false });
                     return self.claude(text, exec, ctx, false, sink).await;
                 }
                 Err(_) => return fail(BrainUsed::Local, "failed", "IRIS locale n'a pas pu répondre.", false, sink),
@@ -161,6 +178,9 @@ impl Agent {
                     if local_only {
                         messages.push(msg(Role::Tool, json!({ "error": "délégation à Claude désactivée : réponds toi-même" }).to_string()));
                         continue;
+                    }
+                    if !acted && !self.claude_auto {
+                        return offer_claude("claude_offer", CLAUDE_OFFER, sink);
                     }
                     if !acted {
                         let task = c.args["task"].as_str().filter(|t| !t.trim().is_empty()).unwrap_or(&text).to_string();
@@ -388,7 +408,14 @@ mod tests {
             broker, vault, origin: Origin::Assistant { brain: Brain::Local },
             on_pending: Arc::new(move |a: &PendingAction| p.lock().push(a.clone())), virtuals: Some(virtuals),
         });
-        Fx { claude: c.clone(), agent: Agent { local: l, claude: c, model: "m".into(), keep_alive_min: 5 }, exec, runs, events: Default::default(), pendings }
+        Fx { claude: c.clone(), agent: Agent { local: l, claude: c, model: "m".into(), keep_alive_min: 5, claude_auto: true }, exec, runs, events: Default::default(), pendings }
+    }
+
+    /// Réglage « Claude seulement si je le demande ».
+    fn fx_on_request(l: Arc<FakeLocal>, c: Arc<FakeClaude>) -> Fx {
+        let mut f = fx(l, c);
+        f.agent.claude_auto = false;
+        f
     }
 
     /// Outils dangereux appelés : tous en attente, provenance non fiable venue d'un mail, origine `brain`, aucun exécuté.
@@ -539,7 +566,7 @@ mod tests {
         assert!(f.agent_claude().plans.lock()[0].ends_with("Demande :\nun poème"), "préfixe retiré");
         {
             let ev = f.events.lock();
-            let msg = ev.iter().find_map(|e| match e { IrisEventKind::Error { kind: "claude_unavailable", offer_local: true, message } => Some(message.clone()), _ => None }).expect("erreur");
+            let msg = ev.iter().find_map(|e| match e { IrisEventKind::Error { kind: "claude_unavailable", offer_local: true, message, .. } => Some(message.clone()), _ => None }).expect("erreur");
             assert!(!msg.contains(CANARI) && !end.planner_text.contains(CANARI));
             assert_eq!(*ev.last().unwrap(), IrisEventKind::State { state: "idle", brain: BrainUsed::Claude });
         }
@@ -557,6 +584,39 @@ mod tests {
         let end = f.turn("Suivant", true).await;
         assert_eq!((end.brain, f.runs("music.next")), (BrainUsed::Claude, 0));
         assert!(c.plans.lock()[0].ends_with("Demande :\nSuivant"));
+    }
+
+    #[tokio::test]
+    async fn sur_demande_la_delegation_devient_une_proposition() {
+        let l = local(|_, _| tools(vec![call("iris__ask_claude", json!({"task": "écris un sonnet"}))]));
+        let c = claude(Ok("Voici"), false);
+        let f = fx_on_request(l.clone(), c.clone());
+        let end = f.turn("un poème difficile", false).await;
+        assert_eq!((end.brain, end.planner_text.as_str()), (BrainUsed::Local, CLAUDE_OFFER));
+        assert!(c.plans.lock().is_empty() && c.completes.lock().is_empty(), "rien ne part chez Claude");
+        assert!(f.events.lock().iter().any(|e| matches!(e, IrisEventKind::Error { kind: "claude_offer", offer_claude: true, offer_local: false, .. })));
+    }
+
+    #[tokio::test]
+    async fn sur_demande_local_indisponible_ne_bascule_pas() {
+        for e in [BrainError::Unavailable, BrainError::NoModel] {
+            let c = claude(Ok("Bonjour"), false);
+            let f = fx_on_request(local(move |_, _| Err(e.clone())), c.clone());
+            let end = f.turn("raconte une blague", false).await;
+            assert_eq!(end.brain, BrainUsed::Local);
+            assert!(c.plans.lock().is_empty());
+            assert!(f.events.lock().iter().any(|e| matches!(e, IrisEventKind::Error { kind: "local_unavailable", offer_claude: true, .. })));
+        }
+    }
+
+    #[tokio::test]
+    async fn sur_demande_l_appel_explicite_passe_toujours() {
+        let c = claude(Ok("ok"), false);
+        let f = fx_on_request(local(|_, _| unreachable!()), c.clone());
+        assert_eq!(f.turn("demande à Claude un poème", false).await.brain, BrainUsed::Claude);
+        assert_eq!(f.turn("un poème", true).await.brain, BrainUsed::Claude);
+        assert_eq!(c.plans.lock().len(), 2);
+        assert!(asks_claude("Demande à Claude : un poème") && !asks_claude("un poème pour Claude"));
     }
 
     #[tokio::test]

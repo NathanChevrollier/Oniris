@@ -32,7 +32,7 @@ export const irisBriefingIpc = {
 export type Brain = "fast" | "local" | "claude";
 /** Miroir de `modules::iris::IrisStatus` (`local` en snake_case, `claude` étiqueté par `kind`). */
 export type IrisStatus = { local: "down" | "no_model" | "ready"; model: string; claude: { kind: "found"; path: string } | { kind: "missing" } };
-export type IrisErrorKind = "claude_unavailable" | "claude_missing" | "local_unavailable" | "failed";
+export type IrisErrorKind = "claude_unavailable" | "claude_missing" | "local_unavailable" | "claude_offer" | "failed";
 /** Miroir de `IrisEvent` / `IrisEventKind` (étiquette `type`) sur `oniris://iris`. */
 export type IrisEvent = { turn: number } & (
   | { type: "user"; text: string } // tour vocal : le texte dit, émis par Rust seulement
@@ -40,7 +40,7 @@ export type IrisEvent = { turn: number } & (
   | { type: "reply"; segments: Segment[]; done: boolean }
   | { type: "tool_used"; tool: string }
   | { type: "pending"; action_id: number }
-  | { type: "error"; kind: IrisErrorKind; message: string; offer_local: boolean }
+  | { type: "error"; kind: IrisErrorKind; message: string; offer_local: boolean; offer_claude: boolean }
 );
 export type HistoryItem = { conversation_id: number; ts_ms: number; role: string; shown_text: string };
 export type Memory = { id: number; text: string; created_ms: number };

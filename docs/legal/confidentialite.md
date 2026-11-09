@@ -1,6 +1,6 @@
 # Confidentialité d'Oniris
 
-Version 7 — 8 novembre 2026. Ce document décrit simplement ce qu'Oniris fait de tes données. Il est mis à jour à chaque nouveauté qui touche à ta vie privée.
+Version 8 — 9 novembre 2026. Ce document décrit simplement ce qu'Oniris fait de tes données. Il est mis à jour à chaque nouveauté qui touche à ta vie privée.
 
 ## En bref
 
@@ -159,7 +159,7 @@ Oniris n'installe pas Ollama et ne télécharge rien tout seul. Si le modèle ma
 
 ## IRIS : Claude
 
-Pour rédiger (« Répondre avec IRIS »), raisonner ou répondre à ce qui dépasse le cerveau local, IRIS peut faire appel à Claude. Oniris lance alors **Claude Code sur ton PC**, avec **ton propre abonnement** (aucune clé n'est stockée par Oniris) ; c'est Claude Code qui communique avec Anthropic, comme quand tu le lances toi-même. Claude n'est utilisé que si tu le demandes (« demande à Claude… »), si IRIS juge que la demande le nécessite, ou si Ollama n'est pas disponible. Dans ce dernier cas, IRIS te le signale.
+Pour rédiger (« Répondre avec IRIS »), raisonner ou répondre à ce qui dépasse le cerveau local, IRIS peut faire appel à Claude. Oniris lance alors **Claude Code sur ton PC**, avec **ton propre abonnement** (aucune clé n'est stockée par Oniris) ; c'est Claude Code qui communique avec Anthropic, comme quand tu le lances toi-même. **Par défaut, Claude n'est utilisé que si tu le demandes** : le bouton Claude, « demande à Claude… », ou « Répondre avec IRIS ». Si une demande dépasse le cerveau local, ou si Ollama n'est pas disponible, IRIS te **propose** un bouton « Demander à Claude » ; rien ne part sans ton clic. Dans la feuille IRIS, la case « IRIS peut appeler Claude d'elle-même » rétablit l'ancien fonctionnement : IRIS confie alors elle-même à Claude ce qui la dépasse (et te le signale si Ollama est indisponible).
 
 Ce qui part chez Anthropic dans ce cas :
 

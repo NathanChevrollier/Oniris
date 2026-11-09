@@ -141,6 +141,9 @@ pub struct Settings {
     pub iris_work_dirs: Vec<String>,
     /// Modèle Ollama du cerveau local : 1 à 100 caractères parmi `[a-z0-9._:/-]`.
     pub iris_local_model: String,
+    /// IRIS peut confier une demande à Claude d'elle-même (délégation, local indisponible, résumé long).
+    /// Faux : Claude seulement sur demande explicite (bouton, « demande à Claude »), sinon elle le propose.
+    pub iris_claude_auto: bool,
     /// Minutes avant que le modèle local quitte la mémoire, 1..=60.
     pub iris_unload_minutes: u8,
     /// Personnalité d'IRIS (`{prénom}` est remplacé) : non vide, 2000 caractères au plus.
@@ -193,6 +196,7 @@ impl Default for Settings {
             iris_shell_allowlist: DEFAULT_SHELL_ALLOWLIST.map(String::from).to_vec(),
             iris_work_dirs: Vec::new(),
             iris_local_model: "qwen3:8b".into(),
+            iris_claude_auto: false,
             iris_unload_minutes: 5,
             iris_personality: crate::iris::prompt::PERSONALITY.into(),
             voice_stt_model: "small".into(),

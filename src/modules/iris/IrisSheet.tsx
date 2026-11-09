@@ -17,10 +17,11 @@ function Brains({ status, reload }: { status: IrisStatus | null; reload: () => v
   const [minutes, setMinutes] = useState(String(s.iris_unload_minutes));
   const [claudePath, setClaudePath] = useState(s.claude_path);
   const [claudeModel, setClaudeModel] = useState(s.iris_claude_model);
+  const [claudeAuto, setClaudeAuto] = useState(s.iris_claude_auto);
   const [pull, setPull] = useState<{ done: number; total: number } | null>(null);
   const [pullError, setPullError] = useState<string | null>(null);
   const [save, note] = useSave();
-  useEffect(() => { setModel(s.iris_local_model); setMinutes(String(s.iris_unload_minutes)); setClaudePath(s.claude_path); setClaudeModel(s.iris_claude_model); }, [s.iris_local_model, s.iris_unload_minutes, s.claude_path, s.iris_claude_model]);
+  useEffect(() => { setModel(s.iris_local_model); setMinutes(String(s.iris_unload_minutes)); setClaudePath(s.claude_path); setClaudeModel(s.iris_claude_model); setClaudeAuto(s.iris_claude_auto); }, [s.iris_local_model, s.iris_unload_minutes, s.claude_path, s.iris_claude_model, s.iris_claude_auto]);
   useEffect(() => {
     const un = onIrisPull((e) => { if (e.error) setPullError(e.error); else setPull({ done: e.done ?? 0, total: e.total ?? 0 }); });
     return () => { void un.then((f) => f()); };
@@ -51,12 +52,14 @@ function Brains({ status, reload }: { status: IrisStatus | null; reload: () => v
           ? <span className="acc-state" title={status.claude.path}>Trouvé</span>
           : <span className="acc-state warn">Introuvable</span>}
       </div>
-      <form className="iris-grid" onSubmit={(e) => { e.preventDefault(); void save({ iris_local_model: model, iris_unload_minutes: Number(minutes), claude_path: claudePath, iris_claude_model: claudeModel }).then(reload); }}>
+      <form className="iris-grid" onSubmit={(e) => { e.preventDefault(); void save({ iris_local_model: model, iris_unload_minutes: Number(minutes), claude_path: claudePath, iris_claude_model: claudeModel, iris_claude_auto: claudeAuto }).then(reload); }}>
         <label>Modèle local<input value={model} onChange={(e) => setModel(e.target.value)} spellCheck={false} /></label>
         <label>Déchargement (minutes)<input type="number" min={1} value={minutes} onChange={(e) => setMinutes(e.target.value)} /></label>
         <label>Chemin de Claude{status?.claude.kind === "found" && <small> (trouvé : {status.claude.path})</small>}
           <input value={claudePath} onChange={(e) => setClaudePath(e.target.value)} spellCheck={false} placeholder="Détection automatique" /></label>
         <label>Modèle Claude<input value={claudeModel} onChange={(e) => setClaudeModel(e.target.value)} spellCheck={false} placeholder="Par défaut" /></label>
+        <label className="voice-check"><input type="checkbox" checked={claudeAuto} onChange={(e) => setClaudeAuto(e.target.checked)} />IRIS peut appeler Claude d'elle-même</label>
+        <p className="voice-note">Décoché : Claude n'intervient que si tu le demandes (bouton Claude, « demande à Claude… »). Sinon IRIS te le propose.</p>
         <button type="submit" className="acc-btn primary">Enregistrer les cerveaux</button>
       </form>
       {note}

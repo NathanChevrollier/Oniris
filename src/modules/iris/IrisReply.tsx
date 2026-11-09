@@ -65,6 +65,7 @@ export function IrisReply() {
             <p>{error.message}</p>
             <div className="iris-chips">
               <button type="button" className="iris-chip" onClick={dismiss}>Réessayer plus tard</button>
+              {error.offer_claude && <button type="button" className="iris-chip" onClick={() => ask(user, true)}>Demander à Claude</button>}
               {error.offer_local && <button type="button" className="iris-chip" onClick={() => ask(user, false, true)}>Version simple en local</button>}
             </div>
           </div>

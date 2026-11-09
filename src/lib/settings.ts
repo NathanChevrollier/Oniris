@@ -60,6 +60,8 @@ export type Settings = {
   iris_work_dirs: string[];
   /** Modèle Ollama du cerveau local : 1 à 100 caractères parmi a-z 0-9 . _ : / - */
   iris_local_model: string;
+  /** IRIS peut appeler Claude d'elle-même ; faux : seulement sur demande explicite, sinon elle le propose. */
+  iris_claude_auto: boolean;
   /** Minutes avant que le modèle local quitte la mémoire : 1 à 60. */
   iris_unload_minutes: number;
   /** Personnalité d'IRIS (`{prénom}` est remplacé) : 1 à 2000 caractères. */
@@ -110,6 +112,7 @@ export const DEFAULT_SETTINGS: Settings = {
   iris_shell_allowlist: ["git status", "Get-ChildItem", "Get-Location", "Get-Date"],
   iris_work_dirs: [],
   iris_local_model: "qwen3:8b",
+  iris_claude_auto: false,
   iris_unload_minutes: 5,
   iris_personality: "Tu es IRIS, l'assistante d'Oniris. Tu tutoies {prénom} et l'appelles par son prénom. Ton ton est chaleureux, concis, avec une pointe d'humour discrète ; jamais servile, jamais bavarde. Une ou deux phrases suffisent pour une action simple.",
   voice_stt_model: "small",

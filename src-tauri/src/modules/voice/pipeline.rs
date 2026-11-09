@@ -831,7 +831,7 @@ mod tests {
             virtuals: None,
         });
         let local = Arc::new(Local { chats: AtomicUsize::new(0) });
-        let agent = Agent { local: local.clone(), claude: Arc::new(crate::modules::iris::NoClaude), model: "m".into(), keep_alive_min: 5 };
+        let agent = Agent { local: local.clone(), claude: Arc::new(crate::modules::iris::NoClaude), model: "m".into(), keep_alive_min: 5, claude_auto: true };
         let log = Log::default();
         let turns = Arc::new(AgentTurns { log: log.clone(), agent, exec });
         let mut f = fx(Opts { heard, turns: Some(turns), ..Opts::default() }, log);

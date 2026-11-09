@@ -60,6 +60,17 @@ it("la liste blanche est enregistrée sur des réglages relus, et l'erreur de Ru
   expect((await screen.findByRole("alert")).textContent).toBe("Commande trop longue.");
 });
 
+it("Claude sur demande par défaut ; cocher l'appel automatique l'enregistre", async () => {
+  vi.spyOn(ipc, "getSettings").mockResolvedValue(DEFAULT_SETTINGS);
+  const save = vi.spyOn(ipc, "saveSettings").mockResolvedValue(undefined);
+  render(<IrisSheet open onClose={() => {}} />);
+  const box = screen.getByRole("checkbox", { name: /IRIS peut appeler Claude d'elle-même/ });
+  expect(box).not.toBeChecked();
+  await userEvent.click(box);
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer les cerveaux" }));
+  await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ iris_claude_auto: true })));
+});
+
 it("« Rétablir » remet la personnalité par défaut", async () => {
   render(<IrisSheet open onClose={() => {}} />);
   const area = screen.getByLabelText("Personnalité d'IRIS") as HTMLTextAreaElement;

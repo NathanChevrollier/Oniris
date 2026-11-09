@@ -74,12 +74,23 @@ it("claude_unavailable : les deux boutons, « local » relance en local seulemen
   render(<IrisReply />);
   act(() => ask("Résume", true));
   ev({ type: "state", state: "idle", brain: "claude" });
-  ev({ type: "error", kind: "claude_unavailable", message: "Claude est indisponible.", offer_local: true });
+  ev({ type: "error", kind: "claude_unavailable", message: "Claude est indisponible.", offer_local: true, offer_claude: false });
   expect(screen.getByRole("alert")).toHaveTextContent("Claude est indisponible.");
   expect(screen.getByRole("button", { name: "Réessayer plus tard" })).toBeInTheDocument();
   await userEvent.click(screen.getByRole("button", { name: "Version simple en local" }));
   expect(send).toHaveBeenLastCalledWith("Résume", false, true);
   expect(useIris.getState().error).toBeNull();
+});
+
+it("proposition de Claude : rien ne part sans le clic, « Demander à Claude » relance chez Claude", async () => {
+  const send = vi.spyOn(irisIpc, "ask").mockResolvedValue(1);
+  render(<IrisReply />);
+  act(() => ask("Un poème difficile", false));
+  ev({ type: "error", kind: "claude_offer", message: "Cette demande me dépasse un peu.", offer_local: false, offer_claude: true });
+  expect(send).toHaveBeenCalledTimes(1);
+  expect(screen.queryByRole("button", { name: "Version simple en local" })).toBeNull();
+  await userEvent.click(screen.getByRole("button", { name: "Demander à Claude" }));
+  expect(send).toHaveBeenLastCalledWith("Un poème difficile", true, false);
 });
 
 it("les événements d'un tour abandonné sont ignorés", () => {

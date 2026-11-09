@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { irisIpc, type Brain, type IrisEvent, type IrisErrorKind, type IrisStatus, type Segment } from "./api";
 
-type IrisError = { kind: IrisErrorKind; message: string; offer_local: boolean };
+type IrisError = { kind: IrisErrorKind; message: string; offer_local: boolean; offer_claude?: boolean };
 
 export type IrisStore = {
   /** Tour courant (0 : aucun) ; les événements d'un tour ≤ `floor` (tour abandonné ou périmé) sont ignorés. */
@@ -38,7 +38,7 @@ export function apply(ev: IrisEvent) {
       case "reply": return { ...base, segments: ev.segments };
       case "tool_used": return { ...base, toolsUsed: s.toolsUsed.includes(ev.tool) ? s.toolsUsed : [...s.toolsUsed, ev.tool] };
       case "pending": return { ...base, pending: [...s.pending, ev.action_id] };
-      case "error": return { ...base, error: { kind: ev.kind, message: ev.message, offer_local: ev.offer_local } };
+      case "error": return { ...base, error: { kind: ev.kind, message: ev.message, offer_local: ev.offer_local, offer_claude: ev.offer_claude } };
     }
   });
 }

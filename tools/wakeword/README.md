@@ -62,21 +62,32 @@ Le script enchaîne 5 étapes :
 
 Pour relancer une seule étape : `train.sh clips|features|model|eval|fixture`.
 
-### 3. Évaluation en conditions réelles (le plus important)
+### 3. Écoute en direct (le plus important)
 
-Le taux de faux déclenchements se mesure sur du **vrai audio sans « Iris »** : podcasts, vidéos, une soirée de jeu en vocal, ta musique. Prends **au moins 3 h**, idéalement 10.
+Le vrai test, c'est ta journée. Sous Windows, une fois `train.sh fixture` passé :
 
-```bash
-LONG="/mnt/c/Users/natha/Music/podcast1.mp3 /mnt/c/Users/natha/Videos/soiree.wav" bash .../train.sh eval
+```powershell
+py -3.12 -m pip install openwakeword==0.6.0
+py -3.12 tools\wakeword\listen_live.py
 ```
 
-Les chemins ne doivent pas contenir d'espaces. Sinon, copie les fichiers dans un dossier et donne le dossier.
+1. **Vie normale, au moins 3 h au total, sur plusieurs sessions.** Laisse tourner pendant que tu joues, écoutes de la musique ou parles en vocal, **sans dire « Iris »**.
+   - Chaque bip est un faux déclenchement.
+   - Ctrl+C donne le bilan, en faux déclenchements par heure.
+   - Les 3 s autour de chaque faux déclenchement et quasi-déclenchement sont gardées dans `recordings\false_triggers` et `recordings\near_misses`.
+2. **Test de rappel, 5 min :** lance `listen_live.py --test`, dis « Iris » une vingtaine de fois, dans des conditions variées, puis Ctrl+C. Indique ensuite combien de fois tu l'as dit.
+3. **S'il y a eu des faux déclenchements :** lance `bash .../train.sh retrain` dans WSL. Les extraits captés deviennent des négatifs, et le modèle est réentraîné en environ 2 h, puis recopié dans le dépôt. Refais ensuite une session de vie normale.
+
+Les sessions s'ajoutent à `recordings\sessions.jsonl`. Les extraits peuvent contenir d'autres voix de ta pièce : ils restent sur ton PC, supprime-les une fois fini.
+
+Optionnel : tu peux évaluer sur des fichiers plutôt qu'en direct (podcasts, vidéos), avec des chemins sans espaces :
+`LONG="/mnt/c/.../podcast.mp3" bash .../train.sh eval`.
 
 Objectif du plan 8 :
 - **au moins 90 %** de tes « Iris » reconnus ;
 - **au plus 0,1 faux déclenchement par heure**, soit moins d'un par soirée.
 
-Le script conseille un seuil. Note-le : c'est la constante `WAKE_THRESHOLD` de la partie B.
+Le seuil par défaut est 0,5 (`--threshold`). `train.sh eval` en conseille un d'après les tests synthétiques et ta voix. Le seuil retenu devient la constante `WAKE_THRESHOLD` de la partie B.
 
 ### 4. Passage à la partie B
 

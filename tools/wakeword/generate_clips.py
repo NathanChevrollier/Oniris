@@ -131,6 +131,20 @@ def add_own(recordings: Path, out: Path, n_pos: int, rng: random.Random) -> None
     print(f"Enregistrements personnels : {len(train)} × {dup} en entraînement, {len(test)} en test.")
 
 
+def add_hard_negatives(recordings: Path, out: Path, copies: int = 20) -> None:
+    """Extraits captés par listen_live.py (faux et quasi-déclenchements) : négatifs les plus utiles."""
+    found = [f for d in ("false_triggers", "near_misses") for f in sorted((recordings / d).glob("*.wav"))] if recordings else []
+    for f in found:
+        x, sr = sf.read(f, dtype="float32", always_2d=False)
+        x = to_16k(x, sr)
+        for c in range(copies):
+            p = out / "negative_train" / f"live_{f.stem}_{c:02d}.wav"
+            if not p.exists():
+                write(p, x)
+    if found:
+        print(f"Extraits de l'écoute en direct : {len(found)} × {copies} en négatifs d'entraînement.")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--ww", type=Path, required=True, help="dossier de travail ($WW_HOME)")
@@ -167,6 +181,7 @@ def main() -> None:
     print(f"{done} clips générés ({len(jobs) - done} déjà présents ou trop courts).")
 
     add_own(a.recordings, out, a.n_train, rng)
+    add_hard_negatives(a.recordings, out)
     for d in ("positive_train", "positive_test", "negative_train", "negative_test"):
         print(f"{d} : {len(list((out / d).glob('*.wav')))}")
     shutil.copy(Path(__file__).with_name("negatives_fr.txt"), out / "negatives_fr.txt")

@@ -77,10 +77,14 @@ Ce n'est pas une tâche de sous-agent. L'utilisateur la mène avec le contrôleu
 - [ ] Sous Windows, `record_samples.py` : 60 « Iris » et 5 min d'ambiance.
 - [ ] Dans WSL, `setup.sh` s'est terminé sans erreur, et `versions.txt` existe.
 - [ ] `train.sh` a produit `~/oniris-wakeword/output/iris.onnx`.
-- [ ] `train.sh eval`, avec **au moins 3 h** d'audio réel sans « Iris », donne un seuil qui atteint l'objectif : au moins 90 % de la voix de l'utilisateur reconnue, au plus 0,1 faux déclenchement par heure. Noter le seuil et les chiffres dans le journal du plan.
 - [ ] `train.sh fixture` a créé :
   - `src-tauri/resources/wake/{melspectrogram,embedding_model,iris}.onnx` et `SHA256SUMS` ;
   - `src-tauri/tests/fixtures/wake/{sequence.wav,scores.json}`.
+- [ ] L'écoute en direct (`listen_live.py`) atteint l'objectif, avec si besoin des cycles `train.sh retrain` :
+  - **au moins 3 h** de vie normale à au plus 0,1 faux déclenchement par heure ;
+  - au moins 90 % de rappel en mode `--test`.
+
+  Noter le seuil et les bilans (`sessions.jsonl`) dans le journal du plan.
 - [ ] Commit : `feat(voix): ajoute le modèle du mot d'activation « Iris »`, avec les modèles, la fixture et le seuil noté dans le journal.
 
 **Si l'objectif n'est pas atteint :** appliquer la section « Si le modèle est mauvais » du README. Passer à « Dis Iris » demande l'accord de l'utilisateur. La partie B ne commence qu'avec un modèle qui atteint l'objectif.

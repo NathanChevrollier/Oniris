@@ -2,6 +2,7 @@
 # Entraîne le modèle « Iris » (après setup.sh). Chaque étape saute ce qui est déjà fait.
 #   bash train.sh                 tout
 #   bash train.sh clips|features|model|eval|fixture   une seule étape
+#   bash train.sh retrain         après l'écoute en direct (listen_live.py)
 set -euo pipefail
 
 KIT="$(cd "$(dirname "$0")" && pwd)"
@@ -13,6 +14,12 @@ cd "$WW"
 source venv/bin/activate
 TRAIN="python openWakeWord/openwakeword/train.py --training_config $KIT/iris.yml"
 run() { [ "$STEP" = all ] || [ "$STEP" = "$1" ]; }
+
+# retrain : après des sessions listen_live.py, ajoute leurs extraits aux négatifs et réentraîne.
+if [ "$STEP" = retrain ]; then
+  rm -f output/iris/*.npy output/iris.onnx
+  STEP=all
+fi
 
 if run clips; then
   echo "== 1/5 Bruits de fond (avec ton ambiance si elle existe : $REC)"

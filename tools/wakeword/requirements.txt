@@ -1,5 +1,7 @@
 # Environnement d'entraînement du mot d'activation (Python 3.10, WSL Ubuntu, processeur seul).
 # torch / torchaudio s'installent à part depuis l'index CPU de PyTorch (voir setup.sh).
+# pronouncing importe pkg_resources, retiré de setuptools 80+.
+setuptools==69.5.1
 numpy==1.26.4
 scipy==1.11.4
 scikit-learn==1.3.2

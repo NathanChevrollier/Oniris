@@ -34,8 +34,9 @@ VAL_HOURS = 11.3  # durée du jeu de validation d'openWakeWord (train.py)
 REFRACTORY = 25  # pas de 80 ms : 2 s
 # (largeur des couches, poids maximal des négatifs, positifs par lot). Les séries du 11/11 (rappel plafonné à
 # 30-40 %, jusqu'à 83 faux/h) tournaient sur des positifs dont 35 % étaient du bredouillage de Piper, corrigé dans
-# generate_clips.py : leurs conclusions ne valent plus. D'où une grille large, autour des réglages d'openWakeWord.
-GRID = [(32, 1500, 50), (64, 1000, 100), (128, 1000, 100), (64, 300, 300), (128, 300, 300)]
+# generate_clips.py : leurs conclusions ne valent plus. Trois variantes : réglages d'openWakeWord, réseau plus grand,
+# et plus tolérante (si les deux premières ratent trop ta voix).
+GRID = [(32, 1500, 50), (64, 1000, 100), (64, 300, 300)]
 
 
 def session(path: Path):
@@ -128,6 +129,9 @@ def main() -> None:
             "rappel_synth": round(float(np.mean(synth >= t)), 3),
             "rappel_ta_voix": round(float(np.mean(own >= t)), 3) if len(own) else None,
             "objectif_tenu": bool(ok), "minutes": round((time.time() - t0) / 60, 1),
+            # courbe complète, pour arbitrer ensuite entre rappel et faux déclenchements à n'importe quel seuil
+            "courbe": {str(x): {"faux_par_heure": round(fph[x], 3), "rappel_synth": round(float(np.mean(synth >= x)), 3),
+                                "rappel_ta_voix": round(float(np.mean(own >= x)), 3) if len(own) else None} for x in THRESHOLDS},
         }
         r["score"] = round(0.6 * r["rappel_synth"] + 0.4 * (r["rappel_ta_voix"] if r["rappel_ta_voix"] is not None else r["rappel_synth"]), 3)
         results.append(r)

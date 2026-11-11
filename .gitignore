@@ -7,3 +7,4 @@ graphify-out/cache/
 tools/perf/results-*.json
 graphify-out/
 tools/llm/results-*.md
+__pycache__/

@@ -68,12 +68,12 @@ Pour relancer une seule étape : `train.sh clips|features|model|eval|fixture`.
 bash /mnt/c/Users/natha/Desktop/Utilitaires/Projets/Oniris/tools/wakeword/train_best.sh
 ```
 
-Pour chaque modèle (« Dis Iris » / « Hé Iris », puis « Iris » seul), 6 variantes de réglages sont entraînées : largeur du réseau, poids des négatifs. Elles sont toutes mesurées de la même façon :
+Pour chaque modèle (« Dis Iris » / « Hé Iris », puis « Iris » seul), les clips manquants ou défectueux sont refaits, puis 5 variantes de réglages sont entraînées : largeur du réseau, poids des négatifs, positifs par lot. Elles sont toutes mesurées de la même façon :
 - rappel sur 2 000 clips de test ;
 - rappel sur **tes** enregistrements de test, joués en flux sur ton ambiance ;
 - faux déclenchements par heure sur 11,3 h d'audio varié.
 
-Pour chaque variante, le seuil retenu est le plus bas qui tient **≤ 0,5 faux déclenchement par heure**. La variante qui reconnaît le plus à ce seuil gagne et part dans Oniris. Comptes 2 à 3 h, et garde un terminal WSL ouvert pendant ce temps. Le bilan est dans `~/oniris-wakeword/output/sweep_*.md`.
+Pour chaque variante, le seuil retenu est le plus bas qui tient **≤ 0,5 faux déclenchement par heure**. La variante qui reconnaît le plus à ce seuil gagne et part dans Oniris. Compte 3 à 4 h, et garde un terminal WSL ouvert pendant ce temps. Le bilan est dans `~/oniris-wakeword/output/sweep_*.md`.
 
 ### 3. Écoute en direct (le plus important)
 

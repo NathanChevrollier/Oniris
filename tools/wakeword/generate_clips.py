@@ -22,12 +22,16 @@ from scipy.signal import resample_poly
 
 SR = 16000
 TARGET = "iris"
-# Phrases positives et enregistrements personnels de chaque modèle (--model).
+# Phrases positives, enregistrements personnels et durée maximale d'un positif (s, marges comprises) par modèle.
+# Piper déraille parfois (mls surtout) et bredouille plusieurs secondes : 35 % des positifs du 11/11 dépassaient
+# cette durée, jusqu'à 7 s pour « Dis Iris ». openWakeWord ne regarde que la fin du clip (1,28 s) : ces faux
+# positifs lui apprenaient à se déclencher sur n'importe quelle parole. Tes enregistrements font au plus 1,2 et 1,3 s.
 MODELS = {
-    "iris": (["Iris", "Iris.", "Iris !", "Iris ?", "Iris,", "Iris…", "iris"], ["iris_*.wav"]),
+    "iris": (["Iris", "Iris.", "Iris !", "Iris ?", "Iris,", "Iris…", "iris"], ["iris_*.wav"], 1.2),
     "dis_iris": (["Dis Iris", "Dis, Iris", "Dis Iris !", "Dis Iris ?", "Hé Iris", "Hé, Iris", "Hé Iris !", "Hé Iris ?"],
-                 ["dis_*.wav", "he_*.wav"]),
+                 ["dis_*.wav", "he_*.wav"], 1.6),
 }
+TRIES = 4  # nouveaux tirages d'un positif trop long avant d'y renoncer
 
 _voices = []  # (PiperVoice, nb de locuteurs), chargées une fois par processus
 
@@ -89,10 +93,23 @@ def synth(job):
 
 
 def _synth(job) -> bool:
-    path, text, vi, speaker, ls, ns, nw = job
+    path, text, vi, speaker, ls, ns, nw, max_s = job
     path = Path(path)
     if path.exists():
         return False
+    for _ in range(TRIES):
+        x = _render(text, vi, speaker, ls, ns, nw)
+        if max_s is None or len(x) <= max_s * SR:
+            break
+    else:
+        return False
+    if len(x) < SR // 5:
+        return False
+    write(path, x)
+    return True
+
+
+def _render(text, vi, speaker, ls, ns, nw) -> np.ndarray:
     voice, n = _voices[vi]
     raw = b"".join(
         voice.synthesize_stream_raw(
@@ -105,14 +122,11 @@ def _synth(job) -> bool:
         )
     )
     x = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
-    x = trim(to_16k(x, voice.config.sample_rate))
-    if len(x) < SR // 5:
-        return False
-    write(path, x)
-    return True
+    return trim(to_16k(x, voice.config.sample_rate))
 
 
-def jobs_for(split_dir: Path, n: int, texts: list, rng: random.Random, voice_speakers: list, prefix: str) -> list:
+def jobs_for(split_dir: Path, n: int, texts: list, rng: random.Random, voice_speakers: list, prefix: str,
+             max_s: float | None = None) -> list:
     split_dir.mkdir(parents=True, exist_ok=True)
     out = []
     for i in range(n):
@@ -124,8 +138,9 @@ def jobs_for(split_dir: Path, n: int, texts: list, rng: random.Random, voice_spe
                 vi,
                 rng.randrange(voice_speakers[vi]),
                 rng.uniform(0.75, 1.35),  # débit
-                rng.uniform(0.4, 0.9),  # variation de timbre
-                rng.uniform(0.5, 1.0),  # variation de rythme
+                rng.uniform(0.4, 0.75),  # variation de timbre (au-delà, Piper bredouille plus souvent)
+                rng.uniform(0.5, 0.9),  # variation de rythme
+                max_s,
             )
         )
     return out
@@ -177,7 +192,7 @@ def main() -> None:
     a = ap.parse_args()
 
     out = a.ww / "output" / a.model
-    positive_texts, own_globs = MODELS[a.model]
+    positive_texts, own_globs, max_s = MODELS[a.model]
     negatives = read_negatives(Path(__file__).with_name("negatives_fr.txt"))
     voice_dir = a.ww / "voices"
 
@@ -186,10 +201,18 @@ def main() -> None:
         raise SystemExit(f"Aucune voix dans {voice_dir} : lance setup.sh.")
     print(f"{len(speakers)} voix, {sum(speakers)} locuteurs.")
 
+    # Positifs synthétiques trop longs d'une génération précédente : supprimés, donc refaits ci-dessous.
+    old = [f for d in ("positive_train", "positive_test") for f in (out / d).glob("pos_*.wav") if sf.info(f).duration > max_s]
+    for f in old:
+        f.unlink()
+    if old:
+        print(f"{len(old)} positifs de plus de {max_s} s supprimés, à refaire.")
+
     rng = random.Random(a.seed)
+    extra = 1.3  # ≈ 1 positif sur 4 reste trop long après TRIES tirages (souvent le même locuteur) : on en prévoit plus
     jobs = (
-        jobs_for(out / "positive_train", a.n_train, positive_texts, rng, speakers, "pos")
-        + jobs_for(out / "positive_test", a.n_test, positive_texts, rng, speakers, "pos")
+        jobs_for(out / "positive_train", int(a.n_train * extra), positive_texts, rng, speakers, "pos", max_s)
+        + jobs_for(out / "positive_test", int(a.n_test * extra), positive_texts, rng, speakers, "pos", max_s)
         + jobs_for(out / "negative_train", a.n_train, negatives, rng, speakers, "neg")
         + jobs_for(out / "negative_test", a.n_test, negatives, rng, speakers, "neg")
     )

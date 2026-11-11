@@ -32,11 +32,10 @@ import evaluate  # noqa: E402  (fond sonore et lecture en flux, partagés avec l
 THRESHOLDS = [round(t, 2) for t in np.arange(0.2, 0.96, 0.05)]
 VAL_HOURS = 11.3  # durée du jeu de validation d'openWakeWord (train.py)
 REFRACTORY = 25  # pas de 80 ms : 2 s
-# (largeur des couches, poids maximal des négatifs, positifs par lot). 1re série (11/11, 50 positifs par lot,
-# poids 500 à 2000) : sous-apprentissage, 32 % de rappel même sur l'entraînement. Les lots comptaient 50 positifs
-# pour plus de 1 000 négatifs, eux-mêmes surpondérés. D'où plus de positifs et des poids bien plus doux ; le seuil
-# choisi ensuite tient les faux déclenchements.
-GRID = [(64, 100, 300), (64, 300, 300), (128, 100, 300), (128, 300, 300), (128, 300, 150)]
+# (largeur des couches, poids maximal des négatifs, positifs par lot). Les séries du 11/11 (rappel plafonné à
+# 30-40 %, jusqu'à 83 faux/h) tournaient sur des positifs dont 35 % étaient du bredouillage de Piper, corrigé dans
+# generate_clips.py : leurs conclusions ne valent plus. D'où une grille large, autour des réglages d'openWakeWord.
+GRID = [(32, 1500, 50), (64, 1000, 100), (128, 1000, 100), (64, 300, 300), (128, 300, 300)]
 
 
 def session(path: Path):

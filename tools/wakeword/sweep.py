@@ -32,8 +32,11 @@ import evaluate  # noqa: E402  (fond sonore et lecture en flux, partagés avec l
 THRESHOLDS = [round(t, 2) for t in np.arange(0.2, 0.96, 0.05)]
 VAL_HOURS = 11.3  # durée du jeu de validation d'openWakeWord (train.py)
 REFRACTORY = 25  # pas de 80 ms : 2 s
-# (largeur des couches, poids maximal des négatifs) : autour des réglages d'origine, dans les deux sens.
-GRID = [(32, 1000), (64, 500), (64, 1000), (64, 2000), (128, 1000), (128, 2000)]
+# (largeur des couches, poids maximal des négatifs, positifs par lot). 1re série (11/11, 50 positifs par lot,
+# poids 500 à 2000) : sous-apprentissage, 32 % de rappel même sur l'entraînement. Les lots comptaient 50 positifs
+# pour plus de 1 000 négatifs, eux-mêmes surpondérés. D'où plus de positifs et des poids bien plus doux ; le seuil
+# choisi ensuite tient les faux déclenchements.
+GRID = [(64, 100, 300), (64, 300, 300), (128, 100, 300), (128, 300, 300), (128, 300, 150)]
 
 
 def session(path: Path):
@@ -75,17 +78,19 @@ def own_recall(path: Path, ww: Path, model: str) -> list:
     return [evaluate.clip_max(m, f) for f in files]
 
 
-def train(ww: Path, base: dict, model: str, layer: int, neg: int, steps: int, out: Path) -> Path:
-    cfg = dict(base, layer_size=layer, max_negative_weight=neg, steps=steps)
-    ypath = out / f"{model}_L{layer}_N{neg}.yml"
+def train(ww: Path, base: dict, model: str, layer: int, neg: int, pos: int, steps: int, out: Path) -> Path:
+    batch = dict(base["batch_n_per_class"], positive=pos, adversarial_negative=max(50, pos // 3))
+    cfg = dict(base, layer_size=layer, max_negative_weight=neg, steps=steps, batch_n_per_class=batch)
+    name = f"{model}_L{layer}_N{neg}_P{pos}"
+    ypath = out / f"{name}.yml"
     ypath.write_text(yaml.safe_dump(cfg, allow_unicode=True), encoding="utf-8")
-    log = out / f"{model}_L{layer}_N{neg}.log"
+    log = out / f"{name}.log"
     with open(log, "w") as f:
         r = subprocess.run([sys.executable, "openWakeWord/openwakeword/train.py", "--training_config", str(ypath), "--train_model"],
                            cwd=ww, stdout=f, stderr=subprocess.STDOUT)
     if r.returncode != 0:
         raise RuntimeError(f"entraînement en échec, voir {log}")
-    dst = out / f"{model}_L{layer}_N{neg}.onnx"
+    dst = out / f"{name}.onnx"
     shutil.move(str(ww / "output" / f"{model}.onnx"), dst)
     return dst
 
@@ -107,13 +112,13 @@ def main() -> None:
     evaluate.load_bed(a.ww)
 
     results = []
-    for layer, neg in GRID:
-        name = f"L{layer}_N{neg}"
+    for layer, neg, posb in GRID:
+        name = f"L{layer}_N{neg}_P{posb}"
         t0 = time.time()
         cand = out / f"{a.model}_{name}.onnx"
         if not cand.exists():
             print(f"[{time.strftime('%H:%M')}] {a.model} {name} : entraînement…", flush=True)
-            cand = train(a.ww, base, a.model, layer, neg, a.steps, out)
+            cand = train(a.ww, base, a.model, layer, neg, posb, a.steps, out)
         synth = feature_scores(cand, pos)
         own = np.array(own_recall(cand, a.ww, a.model))
         fph = val_fph(cand, val)

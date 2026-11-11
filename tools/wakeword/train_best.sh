@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Grand entraînement : pour chaque modèle, clips complétés, caractéristiques recalculées, 3 variantes de réglages entraînées et
+# Grand entraînement : pour chaque modèle, clips complétés, caractéristiques recalculées, 5 variantes de réglages entraînées et
 # mesurées de la même façon (sweep.py), la meilleure copiée dans Oniris. Environ 2 à 3 h, sans surveillance.
 #   bash train_best.sh                      « Dis Iris » / « Hé Iris », puis « Iris » seul
 #   MODELS=dis_iris bash train_best.sh      un seul modèle
@@ -19,7 +19,7 @@ for m in ${MODELS:-dis_iris iris}; do
   # Variantes et caractéristiques d'une série précédente : sweep.py réutiliserait ses modèles au lieu de réentraîner.
   rm -f "output/$m"/*.npy output/sweep/"$m"_*
   MODEL=$m bash "$KIT/train.sh" features 2>&1 | quiet
-  echo "### $(date +%H:%M) $m : 3 variantes (≈ 10 min chacune)"
+  echo "### $(date +%H:%M) $m : 5 variantes (≈ 10 min chacune)"
   python "$KIT/sweep.py" --ww "$WW" --model "$m" 2>&1 | quiet
   echo "### $(date +%H:%M) $m : copie dans Oniris"
   MODEL=$m bash "$KIT/train.sh" fixture 2>&1 | quiet

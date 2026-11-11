@@ -2,6 +2,10 @@
 caractéristiques, les mesure toutes de la même façon, garde la meilleure.
 
   python sweep.py --ww ~/oniris-wakeword --model dis_iris [--target-fph 0.5] [--steps 60000]
+  python sweep.py ... --grid 128:1000:100,128:600:150     tour d'affinage (largeur:poids:positifs par lot)
+
+Une variante déjà entraînée (output/sweep/) est réutilisée telle quelle : on peut donc remettre la gagnante d'un tour
+précédent dans --grid pour la comparer aux nouvelles sans la réentraîner.
 
 Mesures de chaque variante :
 - rappel synthétique : caractéristiques de test (2 000 clips augmentés jamais vus à l'entraînement) ;
@@ -29,14 +33,14 @@ KIT = Path(__file__).resolve().parent
 sys.path.insert(0, str(KIT))
 import evaluate  # noqa: E402  (fond sonore et lecture en flux, partagés avec l'évaluation)
 
-THRESHOLDS = [round(t, 2) for t in np.arange(0.2, 0.96, 0.05)]
+THRESHOLDS = [round(t, 2) for t in np.arange(0.2, 0.96, 0.05)] + [0.97, 0.99]
 VAL_HOURS = 11.3  # durée du jeu de validation d'openWakeWord (train.py)
 REFRACTORY = 25  # pas de 80 ms : 2 s
 # (largeur des couches, poids maximal des négatifs, positifs par lot). Les séries du 11/11 (rappel plafonné à
 # 30-40 %, jusqu'à 83 faux/h) tournaient sur des positifs dont 35 % étaient du bredouillage de Piper, corrigé dans
-# generate_clips.py : leurs conclusions ne valent plus. Trois variantes : réglages d'openWakeWord, réseau plus grand,
-# et plus tolérante (si les deux premières ratent trop ta voix).
-GRID = [(32, 1500, 50), (64, 1000, 100), (64, 300, 300)]
+# generate_clips.py : leurs conclusions ne valent plus. 1er tour large (32, 64, 128 ; sévère à tolérant), puis
+# tours d'affinage autour des meilleures avec --grid.
+GRID = [(32, 1500, 50), (64, 1000, 100), (128, 1000, 100), (64, 300, 300), (128, 300, 300)]
 
 
 def session(path: Path):
@@ -101,7 +105,10 @@ def main() -> None:
     ap.add_argument("--model", default="dis_iris")
     ap.add_argument("--target-fph", type=float, default=0.5)
     ap.add_argument("--steps", type=int, default=60000)
+    ap.add_argument("--grid", default=None, help="variantes largeur:poids:positifs, séparées par des virgules")
     a = ap.parse_args()
+    grid = [tuple(int(v) for v in g.split(":")) for g in a.grid.split(",")] if a.grid else GRID
+    assert all(len(g) == 3 for g in grid), "--grid attend largeur:poids:positifs"
     out = a.ww / "output" / "sweep"
     out.mkdir(parents=True, exist_ok=True)
     base = yaml.safe_load((KIT / f"{a.model}.yml").read_text(encoding="utf-8"))
@@ -112,7 +119,7 @@ def main() -> None:
     evaluate.load_bed(a.ww)
 
     results = []
-    for layer, neg, posb in GRID:
+    for layer, neg, posb in grid:
         name = f"L{layer}_N{neg}_P{posb}"
         t0 = time.time()
         cand = out / f"{a.model}_{name}.onnx"

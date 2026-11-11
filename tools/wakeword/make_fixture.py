@@ -37,10 +37,10 @@ def main() -> None:
 
     dst = repo / "src-tauri" / "resources" / "wake"
     dst.mkdir(parents=True, exist_ok=True)
-    sums = []
     for src in (res / "melspectrogram.onnx", res / "embedding_model.onnx", model_path):
         shutil.copy(src, dst / src.name)
-        sums.append(f"{hashlib.sha256((dst / src.name).read_bytes()).hexdigest()}  {src.name}")
+    # Empreintes de TOUS les modèles du dossier : copier un modèle ne doit pas effacer celle d'un autre.
+    sums = [f"{hashlib.sha256(f.read_bytes()).hexdigest()}  {f.name}" for f in sorted(dst.glob("*.onnx"))]
     (dst / "SHA256SUMS").write_text("\n".join(sums) + "\n", encoding="utf-8")
 
     rng = random.Random(a.seed)

@@ -47,6 +47,8 @@ uv pip install -e ./openWakeWord --no-deps
 sed -i 's/if args.convert_to_tflite:/if args.convert_to_tflite is True:/' openWakeWord/openwakeword/train.py
 # Nos clips viennent de generate_clips.py : cet import (devenu introuvable dans piper-sample-generator) ne sert pas.
 sed -i 's/from generate_samples import generate_samples/generate_samples = None  # oniris : clips faits par generate_clips.py/' openWakeWord/openwakeword/train.py
+# Bruit de fond jamais plus fort que la voix (défaut : jusqu'à -10 dB, qui noie un mot court) : le micro est près de toi.
+sed -i 's/min_snr_in_db=-10,/min_snr_in_db=0,/' openWakeWord/openwakeword/data.py
 {
   echo "openWakeWord $(git -C openWakeWord rev-parse HEAD)"
   echo "piper-sample-generator $(git -C piper-sample-generator rev-parse HEAD)"

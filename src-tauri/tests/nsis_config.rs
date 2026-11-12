@@ -31,9 +31,7 @@ fn les_versions_concordent() {
     let pkg: Value = serde_json::from_str(&std::fs::read_to_string(root.join("package.json")).unwrap()).unwrap();
     assert_eq!(pkg["version"], v, "package.json");
     let core = std::fs::read_to_string(root.join("crates/core/Cargo.toml")).unwrap();
-    assert!(core.contains(&format!("
-version = \"{v}\"
-")), "crates/core/Cargo.toml");
+    assert!(core.lines().any(|l| l.trim() == format!("version = \"{v}\"")), "crates/core/Cargo.toml");
 }
 
 #[test]

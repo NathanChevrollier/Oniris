@@ -8,9 +8,9 @@ restent soumis à leurs propres licences.
 | [Tauri](https://tauri.app) 2 (`Cargo.lock` : 2.12.5) | Coquille de l'application | Apache-2.0 OU MIT |
 | [tract](https://github.com/sonos/tract) (`tract-onnx` 0.23.10) | Exécution des modèles ONNX du mot d'activation | MIT OU Apache-2.0 |
 | [openWakeWord](https://github.com/dscripka/openWakeWord) | Détection du mot d'activation (code, modèles `melspectrogram` et `embedding`) | Code : Apache-2.0. Modèles pré-entraînés : CC BY-NC-SA 4.0 (voir ci-dessous) |
-| [whisper.cpp](https://github.com/ggml-org/whisper.cpp) (b5454) et modèles `ggml` | Transcription, téléchargés sur ton clic | licence à confirmer (modèles : dépôt `ggerganov/whisper.cpp`) |
-| [Piper](https://github.com/rhasspy/piper) (2023.11.14-2) | Synthèse vocale, téléchargée sur ton clic | licence à confirmer |
-| Voix Piper `fr_FR-siwis-medium` (jeu de données `siwis`) | Voix d'IRIS, téléchargée sur ton clic | licence à confirmer (dépôt `rhasspy/piper-voices` v1.0.0) |
+| [whisper.cpp](https://github.com/ggml-org/whisper.cpp) (b5454) et modèles `ggml` (`ggerganov/whisper.cpp`), téléchargés sur ton clic | Transcription | MIT, © The ggml authors ([licence du code](https://raw.githubusercontent.com/ggml-org/whisper.cpp/master/LICENSE)) ; modèles : MIT ([Hugging Face](https://huggingface.co/ggerganov/whisper.cpp)) |
+| [Piper](https://github.com/rhasspy/piper) (2023.11.14-2), téléchargé sur ton clic | Synthèse vocale | MIT, © 2022 Michael Hansen ([licence](https://raw.githubusercontent.com/rhasspy/piper/master/LICENSE.md)) |
+| Voix Piper `fr_FR-siwis-medium` (`rhasspy/piper-voices` v1.0.0), téléchargée sur ton clic | Voix d'IRIS | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Attribution : entraînée sur la [SIWIS French Speech Synthesis Database](https://datashare.is.ed.ac.uk/handle/10283/2353) (University of Edinburgh DataShare) ; [fiche du modèle](https://huggingface.co/rhasspy/piper-voices/raw/main/fr/fr_FR/siwis/medium/MODEL_CARD) |
 
 Les dépendances Rust (`Cargo.lock`) et JavaScript (`package.json`, `pnpm-lock.yaml`) gardent chacune leur licence
 d'origine, lisible dans leur paquet.

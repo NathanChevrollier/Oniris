@@ -24,10 +24,12 @@ export function Header({ name, onAccounts, onIris, onJournal, onSettings }: { na
       <div className="hello">
         <span>{formatLongDate(now)}</span>
         <h1>{greeting(now, name)}</h1>
-        {onAccounts && <button type="button" className="hdr-btn" data-sheet="accounts" onClick={onAccounts}><UserRound size={13} />Comptes</button>}
-        {onIris && <button type="button" className="hdr-btn" data-sheet="iris" onClick={onIris}><Sparkles size={13} />IRIS</button>}
-        {onJournal && <button type="button" className="hdr-btn" data-sheet="journal" onClick={onJournal}><BookText size={13} />Journal</button>}
-        {onSettings && <button type="button" className="hdr-btn" data-sheet="settings" onClick={onSettings}><Settings size={13} />Paramètres</button>}
+        <nav className="hdr-actions" aria-label="Raccourcis">
+          {onAccounts && <button type="button" className="hdr-btn" data-sheet="accounts" onClick={onAccounts}><UserRound size={13} />Comptes</button>}
+          {onIris && <button type="button" className="hdr-btn" data-sheet="iris" onClick={onIris}><Sparkles size={13} />IRIS</button>}
+          {onJournal && <button type="button" className="hdr-btn" data-sheet="journal" onClick={onJournal}><BookText size={13} />Journal</button>}
+          {onSettings && <button type="button" className="hdr-btn" data-sheet="settings" onClick={onSettings}><Settings size={13} />Paramètres</button>}
+        </nav>
       </div>
       <div className="orb-wrap">
         <IrisOrb size={58} />

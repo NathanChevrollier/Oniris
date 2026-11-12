@@ -9,6 +9,7 @@ pub const MAX_UTTERANCE_MS: usize = 15000;
 const FRAME_MS: usize = 30;
 const FRAME: usize = 16 * FRAME_MS;
 const SEED_FRAMES: usize = 300 / FRAME_MS;
+const START_WINDOW_FRAMES: usize = 400 / FRAME_MS;
 const WINDOW_FRAMES: usize = 1000 / FRAME_MS;
 const MIN_THRESHOLD: f32 = 0.01;
 
@@ -24,7 +25,7 @@ pub struct Endpointer {
     rest: Vec<f32>,
     recent: VecDeque<f32>,
     frames: usize,
-    speech_run: usize,
+    flags: VecDeque<bool>,
     silence_run: usize,
     started: bool,
     done: Endpoint,
@@ -43,7 +44,7 @@ impl Endpointer {
             rest: Vec::new(),
             recent: VecDeque::new(),
             frames: 0,
-            speech_run: 0,
+            flags: VecDeque::new(),
             silence_run: 0,
             started: false,
             done: Endpoint::Continue,
@@ -89,14 +90,17 @@ impl Endpointer {
         if ms >= MAX_UTTERANCE_MS {
             return Endpoint::TooLong;
         }
+        // Début de parole : 200 ms de trames parlées dans les 400 ms écoulées (creux permis).
+        self.flags.push_back(speech);
+        if self.flags.len() > START_WINDOW_FRAMES {
+            self.flags.pop_front();
+        }
         if speech {
             self.silence_run = 0;
-            self.speech_run += 1;
-            if self.speech_run * FRAME_MS >= SPEECH_START_MS {
+            if self.flags.iter().filter(|f| **f).count() * FRAME_MS >= SPEECH_START_MS {
                 self.started = true;
             }
         } else {
-            self.speech_run = 0;
             self.silence_run += 1;
         }
         if self.started {
@@ -208,6 +212,18 @@ mod tests {
     fn noise_rise_mid_listen_still_ends() {
         let mut r = Rng(7);
         let s = [noise(&mut r, 0.3, 0.005), speech(&mut r, 1.5, 0.2, 0.005), noise(&mut r, 4.0, 0.05)].concat();
+        assert_eq!(run(&s, 160).0, Endpoint::End);
+    }
+    #[test]
+    fn choppy_speech_starts() {
+        let mut r = Rng(9);
+        let mut s = Vec::new();
+        while s.len() < 24000 {
+            s.extend(sine(0.12, 0.2));
+            s.extend(noise(&mut r, 0.08, 0.005));
+        }
+        s.truncate(24000);
+        s.extend(noise(&mut r, 1.0, 0.005));
         assert_eq!(run(&s, 160).0, Endpoint::End);
     }
     #[test]

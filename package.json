@@ -9,6 +9,7 @@
     "build": "tsc --noEmit && vite build",
     "test": "vitest run",
     "lint": "eslint src",
+    "check:version": "node tools/release/check-version.mjs",
     "tauri": "tauri"
   },
   "dependencies": {

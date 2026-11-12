@@ -13,7 +13,7 @@ Oniris est un tableau de bord personnel pour Windows 11 : une petite pilule touj
 Deux voies :
 
 - Lancer l'installeur `Oniris_1.0.0_x64-setup.exe` : il est en français et s'installe pour ton compte, sans administrateur.
-- Le construire toi-même : `pnpm install`, `pnpm build`, puis `pnpm tauri build`. L'installeur sort dans `target\release\bundle\nsis\`. Le build est long.
+- Le construire toi-même : `pnpm install`, `pnpm build`, puis `pnpm tauri build` (il faut aussi `TAURI_SIGNING_PRIVATE_KEY` et `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` dans l'environnement : la mise à jour exige un installeur signé, la clé reste dans ton 1Password). L'installeur sort dans `target\release\bundle\nsis\`. Le build est long.
 
 La désinstallation retire l'entrée de démarrage automatique et **garde** `%APPDATA%\Oniris` et `%LOCALAPPDATA%\Oniris`.
 
@@ -45,3 +45,15 @@ pnpm build                     # vérification TypeScript + build du frontend
 ```
 
 Aucun secret personnel n'est nécessaire pour le développement : les tests utilisent de faux serveurs et de faux programmes.
+
+## Sortir une version
+
+Quand tu dis « sors la version X.Y.Z », le contrôleur :
+
+1. passe la version dans les 4 fichiers (`package.json`, `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`, `crates/core/Cargo.toml`) ;
+2. écrit les notes dans `docs/releases/vX.Y.Z.md` ;
+3. lance `pnpm check:version` ;
+4. commite et pose l'étiquette `vX.Y.Z` ;
+5. te montre le tout, puis pousse après ton accord.
+
+L'étiquette déclenche `.github/workflows/release.yml` : contrôle des versions, tests, build, signature et publication avec `latest.json`. Le workflow échoue si les notes manquent. Les secrets `TAURI_SIGNING_PRIVATE_KEY` et `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` se règlent dans GitHub (Settings, Secrets). Test du script : `node --test tools/release/check-version.test.mjs`.

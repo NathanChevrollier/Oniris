@@ -11,8 +11,6 @@ const FRAME: usize = 16 * FRAME_MS;
 const SEED_FRAMES: usize = 300 / FRAME_MS;
 const WINDOW_FRAMES: usize = 1000 / FRAME_MS;
 const MIN_THRESHOLD: f32 = 0.01;
-// shortcut: plafond du plancher, pour que de la parole dès le début ne soit pas prise pour du bruit ; à relever si une pièce très bruyante échoue.
-const MAX_FLOOR: f32 = 0.04;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Endpoint {
@@ -30,6 +28,7 @@ pub struct Endpointer {
     silence_run: usize,
     started: bool,
     done: Endpoint,
+    event_ms: Option<u64>,
 }
 
 impl Default for Endpointer {
@@ -48,6 +47,7 @@ impl Endpointer {
             silence_run: 0,
             started: false,
             done: Endpoint::Continue,
+            event_ms: None,
         }
     }
 
@@ -56,30 +56,35 @@ impl Endpointer {
             return self.done;
         }
         self.rest.extend_from_slice(samples_16k);
-        let whole = self.rest.len() / FRAME * FRAME;
-        let data: Vec<f32> = self.rest.drain(..whole).collect();
-        for frame in data.chunks_exact(FRAME) {
+        let mut used = 0;
+        while self.rest.len() - used >= FRAME {
+            let frame = &self.rest[used..used + FRAME];
             let rms = (frame.iter().map(|s| s * s).sum::<f32>() / FRAME as f32).sqrt();
+            used += FRAME;
             self.done = self.frame(rms);
             if self.done != Endpoint::Continue {
+                self.event_ms = Some((self.frames * FRAME_MS) as u64);
                 break;
             }
         }
+        self.rest.drain(..used);
         self.done
+    }
+
+    /// Instant (ms d'audio, à la trame près) du premier événement.
+    pub fn event_ms(&self) -> Option<u64> {
+        self.event_ms
     }
 
     fn frame(&mut self, rms: f32) -> Endpoint {
         self.frames += 1;
         let ms = self.frames * FRAME_MS;
         let seeding = self.frames <= SEED_FRAMES;
-        let floor = self.recent.iter().copied().fold(f32::MAX, f32::min).min(MAX_FLOOR);
+        let floor = self.recent.iter().copied().fold(f32::MAX, f32::min);
         let speech = !seeding && rms > MIN_THRESHOLD.max(3.0 * floor);
-        // La parole n'alimente pas le plancher : sinon il monterait et couperait la phrase.
-        if !speech {
-            self.recent.push_back(rms);
-            if self.recent.len() > WINDOW_FRAMES {
-                self.recent.pop_front();
-            }
+        self.recent.push_back(rms);
+        if self.recent.len() > WINDOW_FRAMES {
+            self.recent.pop_front();
         }
         if ms >= MAX_UTTERANCE_MS {
             return Endpoint::TooLong;
@@ -127,6 +132,17 @@ mod tests {
             .map(|i| amp * (i as f32 * 2.0 * std::f32::consts::PI * 220.0 / 16000.0).sin())
             .collect()
     }
+    /// Parole syllabique : rafales de 240 ms séparées de 60 ms de bruit.
+    fn speech(rng: &mut Rng, secs: f32, amp: f32, noise_amp: f32) -> Vec<f32> {
+        let burst = sine(0.24, amp);
+        let mut out = Vec::new();
+        while out.len() < (secs * 16000.0) as usize {
+            out.extend_from_slice(&burst);
+            out.extend(noise(rng, 0.06, noise_amp));
+        }
+        out.truncate((secs * 16000.0) as usize);
+        out
+    }
     /// Alimente par morceaux ; renvoie l'événement et la position (en s) où il tombe.
     fn run(sig: &[f32], chunk: usize) -> (Endpoint, f32) {
         let mut e = Endpointer::new();
@@ -142,10 +158,10 @@ mod tests {
     #[test]
     fn speech_then_silence_ends() {
         let mut r = Rng(1);
-        let s = [noise(&mut r, 0.3, 0.005), sine(1.5, 0.2), noise(&mut r, 1.0, 0.005)].concat();
+        let s = [noise(&mut r, 0.3, 0.005), speech(&mut r, 1.5, 0.2, 0.005), noise(&mut r, 1.0, 0.005)].concat();
         let (ev, at) = run(&s, 160);
         assert_eq!(ev, Endpoint::End);
-        let after = at - 1.8;
+        let after = at - 1.74; // dernière rafale finie à 0,3 + 1,44 s
         assert!((0.8..=0.9).contains(&after), "{after}");
     }
     #[test]
@@ -157,7 +173,8 @@ mod tests {
     }
     #[test]
     fn endless_speech_is_too_long() {
-        let (ev, at) = run(&sine(16.0, 0.2), 160);
+        let s = speech(&mut Rng(6), 16.0, 0.2, 0.005);
+        let (ev, at) = run(&s, 160);
         assert_eq!(ev, Endpoint::TooLong);
         assert!((at - 15.0).abs() <= 0.03, "{at}");
     }
@@ -177,9 +194,27 @@ mod tests {
     fn chunk_size_does_not_matter() {
         let mut r = Rng(5);
         let s = [noise(&mut r, 0.3, 0.005), sine(1.5, 0.2), noise(&mut r, 1.5, 0.005)].concat();
-        let (a, ta) = run(&s, 160);
-        let (b, tb) = run(&s, 4800);
+        let ms = |chunk: usize| {
+            let mut e = Endpointer::new();
+            let ev = s.chunks(chunk).map(|c| e.push(c)).find(|r| *r != Endpoint::Continue);
+            (ev, e.event_ms().unwrap() as i64)
+        };
+        let (a, ta) = ms(160);
+        let (b, tb) = ms(4800);
         assert_eq!(a, b);
-        assert!((ta - tb).abs() <= 0.3 + 0.03, "{ta} {tb}"); // pas de la taille du gros morceau
+        assert!((ta - tb).abs() <= 30, "{ta} {tb}");
+    }
+    #[test]
+    fn noise_rise_mid_listen_still_ends() {
+        let mut r = Rng(7);
+        let s = [noise(&mut r, 0.3, 0.005), speech(&mut r, 1.5, 0.2, 0.005), noise(&mut r, 4.0, 0.05)].concat();
+        assert_eq!(run(&s, 160).0, Endpoint::End);
+    }
+    #[test]
+    fn quiet_speech_from_start_is_heard() {
+        let mut r = Rng(8);
+        // sinus 0.07 de crête : RMS ≈ 0.05
+        let s = [speech(&mut r, 1.5, 0.07, 0.005), noise(&mut r, 1.5, 0.005)].concat();
+        assert_eq!(run(&s, 160).0, Endpoint::End);
     }
 }

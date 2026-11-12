@@ -5,7 +5,7 @@ Sans accord écrit préalable de l'auteur, il est interdit de le copier, de le m
 de le redistribuer (en tout ou en partie, sous forme de code ou de binaire) et de
 l'utiliser à des fins commerciales.
 
-Les composants tiers restent soumis à leurs propres licences : voir NOTICE.md.
+Les fichiers tiers listés dans NOTICE.md (dont les modèles ONNX du mot d'activation) gardent leurs propres licences et sont exclus de la présente licence.
 
 ---
 
@@ -15,4 +15,4 @@ The source code of Oniris is published for viewing. You may read and study it.
 Without prior written permission from the author, you may not copy it, modify it,
 redistribute it (in whole or in part, as source or binary) or use it for commercial purposes.
 
-Third-party components remain subject to their own licences: see NOTICE.md.
+Third-party files listed in NOTICE.md (including the wake-word ONNX models) keep their own licences and are excluded from this licence.

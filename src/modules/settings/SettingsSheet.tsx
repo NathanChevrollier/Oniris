@@ -136,7 +136,7 @@ export function SettingsSheet({ open, onClose, onGo }: { open: boolean; onClose:
         <Section title="Mises à jour" keys={["auto_update"]}>
           {(d, set) => <>
             {check("Mises à jour automatiques", d.auto_update, (v) => set({ auto_update: v }))}
-            <p className="voice-note set-wide">Oniris vérifie toutes les 6 h s'il existe une nouvelle version sur GitHub, la télécharge en arrière-plan et l'installe quand tu fermes l'app, jamais pendant que tu joues ou que tu parles à IRIS.</p>
+            <p className="voice-note set-wide">Oniris vérifie toutes les 6 h s'il existe une nouvelle version sur GitHub, la télécharge en arrière-plan et l'installe quand tu fermes l'app, jamais pendant que tu joues ou que tu parles à IRIS. Décocher la case arrête les vérifications et les téléchargements ; une mise à jour déjà téléchargée s'installe quand même à la fermeture.</p>
             <UpdateInfo />
           </>}
         </Section>

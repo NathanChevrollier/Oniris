@@ -176,6 +176,8 @@ it("la pilule annonce une mise à jour prête", () => {
   expect(screen.getByText("Mise à jour 1.2.1 prête")).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "Redémarrer" }));
   expect(restart).toHaveBeenCalled();
+  expect(screen.getByText("Installation dès que tu es disponible…")).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Redémarrer" })).toBeNull();
 });
 
 it("l'annonce reste discrète et se ferme", () => {

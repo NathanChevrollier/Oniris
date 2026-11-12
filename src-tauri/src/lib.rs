@@ -228,8 +228,8 @@ pub fn run() {
                         }
                     }
                 }
-                modules::updater::install_on_exit(app);
                 modules::zenytt::shutdown(); // Zenytt ne survit pas à Oniris
+                modules::updater::install_on_exit(app);
             }
         });
 }

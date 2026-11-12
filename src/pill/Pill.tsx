@@ -58,6 +58,7 @@ function LearnButtons() {
 /** Annonce d'une mise à jour prête : hors de l'îlot (pas de bouton dans un bouton), sans prendre le focus. */
 function UpdateToast() {
   const [version, setVersion] = useState<string | null>(null);
+  const [waiting, setWaiting] = useState(false);
   useEffect(() => {
     const un = onUpdate((u) => setVersion(u.version));
     // Mise à jour déjà prête avant l'ouverture de la pilule (l'événement a pu partir sans elle).
@@ -68,8 +69,10 @@ function UpdateToast() {
   return (
     <div className="pill-update" role="status">
       <span>Mise à jour {version} prête</span>
-      <button type="button" className="pill-learn" onClick={() => void updateIpc.restart().catch(() => {})}>Redémarrer</button>
-      <button type="button" className="pill-learn" onClick={() => setVersion(null)}>Plus tard</button>
+      {waiting ? <span>Installation dès que tu es disponible…</span> : <>
+        <button type="button" className="pill-learn" onClick={() => { setWaiting(true); void updateIpc.restart().catch(() => setWaiting(false)); }}>Redémarrer</button>
+        <button type="button" className="pill-learn" onClick={() => setVersion(null)}>Plus tard</button>
+      </>}
     </div>
   );
 }

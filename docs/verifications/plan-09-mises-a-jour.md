@@ -11,6 +11,6 @@ Les mises à jour passent par GitHub et l'installeur réel : aucun test automati
 - [ ] Pendant un tour IRIS ou en plein écran, « Redémarrer » attend le calme avant d'installer.
 - [ ] Arrêt ou fermeture de session Windows avec une mise à jour en attente : rien n'est installé pendant l'extinction.
 - [ ] Installer pendant qu'Oniris finit de se fermer : l'installation se déroule proprement, sans erreur ni fichier verrouillé.
-- [ ] Après la mise à jour, `%LOCALAPPDATA%\Oniris` (réglages, base, voix) et `%USERPROFILE%\oniris-wakeword` (extraits d'apprentissage) sont intacts.
+- [ ] Après la mise à jour, `%APPDATA%\Oniris` (réglages, base) et `%LOCALAPPDATA%\Oniris` (voix) et `%USERPROFILE%\oniris-wakeword` (extraits d'apprentissage) sont intacts.
 - [ ] Décocher « Mises à jour automatiques » puis Enregistrer : aucune vérification automatique ; « Vérifier maintenant » fonctionne toujours.
 - [ ] Couper le réseau : aucun toast, juste une ligne `warn` dans les journaux.

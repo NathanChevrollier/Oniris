@@ -77,4 +77,4 @@ custom-protocol = ["tauri/custom-protocol"] # embarque le frontend (build releas
 tempfile = "3"
 # Faux serveur Zenytt des tests (examples/fake_zenytt.rs, compilé par `cargo test`).
 rmcp = { version = "~3.4.0", features = ["macros"] }
-tokio = { version = "1", features = ["rt-multi-thread", "io-std"] }
+tokio = { version = "1", features = ["rt-multi-thread", "io-std", "test-util"] }

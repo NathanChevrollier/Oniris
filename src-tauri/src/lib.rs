@@ -191,6 +191,7 @@ pub fn run() {
             tray::build(app.handle())?;
             tray::sync_autostart(app.handle(), autostart);
             modules::voice::pipeline::start(app.handle());
+            modules::voice::wake::WakeListener::start(app.handle());
             hotkey::start_hook(app.handle().clone(), hotkey_cfg);
             fullscreen::start_watcher(app.handle().clone());
             // Accueil non terminé : le panneau s'ouvre dessus, une fois par lancement (le temps que la page charge).

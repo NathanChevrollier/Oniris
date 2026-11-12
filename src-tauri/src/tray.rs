@@ -37,7 +37,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
                 }
             }
             "pause" => {
-                // Relu par le pipeline vocal à chaque appui.
+                // Relu par le pipeline vocal à chaque appui, et par l'écouteur du mot d'activation à chaque pas (micro fermé).
                 let on = pause.is_checked().unwrap_or(false);
                 app.state::<AppState>().voice_paused.store(on, Ordering::SeqCst);
             }

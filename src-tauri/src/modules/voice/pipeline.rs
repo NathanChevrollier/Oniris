@@ -25,9 +25,9 @@ use tauri::{AppHandle, Emitter, Manager};
 const MIN_SPEECH_MS: u32 = 300;
 const TOAST_MAX: usize = 80;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
 #[serde(rename_all = "lowercase")]
-pub enum VoicePhase { Idle, Listening, Transcribing, Speaking }
+pub enum VoicePhase { #[default] Idle, Listening, Transcribing, Speaking }
 
 /// Mesures d'un tour vocal (sans contenu).
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -39,7 +39,7 @@ pub enum Ui { Phase(VoicePhase, Option<f32>), Toast(String), OpenPanel, Timing(T
 
 /// Réglages et état relus à chaque appui.
 #[derive(Debug, Clone, Default)]
-pub struct Conf { pub paused: bool, pub installed: bool, pub fullscreen: bool, pub device: String, pub tts: bool, pub volume: u8, pub user_name: String }
+pub struct Conf { pub paused: bool, pub installed: bool, pub fullscreen: bool, pub device: String, pub tts: bool, pub volume: u8, pub user_name: String, pub wake: bool }
 
 #[async_trait]
 pub trait Stt: Send + Sync {
@@ -56,9 +56,9 @@ pub trait Turns: Send + Sync {
     async fn run(&self, text: String) -> Result<TurnResult, TurnError>;
 }
 
-/// Appui en cours : son numéro (un nouvel appui rend les suites de l'ancien muettes) et l'enregistrement.
+/// Appui en cours : son numéro (un nouvel appui rend les suites de l'ancien muettes), sa phase et l'enregistrement.
 #[derive(Default)]
-struct State { press: u64, rec: Option<Box<dyn Recording>> }
+struct State { press: u64, phase: VoicePhase, rec: Option<Box<dyn Recording>> }
 
 type Recorded = (u64, Vec<f32>);
 
@@ -67,11 +67,13 @@ pub struct Pipeline {
     stt: Arc<dyn Stt>,
     speaker: Arc<dyn Speaker>,
     turns: Arc<dyn Turns>,
-    conf: Arc<dyn Fn() -> Conf + Send + Sync>,
+    pub(super) conf: Arc<dyn Fn() -> Conf + Send + Sync>,
     /// Appelée sous le verrou d'état pour les phases : ne doit jamais rappeler le pipeline.
     ui: Arc<dyn Fn(Ui) + Send + Sync>,
     /// Vrai pendant Speaking (lu par le crochet clavier pour Échap).
-    speaking: &'static AtomicBool,
+    pub(super) speaking: &'static AtomicBool,
+    /// Vrai tant que l'écouteur du mot d'activation tient le micro.
+    pub(super) wake_open: Arc<AtomicBool>,
     /// Micro fermé d'office au-delà (PttEnd perdu) : jamais d'écoute sans touche tenue.
     max_hold: Duration,
     state: Mutex<State>,
@@ -79,6 +81,8 @@ pub struct Pipeline {
 
 /// Maintien maximal de la touche.
 const MAX_HOLD: Duration = Duration::from_secs(30);
+/// Attente maximale de la fermeture du flux de l'écouteur avant d'ouvrir le micro du push-to-talk.
+const WAKE_CLOSE_WAIT: Duration = Duration::from_millis(300);
 
 fn ms(d: Duration) -> u64 { d.as_millis() as u64 }
 
@@ -92,21 +96,36 @@ fn toast_text(shown: &[Segment]) -> String {
     format!("{}…", text.chars().take(TOAST_MAX - 1).collect::<String>())
 }
 
-pub enum Input { Start, End, Escape }
+pub enum Input {
+    Start,
+    End,
+    Escape,
+    /// Mot d'activation détecté : la réponse porte le numéro d'appui, ou `None` si le pipeline refuse.
+    Wake(tokio::sync::oneshot::Sender<Option<u64>>),
+    /// Demande enregistrée après le mot d'activation.
+    WakeEnd(u64, Vec<f32>),
+}
 
 impl Pipeline {
     fn current(&self, press: u64) -> bool { self.state.lock().press == press }
 
     /// Phase émise seulement si `press` est toujours l'appui courant (vérifié et émis sous le même verrou).
     fn phase(&self, press: u64, p: VoicePhase) {
-        let s = self.state.lock();
+        let mut s = self.state.lock();
         if s.press == press {
+            s.phase = p;
             self.speaking.store(p == VoicePhase::Speaking, Ordering::SeqCst);
             (self.ui)(Ui::Phase(p, None));
         }
     }
 
-    fn toast(&self, text: impl Into<String>) { (self.ui)(Ui::Toast(text.into())) }
+    /// Appui courant et sa phase (relus par l'écouteur à chaque pas).
+    pub(super) fn snapshot(&self) -> (u64, VoicePhase) {
+        let s = self.state.lock();
+        (s.press, s.phase)
+    }
+
+    pub(super) fn toast(&self, text: impl Into<String>) { (self.ui)(Ui::Toast(text.into())) }
 
     /// Une entrée du crochet, dans l'ordre d'arrivée ; la suite d'un appui part en tâche de fond.
     pub async fn handle(self: &Arc<Self>, i: Input) {
@@ -118,8 +137,42 @@ impl Pipeline {
                 }
             }
             Input::Escape => self.speaker.stop(),
+            Input::Wake(reply) => {
+                let _ = reply.send(self.wake_begin());
+            }
+            Input::WakeEnd(press, samples) => {
+                if self.current(press) {
+                    tokio::spawn(self.clone().process((press, samples)));
+                }
+            }
         }
     }
+
+    /// Début d'une demande par le mot d'activation : comme `start`, sans ouvrir le micro (l'écouteur enregistre).
+    /// `None` si la voix est en pause, non installée, ou déjà occupée (le push-to-talk garde la priorité).
+    pub fn wake_begin(self: &Arc<Self>) -> Option<u64> {
+        let conf = (self.conf)();
+        if conf.paused || !conf.installed {
+            return None;
+        }
+        let press = {
+            let mut s = self.state.lock();
+            if s.phase != VoicePhase::Idle {
+                return None;
+            }
+            s.press += 1;
+            s.rec = None;
+            s.press
+        };
+        self.speaker.stop();
+        self.phase(press, VoicePhase::Listening);
+        let stt = self.stt.clone();
+        tokio::spawn(async move { stt.warm().await });
+        Some(press)
+    }
+
+    /// Demande par le mot abandonnée (rien dit, réglage coupé) : la pilule revient au repos, sans toast.
+    pub(super) fn wake_abort(&self, press: u64) { self.phase(press, VoicePhase::Idle) }
 
     /// Début d'appui : coupe IRIS si elle parle, puis ouvre le micro et préchauffe Whisper.
     pub async fn start(self: &Arc<Self>) {
@@ -136,6 +189,11 @@ impl Pipeline {
             return self.toast(if conf.paused { "Voix en pause" } else { "Voix non installée" });
         }
         self.phase(press, VoicePhase::Listening);
+        // L'écouteur voit la phase changer et ferme son flux : un seul micro ouvert à la fois.
+        let t = tokio::time::Instant::now();
+        while self.wake_open.load(Ordering::SeqCst) && t.elapsed() < WAKE_CLOSE_WAIT {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
         let (mic, ui) = (self.mic.clone(), self.ui.clone());
         // `Mic::start` bloque le temps d'ouvrir le périphérique.
         let opened = tokio::task::spawn_blocking(move || mic.start(&conf.device, Box::new(move |l| ui(Ui::Phase(VoicePhase::Listening, Some(l)))))).await;
@@ -266,7 +324,6 @@ impl Pipeline {
 /// Lu par le crochet clavier : Échap n'est observé que pendant que IRIS parle.
 pub static SPEAKING: AtomicBool = AtomicBool::new(false);
 
-type ConfFn = Arc<dyn Fn() -> Conf + Send + Sync>;
 /// Serveur Whisper unique, aussi arrêté à l'entrée en plein écran.
 static WHISPER: std::sync::LazyLock<Arc<WhisperProcess>> = std::sync::LazyLock::new(Arc::default);
 
@@ -274,7 +331,11 @@ static WHISPER: std::sync::LazyLock<Arc<WhisperProcess>> = std::sync::LazyLock::
 pub fn unload_on_fullscreen() {
     tauri::async_runtime::spawn(async { WHISPER.stop().await });
 }
-static VOICE: OnceLock<(tokio::sync::mpsc::UnboundedSender<Input>, ConfFn)> = OnceLock::new();
+type Voice = (tokio::sync::mpsc::UnboundedSender<Input>, Arc<Pipeline>);
+static VOICE: OnceLock<Voice> = OnceLock::new();
+
+/// Entrée et pipeline, pour l'écouteur du mot d'activation.
+pub(super) fn voice() -> Option<&'static Voice> { VOICE.get() }
 
 /// Sans attente : appelable depuis le crochet clavier.
 pub fn send(i: Input) {
@@ -295,7 +356,7 @@ fn label(c: &Conf) -> &'static str {
 
 /// Statut « voix » de l'état du PC.
 pub fn status_label() -> &'static str {
-    VOICE.get().map_or(NOT_INSTALLED, |(_, conf)| label(&conf()))
+    VOICE.get().map_or(NOT_INSTALLED, |(_, p)| label(&(p.conf)()))
 }
 
 /// Modèle Whisper choisi dans les réglages.
@@ -377,7 +438,7 @@ fn emit_ui(app: &AppHandle, u: Ui) {
 /// (un nouvel appui peut ainsi couper IRIS pendant qu'elle parle).
 pub fn start(app: &AppHandle) {
     let h = app.clone();
-    let conf: ConfFn = Arc::new(move || {
+    let conf = Arc::new(move || {
         let st = h.state::<AppState>();
         let s = st.settings.read().clone();
         Conf {
@@ -388,6 +449,7 @@ pub fn start(app: &AppHandle) {
             tts: s.voice_tts,
             volume: s.voice_volume,
             user_name: s.user_name,
+            wake: false, // réglage `voice_wake` : Tâche 5
         }
     });
     let h = app.clone();
@@ -397,14 +459,15 @@ pub fn start(app: &AppHandle) {
         stt: Arc::new(Whisper { proc: WHISPER.clone(), http: reqwest::Client::builder().no_proxy().build().expect("client HTTP local"), app: app.clone() }),
         speaker: app.state::<AppState>().speaker.clone(),
         turns: Arc::new(VoiceTurns(app.clone())),
-        conf: conf.clone(),
+        conf,
         ui: Arc::new(move |u| emit_ui(&h, u)),
         speaking: &SPEAKING,
+        wake_open: Arc::default(),
         max_hold: MAX_HOLD,
         state: Mutex::default(),
     });
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
-    if VOICE.set((tx, conf)).is_err() {
+    if VOICE.set((tx, p.clone())).is_err() {
         return;
     }
     tauri::async_runtime::spawn(async move {
@@ -415,7 +478,7 @@ pub fn start(app: &AppHandle) {
 }
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use super::*;
     use crate::modules::voice::capture::MicError;
     use crate::modules::voice::piper::{SpeakHandle, TtsError};
@@ -425,7 +488,7 @@ mod tests {
     use serde_json::{json, Value};
     use std::sync::atomic::AtomicUsize;
 
-    type Log = Arc<Mutex<Vec<String>>>;
+    pub(crate) type Log = Arc<Mutex<Vec<String>>>;
 
     struct FakeMic { log: Log, secs: f32, fail: bool }
     struct FakeRec(Vec<f32>);
@@ -487,14 +550,14 @@ mod tests {
         }
     }
 
-    struct Fx { p: Arc<Pipeline>, log: Log, ui: Arc<Mutex<Vec<Ui>>>, speaking: &'static AtomicBool, _dir: Option<tempfile::TempDir> }
+    pub(crate) struct Fx { pub(crate) p: Arc<Pipeline>, pub(crate) log: Log, pub(crate) ui: Arc<Mutex<Vec<Ui>>>, pub(crate) speaking: &'static AtomicBool, _dir: Option<tempfile::TempDir> }
 
     impl Fx {
-        fn toasts(&self) -> Vec<String> {
+        pub(crate) fn toasts(&self) -> Vec<String> {
             self.ui.lock().iter().filter_map(|u| match u { Ui::Toast(t) => Some(t.clone()), _ => None }).collect()
         }
-        fn has(&self, entry: &str) -> bool { self.log.lock().iter().any(|l| l == entry) }
-        fn last_phase(&self) -> Option<VoicePhase> {
+        pub(crate) fn has(&self, entry: &str) -> bool { self.log.lock().iter().any(|l| l == entry) }
+        pub(crate) fn last_phase(&self) -> Option<VoicePhase> {
             self.ui.lock().iter().rev().find_map(|u| match u { Ui::Phase(p, None) => Some(*p), _ => None })
         }
         /// Lance un appui dont la voix dure jusqu'à `stop()` ; rend la tâche de sa suite une fois en Speaking.
@@ -544,6 +607,7 @@ mod tests {
             conf: Arc::new(move || conf.clone()),
             ui: Arc::new(move |x| u.lock().push(x)),
             speaking,
+            wake_open: Arc::default(),
             max_hold: o.max_hold,
             state: Mutex::default(),
         });
@@ -551,6 +615,27 @@ mod tests {
     }
 
     fn simple(o: Opts) -> Fx { fx(o, Log::default()) }
+
+    /// Pipeline de l'écouteur : micro et réglages fournis, même journal que le micro.
+    pub(crate) fn for_wake(mic: Arc<dyn Mic>, conf: Arc<Mutex<Conf>>, log: Log) -> Fx {
+        let mut f = fx(Opts::default(), log);
+        let p = Arc::get_mut(&mut f.p).unwrap();
+        p.mic = mic;
+        p.conf = Arc::new(move || conf.lock().clone());
+        f
+    }
+
+    #[tokio::test]
+    async fn wake_turn_goes_through_process() {
+        let f = simple(Opts::default());
+        let press = f.p.wake_begin().expect("appui par le mot");
+        f.p.clone().process((press, vec![0.5; 16_000])).await;
+        assert_eq!(*f.log.lock(), ["stt", "finish:false", "turn:Quel temps fait-il ?", "speak"]);
+        assert_eq!(f.toasts(), ["Il fait beau."]);
+        let phases: Vec<VoicePhase> = f.ui.lock().iter().filter_map(|u| match u { Ui::Phase(p, None) => Some(*p), _ => None }).collect();
+        assert_eq!(phases, [VoicePhase::Listening, VoicePhase::Transcribing, VoicePhase::Idle, VoicePhase::Speaking, VoicePhase::Idle]);
+        assert!(!f.has("mic"), "le mot n'ouvre pas le micro du push-to-talk");
+    }
 
     #[tokio::test]
     async fn voix_en_pause_ou_non_installee_le_micro_n_est_jamais_ouvert() {

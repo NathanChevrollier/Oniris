@@ -5,3 +5,4 @@ pub mod pipeline;
 pub mod piper;
 pub mod playback;
 pub mod whisper;
+pub mod wake;

@@ -69,6 +69,9 @@ jobs:
         run: |
           node --test tools/release/check-version.test.mjs
           cargo test -p oniris-core
+          # Les faux claude, piper, whisper et zenytt des tests sont des exemples : `cargo test` seul ne les
+          # produit pas sous leur nom simple sur une machine neuve.
+          cargo build -p oniris --examples
           cargo test -p oniris
           pnpm vitest run
 

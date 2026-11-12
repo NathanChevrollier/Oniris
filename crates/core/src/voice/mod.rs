@@ -3,3 +3,4 @@ pub mod assets;
 pub mod audio;
 pub mod speech;
 pub mod stt;
+pub mod wake;

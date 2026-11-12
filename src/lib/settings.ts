@@ -21,6 +21,8 @@ export type Settings = {
   hover_open: boolean;
   hover_delay_ms: number;
   autostart: boolean;
+  /** Vérification et téléchargement automatiques des mises à jour. */
+  auto_update: boolean;
   hide_pill_in_fullscreen: boolean;
   timeline_start_hour: number;
   timeline_end_hour: number;
@@ -90,6 +92,7 @@ export const DEFAULT_SETTINGS: Settings = {
   hover_open: true,
   hover_delay_ms: 350,
   autostart: true,
+  auto_update: true,
   hide_pill_in_fullscreen: true,
   timeline_start_hour: 8,
   timeline_end_hour: 23,

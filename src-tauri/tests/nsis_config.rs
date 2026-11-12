@@ -1,4 +1,4 @@
-// Configuration de l'installeur NSIS 1.0.0 : lue sans rien construire.
+// Configuration de l'installeur NSIS : lue sans rien construire.
 use serde_json::Value;
 
 const CONF: &str = include_str!("../tauri.conf.json");
@@ -10,7 +10,6 @@ fn conf() -> Value {
 #[test]
 fn installeur_par_utilisateur_en_francais() {
     let c = conf();
-    assert_eq!(c["version"], "1.0.0");
     let b = &c["bundle"];
     assert_eq!(b["targets"], serde_json::json!(["nsis"]));
     let n = &b["windows"]["nsis"];
@@ -24,9 +23,17 @@ fn installeur_par_utilisateur_en_francais() {
 
 #[test]
 fn les_versions_concordent() {
-    let v = env!("CARGO_PKG_VERSION");
-    assert_eq!(v, "1.0.0");
-    assert_eq!(conf()["version"], v);
+    // Source de vérité : tauri.conf.json ; les trois autres fichiers doivent porter la même version.
+    let c = conf();
+    let v = c["version"].as_str().unwrap();
+    assert_eq!(env!("CARGO_PKG_VERSION"), v, "src-tauri/Cargo.toml");
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+    let pkg: Value = serde_json::from_str(&std::fs::read_to_string(root.join("package.json")).unwrap()).unwrap();
+    assert_eq!(pkg["version"], v, "package.json");
+    let core = std::fs::read_to_string(root.join("crates/core/Cargo.toml")).unwrap();
+    assert!(core.contains(&format!("
+version = \"{v}\"
+")), "crates/core/Cargo.toml");
 }
 
 #[test]

@@ -299,10 +299,11 @@ impl Shared {
         // L'ancien index est libéré hors du verrou (sa libération est longue, des lecteurs attendent).
         let old = std::mem::replace(&mut *self.index.write(), fresh);
         drop(old);
-        self.first_done.store(true, Ordering::SeqCst);
         tracing::info!("indexeur : parcours terminé, {count} entrées");
         self.write_snapshot();
         self.publish(IndexStatus::Ready { count }, true);
+        // Après `Ready` : qui voit le premier parcours fini voit aussi l'état `Ready`.
+        self.first_done.store(true, Ordering::SeqCst);
         dirs
     }
 

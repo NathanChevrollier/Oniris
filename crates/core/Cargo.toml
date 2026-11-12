@@ -1,6 +1,7 @@
 [package]
 name = "oniris-core"
 version = "1.1.0"
+license = "LicenseRef-Proprietary"
 edition = "2021"
 
 [lib]
@@ -21,6 +22,7 @@ reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"
 nucleo-matcher = "0.3.1"
 postcard = { version = "1.1.3", features = ["use-std"] }
 url = "2"
+semver = "1"
 image = { version = "0.25", default-features = false, features = ["png", "ico", "gif", "jpeg", "webp"] }
 base64 = "0.23"
 tempfile = "3"

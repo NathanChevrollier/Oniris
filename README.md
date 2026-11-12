@@ -25,6 +25,10 @@ Un accueil guidé te fait choisir tes réglages et te demande, une seule fois, s
 
 Tes données restent sur ton PC, dans `%APPDATA%\Oniris` (la voix dans `%LOCALAPPDATA%\Oniris\voice`). Aucune statistique d'usage n'est envoyée. Détails complets : [docs/legal/confidentialite.md](docs/legal/confidentialite.md).
 
+## Licence
+
+Tous droits réservés © 2026 Nathan Chevrollier : le code est consultable, mais sa copie, sa modification, sa redistribution et son usage commercial sont interdits sans accord écrit (voir [LICENSE](LICENSE)). Composants tiers et licences : [NOTICE.md](NOTICE.md).
+
 ## Mesures
 
 Le banc de performances (ouverture du panneau, RAM, CPU, VRAM, fuite sur 24 h, mise en page) est dans `tools/perf`, voir [tools/perf/README.md](tools/perf/README.md). La liste de vérification globale est dans [docs/verifications/plan-07-finitions.md](docs/verifications/plan-07-finitions.md).

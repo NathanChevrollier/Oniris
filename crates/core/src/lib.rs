@@ -26,6 +26,7 @@ pub mod voice;
 mod settings;
 pub mod time_util;
 pub mod tools;
+pub mod update;
 pub mod weather;
 pub mod when;
 

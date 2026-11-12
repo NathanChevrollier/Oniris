@@ -103,6 +103,8 @@ pub struct Settings {
     pub hover_open: bool,
     pub hover_delay_ms: u32,
     pub autostart: bool,
+    /// Vérification et téléchargement automatiques des mises à jour.
+    pub auto_update: bool,
     pub hide_pill_in_fullscreen: bool,
     pub timeline_start_hour: u8,
     pub timeline_end_hour: u8,
@@ -176,6 +178,7 @@ impl Default for Settings {
             hover_open: true,
             hover_delay_ms: 350,
             autostart: true,
+            auto_update: true,
             hide_pill_in_fullscreen: true,
             timeline_start_hour: 8,
             timeline_end_hour: 23,
@@ -498,6 +501,7 @@ pub fn save_settings(conn: &Connection, s: &Settings) -> Result<(), CoreError> {
 mod tests {
     use super::*;
     use crate::db::{migrate, open_db, CORE_MIGRATIONS};
+    #[test] fn auto_update_defaults_to_true() { assert!(Settings::default().auto_update); }
     #[test] fn champs_manquants_remplis_par_defaut() {
         let s: Settings = serde_json::from_str(r#"{"user_name":"Nathan"}"#).unwrap();
         assert_eq!(s.user_name, "Nathan");

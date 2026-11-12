@@ -8,3 +8,5 @@ tools/perf/results-*.json
 graphify-out/
 tools/llm/results-*.md
 __pycache__/
+*.key
+.env*

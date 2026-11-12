@@ -106,6 +106,10 @@ impl Collector {
 
     pub fn now_ms(&self) -> u64 { self.ring.now_ms() }
 
+    /// Micro fermé : l'audio d'avant (dont la fin d'une demande) ne doit jamais finir dans un extrait coupé plus tard.
+    /// L'horloge continue : `cut` rend un extrait plus court, ou rien sous 1 s. Ce qui a été copié au réveil reste.
+    pub fn gap(&mut self) { self.ring.buf.clear() }
+
     pub fn push_audio(&mut self, samples_16k: &[f32]) {
         let r = &mut self.ring;
         r.buf.extend(samples_16k);
@@ -195,12 +199,12 @@ impl Collector {
         let ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis();
         let path = sub.join(format!("{ms:013}-{:08}.wav", SEQ.fetch_add(1, Ordering::Relaxed)));
         std::fs::write(&path, wav_16k_mono(clip))?;
-        self.rotate();
+        self.rotate(MAX_FILES, MAX_BYTES);
         Ok(path)
     }
 
     /// Les plus anciens partent d'abord (le nom commence par l'horodatage), `pos` et `neg` ensemble.
-    fn rotate(&self) {
+    fn rotate(&self, max_files: usize, max_bytes: u64) {
         let mut files: Vec<_> = ["pos", "neg"]
             .iter()
             .filter_map(|d| std::fs::read_dir(self.dir.join(d)).ok())
@@ -212,7 +216,7 @@ impl Collector {
         let mut bytes: u64 = files.iter().map(|f| f.1).sum();
         let mut n = files.len();
         for (_, len, path) in files {
-            if n <= MAX_FILES && bytes <= MAX_BYTES {
+            if n <= max_files && bytes <= max_bytes {
                 break;
             }
             let _ = std::fs::remove_file(path);
@@ -445,16 +449,68 @@ mod tests {
     }
 
     #[test]
+    fn no_clip_spans_a_mic_closure() {
+        // Audio A (dont la fin d'une demande), micro fermé, puis rouvert : rien de A après coup.
+        let mut s = Sim::new();
+        s.run(5000, quiet);
+        s.c.gap();
+        let reopened = (s.now() * 16) as f32;
+        s.run(1500, quiet);
+        s.wake();
+        s.feed(500);
+        s.on(Event::FalseWake { at_ms: s.now() });
+        assert_eq!(s.out.len(), 1);
+        assert!(s.out[0].1.iter().all(|v| *v >= reopened), "négatif sans A");
+        // Presque-réveil de A non encore copié, push-to-talk après la réouverture : rien.
+        let mut s = Sim::new();
+        s.run(3000, quiet);
+        s.run(80, |_| 0.5);
+        s.c.gap();
+        s.run(1500, quiet);
+        s.on(Event::ManualStart { at_ms: s.now() });
+        assert!(s.out.is_empty());
+        // Le négatif du réveil, pris au réveil, survit à la fermeture due au tour d'IRIS.
+        let mut s = Sim::new();
+        s.run(4000, quiet);
+        let t = s.wake();
+        s.feed(1000);
+        s.on(Event::Command);
+        s.c.gap();
+        s.run(2000, quiet);
+        s.on(Event::FalseWake { at_ms: s.now() });
+        assert_eq!(s.out.len(), 1);
+        assert_eq!(s.out[0].0, Label::Neg);
+        assert_eq!(*s.out[0].1.last().unwrap(), (t * 16 - 1) as f32);
+    }
+
+    #[test]
     fn rotation_keeps_newest_2000() {
         let dir = tempfile::tempdir().unwrap();
+        let pos = dir.path().join("pos");
+        std::fs::create_dir_all(&pos).unwrap();
+        // 2 003 fichiers plus anciens (nom triant avant tout horodatage réel), puis 2 sauvegardes.
+        let old: Vec<PathBuf> = (0..2003).map(|i| pos.join(format!("0000000000000-{i:08}.wav"))).collect();
+        for p in &old {
+            std::fs::write(p, b"x").unwrap();
+        }
         let mut c = Collector::new(dir.path().to_path_buf());
-        let paths: Vec<PathBuf> = (0..2005)
-            .map(|i| c.save(if i % 2 == 0 { Label::Pos } else { Label::Neg }, &[0.1; 160]).unwrap())
-            .collect();
+        let saved = [c.save(Label::Neg, &[0.1; 160]).unwrap(), c.save(Label::Pos, &[0.1; 160]).unwrap()];
         let count = |d: &str| std::fs::read_dir(dir.path().join(d)).unwrap().count();
         assert_eq!(count("pos") + count("neg"), MAX_FILES);
-        assert!(paths[..5].iter().all(|p| !p.exists()), "les 5 plus anciens");
-        assert!(paths[5..].iter().all(|p| p.exists()));
-        assert_eq!(std::fs::read(&paths[2004]).unwrap(), oniris_core::voice::audio::wav_16k_mono(&[0.1; 160]));
+        assert!(old[..5].iter().all(|p| !p.exists()), "les 5 plus anciens");
+        assert!(old[5..].iter().chain(&saved).all(|p| p.exists()));
+        assert_eq!(std::fs::read(&saved[1]).unwrap(), oniris_core::voice::audio::wav_16k_mono(&[0.1; 160]));
+    }
+
+    #[test]
+    fn rotation_caps_bytes() {
+        let dir = tempfile::tempdir().unwrap();
+        let neg = dir.path().join("neg");
+        std::fs::create_dir_all(&neg).unwrap();
+        for i in 0..3 {
+            std::fs::write(neg.join(format!("{i}.wav")), [0u8; 100]).unwrap();
+        }
+        Collector::new(dir.path().to_path_buf()).rotate(MAX_FILES, 250);
+        assert!(!neg.join("0.wav").exists() && neg.join("1.wav").exists() && neg.join("2.wav").exists());
     }
 }

@@ -306,6 +306,9 @@ impl WakeListener {
     }
 
     fn close(&mut self) {
+        if let Some(c) = self.learn.as_mut() {
+            c.gap();
+        }
         if let Some((l, ..)) = self.stream.take() {
             l.stop();
             self.p.wake_open.store(false, Ordering::SeqCst);
@@ -450,10 +453,22 @@ mod tests {
         fn inputs(&self) -> Vec<String> { self.inputs.lock().clone() }
         fn count(&self, entry: &str) -> usize { self.f.log.lock().iter().filter(|l| *l == entry).count() }
         fn label(&self) -> &'static str { *self.label.lock() }
-        /// Extraits écrits dans `learn/<d>` (attente de l'écriture en tâche de fond).
-        fn clips(&self, d: &str) -> usize {
-            std::thread::sleep(std::time::Duration::from_millis(100));
-            std::fs::read_dir(self.learn.path().join(d)).map_or(0, |r| r.count())
+        fn files(&self, d: &str) -> Vec<std::path::PathBuf> {
+            std::fs::read_dir(self.learn.path().join(d)).map_or(Vec::new(), |r| r.flatten().map(|e| e.path()).collect())
+        }
+        /// Extraits écrits dans `learn/<d>`, une fois finies les écritures lancées : le temps simulé n'avance pas
+        /// tant qu'une tâche `spawn_blocking` tourne, donc ce `sleep` attend la fin des écritures en cours.
+        async fn clips(&self, d: &str) -> usize {
+            sleep(Duration::from_millis(1)).await;
+            self.files(d).len()
+        }
+        /// Attend (2 s au plus, en temps réel) que `learn/<d>` compte `n` extraits.
+        async fn wait_clips(&self, d: &str, n: usize) {
+            let t = std::time::Instant::now();
+            while self.clips(d).await < n && t.elapsed() < std::time::Duration::from_secs(2) {
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            assert_eq!(self.clips(d).await, n, "{d}");
         }
         /// « Dis Iris », puis une demande parlée.
         async fn command(&self) {
@@ -683,7 +698,13 @@ mod tests {
         h.feed(0.1, 3.0).await;
         (h.send)(Input::FalseWake);
         h.feed(0.1, 11.0).await;
-        assert_eq!(h.clips(""), 0, "le dossier reste vide");
+        assert_eq!(h.clips("").await, 0, "le dossier reste vide");
+        // Les écritures marchent bien : le mode allumé, le même scénario écrit son positif, et lui seul.
+        h.conf.lock().learning = true;
+        h.command().await;
+        h.feed(0.1, 11.0).await;
+        h.wait_clips("pos", 1).await;
+        assert_eq!(h.clips("neg").await, 0);
     }
 
     #[tokio::test(start_paused = true)]
@@ -692,26 +713,32 @@ mod tests {
         h.command().await;
         assert_eq!(h.inputs(), ["wake", "wake_end:1"]);
         h.feed(0.1, 5.0).await;
-        assert_eq!(h.clips("pos"), 0, "un faux réveil peut encore être signalé");
+        assert_eq!(h.clips("pos").await, 0, "un faux réveil peut encore être signalé");
         h.feed(0.1, 6.0).await;
-        assert_eq!((h.clips("pos"), h.clips("neg")), (1, 0));
+        h.wait_clips("pos", 1).await;
+        assert_eq!(h.clips("neg").await, 0);
         // Mode coupé : collecteur et anneau détruits, plus rien n'est écrit.
         *h.conf.lock() = base();
         h.command().await;
         h.feed(0.1, 11.0).await;
-        assert_eq!((h.clips("pos"), h.clips("neg")), (1, 0));
+        assert_eq!((h.clips("pos").await, h.clips("neg").await), (1, 0));
     }
 
     #[tokio::test(start_paused = true)]
     async fn false_wake_button_writes_negative() {
-        let h = h(Conf { learning: true, ..base() });
+        let h = h_with(Conf { learning: true, ..base() }, 0, false, None, Some(Arc::new(SlowTurns(Log::default()))));
         h.command().await;
-        h.feed(0.1, 2.0).await;
+        h.feed(0.1, 4.0).await; // tour de 3 s, micro fermé, puis réarmé
+        assert!(h.count("unlisten") >= 1, "le tour d'IRIS a fermé le micro");
         (h.send)(Input::FalseWake);
         h.feed(0.1, 0.4).await;
-        assert_eq!(h.clips("neg"), 1);
+        h.wait_clips("neg", 1).await;
+        // Pris au réveil : rien de la demande (0,2) ni d'après.
+        let wav = std::fs::read(&h.files("neg")[0]).unwrap();
+        let cmd = (0.2f32 * 32767.0) as i16;
+        assert!(wav[44..].chunks(2).all(|b| i16::from_le_bytes([b[0], b[1]]) != cmd));
         h.feed(0.1, 11.0).await;
-        assert_eq!((h.clips("pos"), h.clips("neg")), (0, 1), "aucun positif pour ce réveil");
+        assert_eq!((h.clips("pos").await, h.clips("neg").await), (0, 1), "aucun positif pour ce réveil");
     }
 
     #[tokio::test(start_paused = true)]
@@ -723,6 +750,7 @@ mod tests {
         h.feed(0.2, 0.08).await; // « Dis Iris » pas reconnu
         h.feed(0.01, 6.0).await;
         assert!(h.inputs().is_empty());
-        assert_eq!((h.clips("pos"), h.clips("neg")), (1, 0));
+        h.wait_clips("pos", 1).await;
+        assert_eq!(h.clips("neg").await, 0);
     }
 }

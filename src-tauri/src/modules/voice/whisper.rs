@@ -20,7 +20,7 @@ struct Running {
 pub struct WhisperProcess {
     running: tokio::sync::Mutex<Option<Running>>,
     /// (dernière activité, délai d'inactivité) ; le minuteur relit cette valeur à chaque réveil.
-    idle: Mutex<(Option<Instant>, Duration)>,
+    idle: Mutex<(Option<tokio::time::Instant>, Duration)>,
     next_id: Mutex<u64>,
 }
 
@@ -29,7 +29,7 @@ impl WhisperProcess {
     /// `dir` = dossier de la voix, `idle` = délai avant l'arrêt pour inactivité.
     pub async fn ensure(self: &Arc<Self>, dir: &Path, model: &Path, idle: Duration) -> Result<String, SttError> {
         let mut slot = self.running.lock().await;
-        *self.idle.lock() = (Some(Instant::now()), idle);
+        *self.idle.lock() = (Some(tokio::time::Instant::now()), idle);
         if let Some(r) = slot.as_mut() {
             if r.model == model && r.child.try_wait().ok().flatten().is_none() {
                 return Ok(r.base.clone());
@@ -65,7 +65,7 @@ impl WhisperProcess {
 
     /// Réarme le minuteur d'inactivité.
     pub fn touch(&self) {
-        self.idle.lock().0 = Some(Instant::now());
+        self.idle.lock().0 = Some(tokio::time::Instant::now());
     }
 
     pub async fn stop(&self) {
@@ -88,8 +88,8 @@ impl WhisperProcess {
     async fn watch(self: Arc<Self>, id: u64) {
         loop {
             let (last, idle) = *self.idle.lock();
-            let due = last.unwrap_or_else(Instant::now) + idle;
-            tokio::time::sleep_until(due.into()).await;
+            let due = last.unwrap_or_else(tokio::time::Instant::now) + idle;
+            tokio::time::sleep_until(due).await;
             let mut slot = self.running.lock().await;
             if !slot.as_ref().is_some_and(|r| r.id == id) {
                 return;
@@ -206,10 +206,15 @@ mod tests {
         let w = Arc::new(WhisperProcess::default());
         w.ensure(d.path(), &model, Duration::from_millis(800)).await.unwrap();
         let pid = pid_of(&pidf);
-        tokio::time::sleep(Duration::from_millis(500)).await;
-        w.touch(); // repousse l'échéance à ~1300 ms
-        tokio::time::sleep(Duration::from_millis(500)).await; // t = 1000 ms : sans touch() il serait déjà arrêté
-        assert!(!gone_now(pid), "touch() doit repousser l'arrêt");
+        // Horloge figée après le démarrage réel : plus aucune dépendance à la charge de la machine.
+        tokio::time::pause();
+        tokio::time::advance(Duration::from_millis(500)).await;
+        w.touch(); // repousse l'échéance à t = 1300 ms
+        tokio::time::advance(Duration::from_millis(500)).await; // t = 1000 ms : sans touch() il serait déjà arrêté
+        assert!(w.running.lock().await.is_some(), "touch() doit repousser l'arrêt");
+        assert!(!gone_now(pid));
+        tokio::time::advance(Duration::from_millis(400)).await; // t = 1400 ms : échéance dépassée
+        tokio::time::resume();
         assert!(gone(pid).await);
         assert!(w.running.lock().await.is_none());
     }

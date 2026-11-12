@@ -182,7 +182,10 @@ impl Collector {
                     near: near.and_then(|n| n.take(&self.ring)),
                 });
             }
-            Event::Command | Event::NoSpeech | Event::Cancelled => {
+            // Réveil puis silence : on ne sait pas (vrai « Dis Iris » hésitant ou faux réveil), rien n'est gardé ;
+            // seul le bouton « Faux réveil » en fait un négatif (décision du 12/11).
+            Event::NoSpeech => {}
+            Event::Command | Event::Cancelled => {
                 if let Some(w) = self.wake.as_mut().filter(|w| w.label.is_none()) {
                     w.label = Some(if e == Event::Command { Label::Pos } else { Label::Neg });
                 }
@@ -403,20 +406,38 @@ mod tests {
     }
 
     #[test]
-    fn wake_then_no_speech_or_cancel_is_neg() {
-        for e in [Event::NoSpeech, Event::Cancelled] {
-            let mut s = Sim::new();
-            s.run(4000, quiet);
-            let t = s.wake();
-            s.feed(500);
-            s.on(e);
-            s.feed(1000); // Échap pendant l'enregistrement : la demande peut encore finir
-            s.on(Event::Command);
-            s.run(10_100, quiet);
-            assert_eq!(s.out.len(), 1);
-            assert_eq!(s.out[0].0, Label::Neg);
-            assert_eq!(*s.out[0].1.last().unwrap(), (t * 16 - 1) as f32);
-        }
+    fn wake_then_cancel_is_neg() {
+        let mut s = Sim::new();
+        s.run(4000, quiet);
+        let t = s.wake();
+        s.feed(500);
+        s.on(Event::Cancelled);
+        s.feed(1000); // Échap pendant l'enregistrement : la demande peut encore finir
+        s.on(Event::Command);
+        s.run(10_100, quiet);
+        assert_eq!(s.out.len(), 1);
+        assert_eq!(s.out[0].0, Label::Neg);
+        assert_eq!(*s.out[0].1.last().unwrap(), (t * 16 - 1) as f32);
+    }
+
+    #[test]
+    fn wake_then_no_speech_keeps_nothing_unless_false_wake_pressed() {
+        let mut s = Sim::new();
+        s.run(4000, quiet);
+        s.wake();
+        s.feed(500);
+        s.on(Event::NoSpeech);
+        s.run(10_100, quiet);
+        assert!(s.out.is_empty(), "réveil puis silence : rien");
+
+        let mut s = Sim::new();
+        s.run(4000, quiet);
+        let t = s.wake();
+        s.feed(500);
+        s.on(Event::NoSpeech);
+        s.on(Event::FalseWake { at_ms: t + 600 });
+        assert_eq!(s.out.len(), 1);
+        assert_eq!(s.out[0].0, Label::Neg);
     }
 
     #[test]

@@ -408,7 +408,8 @@ it("affiche l'état de l'écoute", ...) // voice_wake_state = "à l'écoute" →
 | `ExpectWake`, puis aucun réveil dans la fenêtre | `Pos`, autour du meilleur score de la fenêtre, s'il dépasse `EXPECT_MIN_SCORE`, sinon rien |
 | `FalseWake` moins de 10 s après un `Woke` | `Neg` (3 s finissant au réveil), et aucun `Pos` pour ce réveil |
 | `Woke` puis `Command`, sans bouton | `Pos`, autour du score du réveil |
-| `Woke` puis `NoSpeech` ou `Cancelled`, sans bouton | `Neg` |
+| `Woke` puis `Cancelled`, sans bouton | `Neg` |
+| `Woke` puis `NoSpeech`, sans bouton | rien (vrai « Dis Iris » hésitant ou faux réveil : on ne sait pas ; décision du 12/11, seul le bouton « Faux réveil » en fait un négatif) |
 | Score ≥ `NEAR_MISS` et < `WAKE_THRESHOLD`, puis `Woke` ou `ManualStart` dans les 5 s | `Pos`, autour du presque-réveil (raté, puis l'utilisateur a répété) |
 | Presque-réveil sans suite dans les 5 s | rien (on ne sait pas) |
 

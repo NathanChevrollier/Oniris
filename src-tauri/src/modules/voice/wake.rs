@@ -3,12 +3,13 @@
 //! traite comme un push-to-talk. Avant la détection, l'audio ne vit qu'en mémoire (canal et tampons du détecteur) :
 //! jamais écrit, transcrit ni journalisé.
 use super::capture::{CpalMic, Listening, Mic};
-use super::pipeline::{self, Input, Pipeline};
+use super::learn::{Collector, Event, Label};
+use super::pipeline::{self, Input, Mark, Pipeline};
 use oniris_core::voice::endpoint::{Endpoint, Endpointer};
 use oniris_core::voice::wake::{verify, WakeDetector, WakeError, WakeModels};
 use parking_lot::Mutex;
 use std::panic::{catch_unwind, AssertUnwindSafe};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 use std::sync::mpsc::{sync_channel, Receiver};
 use std::sync::{Arc, OnceLock};
@@ -19,7 +20,6 @@ use tokio::time::Instant;
 /// Seuil de détection (scores saturés près de 1 : analyse fine du 12/11).
 pub const WAKE_THRESHOLD: f32 = 0.998;
 /// Presque-réveil : utilisé seulement par le mode apprentissage.
-#[expect(dead_code, reason = "lu par le mode apprentissage (Tâche 6)")]
 pub const NEAR_MISS: f32 = 0.3;
 /// Après une détection, les suivantes sont ignorées.
 pub const REFRACTORY: Duration = Duration::from_secs(2);
@@ -80,6 +80,10 @@ pub struct WakeListener {
     outage: Option<Duration>,
     last_wake: Option<Instant>,
     spoke: Option<Instant>,
+    /// Dossier `learn` du mode apprentissage (`None` : pas de dossier personnel, jamais d'extrait).
+    learn_dir: Option<PathBuf>,
+    /// Collecteur du mode apprentissage : n'existe (anneau compris) que si l'écoute et le mode sont actifs.
+    learn: Option<Collector>,
 }
 
 static LABEL: OnceLock<Arc<Mutex<&'static str>>> = OnceLock::new();
@@ -88,9 +92,9 @@ static LABEL: OnceLock<Arc<Mutex<&'static str>>> = OnceLock::new();
 pub fn wake_state() -> &'static str { LABEL.get().map_or("désactivé", |l| *l.lock()) }
 
 impl WakeListener {
-    fn new(p: Arc<Pipeline>, mic: Arc<dyn Mic>, load: Load, send: Arc<dyn Fn(Input) + Send + Sync>) -> Self {
+    fn new(p: Arc<Pipeline>, mic: Arc<dyn Mic>, load: Load, send: Arc<dyn Fn(Input) + Send + Sync>, learn_dir: Option<PathBuf>) -> Self {
         let label = Arc::new(Mutex::new("désactivé"));
-        Self { p, mic, load, send, label, state: State::Off, det: None, stream: None, outage: None, last_wake: None, spoke: None }
+        Self { p, mic, load, send, label, state: State::Off, det: None, stream: None, outage: None, last_wake: None, spoke: None, learn_dir, learn: None }
     }
 
     /// Lance l'écouteur sur son propre thread : le détecteur peut y paniquer et `Mic::listen` y bloquer sans gêner l'app.
@@ -98,7 +102,8 @@ impl WakeListener {
         let Some((tx, p)) = pipeline::voice() else { return };
         let dir = app.path().resolve("resources/wake", tauri::path::BaseDirectory::Resource).unwrap_or_default();
         let tx = tx.clone();
-        let l = Self::new(p.clone(), Arc::new(CpalMic), Box::new(move || load_models(&dir)), Arc::new(move |i| { let _ = tx.send(i); }));
+        let learn_dir = dirs::home_dir().map(|h| h.join("oniris-wakeword").join("recordings").join("learn"));
+        let l = Self::new(p.clone(), Arc::new(CpalMic), Box::new(move || load_models(&dir)), Arc::new(move |i| { let _ = tx.send(i); }), learn_dir);
         if LABEL.set(l.label.clone()).is_err() {
             return;
         }
@@ -129,11 +134,28 @@ impl WakeListener {
     }
 
     async fn step(&mut self) {
+        let marks = std::mem::take(&mut *self.p.marks.lock());
         if matches!(self.state, State::Broken) {
+            self.learn = None;
             return;
         }
         let now = Instant::now();
         let c = (self.p.conf)();
+        if !(c.wake && c.learning) {
+            self.learn = None;
+        } else if self.learn.is_none() {
+            self.learn = self.learn_dir.clone().map(Collector::new);
+        }
+        for m in marks {
+            let at_ms = self.learn.as_ref().map_or(0, Collector::now_ms);
+            self.learn(match m {
+                Mark::Start => Event::ManualStart { at_ms },
+                Mark::Escape if matches!(self.state, State::Recording { .. }) => Event::Cancelled,
+                Mark::Escape => continue,
+                Mark::ExpectWake => Event::ExpectWake { at_ms },
+                Mark::FalseWake => Event::FalseWake { at_ms },
+            });
+        }
         if self.p.speaking.load(Ordering::SeqCst) {
             self.spoke = Some(now);
         }
@@ -174,24 +196,43 @@ impl WakeListener {
             self.outage = None;
         }
         let samples: Vec<f32> = rx.try_iter().flatten().collect();
-        match &mut self.state {
+        if let Some(c) = self.learn.as_mut() {
+            c.push_audio(&samples);
+        }
+        let ended = match &mut self.state {
             State::Recording { press, rec, ep } => {
                 let room = MAX_REC - rec.len();
                 rec.extend_from_slice(&samples[..samples.len().min(room)]);
                 match ep.push(&samples) {
-                    Endpoint::Continue => {}
+                    Endpoint::Continue => None,
                     Endpoint::NoSpeech => {
                         self.p.wake_abort(*press);
-                        self.state = State::Armed;
+                        Some(Event::NoSpeech)
                     }
                     Endpoint::End | Endpoint::TooLong => {
                         (self.send)(Input::WakeEnd(*press, std::mem::take(rec)));
-                        self.state = State::Armed;
+                        Some(Event::Command)
                     }
                 }
             }
-            _ => self.detect(&samples, now).await,
+            _ => return self.detect(&samples, now).await,
+        };
+        if let Some(e) = ended {
+            self.state = State::Armed;
+            self.learn(e);
         }
+    }
+
+    /// Un événement pour le mode apprentissage ; l'extrait décidé est écrit hors de la boucle d'écoute.
+    fn learn(&mut self, e: Event) {
+        let Some(c) = self.learn.as_mut() else { return };
+        let Some((label, clip)) = c.on(e) else { return };
+        let dir = c.dir().clone();
+        // Collecteur jetable : `save` n'a besoin que du dossier, l'anneau reste ici.
+        tokio::task::spawn_blocking(move || match Collector::new(dir).save(label, &clip) {
+            Ok(_) => tracing::info!("extrait d'apprentissage gardé : {}", if label == Label::Pos { "positif" } else { "négatif" }),
+            Err(e) => tracing::warn!("mode apprentissage : extrait non écrit : {}", e.kind()),
+        });
     }
 
     /// Les échantillons de ce pas qui suivent le pic (fin du mot) sont jetés : seule la suite va dans la demande.
@@ -207,18 +248,29 @@ impl WakeListener {
                 return;
             }
         };
-        if !scores.iter().any(|s| *s >= WAKE_THRESHOLD) || self.last_wake.is_some_and(|t| now - t < REFRACTORY) {
+        // Un score par pas de 80 ms, le dernier finissant avec l'audio reçu.
+        let end_ms = self.learn.as_ref().map_or(0, Collector::now_ms);
+        let at = |i: usize| end_ms.saturating_sub((scores.len() - 1 - i) as u64 * 80);
+        for (i, score) in scores.iter().enumerate() {
+            self.learn(Event::Score { at_ms: at(i), score: *score });
+        }
+        let peak = scores.iter().enumerate().filter(|(_, s)| **s >= WAKE_THRESHOLD).max_by(|a, b| a.1.total_cmp(b.1));
+        let Some((peak, _)) = peak else { return };
+        if self.last_wake.is_some_and(|t| now - t < REFRACTORY) {
             return;
         }
         tracing::info!("mot d'activation détecté");
         self.last_wake = Some(now);
-        det.reset();
+        if let Some(d) = self.det.as_mut() {
+            d.reset();
+        }
         let (tx, rx) = tokio::sync::oneshot::channel();
         (self.send)(Input::Wake(tx));
         // Toujours une réponse (ou le pipeline n'existe plus) : pas de délai, qui laisserait la pilule en écoute.
         if let Ok(Some(press)) = rx.await {
             // Endpointer neuf : il ne voit que l'audio arrivé après la détection.
             self.state = State::Recording { press, rec: Vec::new(), ep: Endpointer::new() };
+            self.learn(Event::Woke { at_ms: at(peak) });
         }
     }
 
@@ -342,7 +394,7 @@ mod tests {
         fn reset(&mut self) { self.buf.clear() }
     }
 
-    struct H { f: Fx, conf: Arc<Mutex<Conf>>, mic: Arc<FakeMic>, inputs: Log, ends: Arc<Mutex<Vec<Vec<f32>>>>, label: Arc<Mutex<&'static str>>, send: Arc<dyn Fn(Input) + Send + Sync> }
+    struct H { f: Fx, conf: Arc<Mutex<Conf>>, mic: Arc<FakeMic>, inputs: Log, ends: Arc<Mutex<Vec<Vec<f32>>>>, label: Arc<Mutex<&'static str>>, send: Arc<dyn Fn(Input) + Send + Sync>, learn: tempfile::TempDir }
 
     fn base() -> Conf { Conf { installed: true, tts: true, volume: 80, wake: true, user_name: "Nathan".into(), ..Conf::default() } }
 
@@ -369,17 +421,18 @@ mod tests {
                         e2.lock().push(s.clone());
                     }
                     Input::Start => i2.lock().push("start".into()),
-                    Input::End | Input::Escape => {}
+                    Input::End | Input::Escape | Input::ExpectWake | Input::FalseWake => {}
                 }
                 p.handle(i).await;
             }
         });
         let send: Arc<dyn Fn(Input) + Send + Sync> = Arc::new(move |i| { let _ = tx.send(i); });
         let load = load.unwrap_or_else(|| Box::new(|| Ok(Box::new(FakeDet::default()) as Box<dyn Detector>)));
-        let l = WakeListener::new(f.p.clone(), mic.clone(), load, send.clone());
+        let learn = tempfile::tempdir().unwrap();
+        let l = WakeListener::new(f.p.clone(), mic.clone(), load, send.clone(), Some(learn.path().to_path_buf()));
         let label = l.label.clone();
         tokio::spawn(l.run());
-        H { f, conf, mic, inputs, ends, label, send }
+        H { f, conf, mic, inputs, ends, label, send, learn }
     }
 
     fn h(conf: Conf) -> H { h_with(conf, 0, false, None, None) }
@@ -397,6 +450,18 @@ mod tests {
         fn inputs(&self) -> Vec<String> { self.inputs.lock().clone() }
         fn count(&self, entry: &str) -> usize { self.f.log.lock().iter().filter(|l| *l == entry).count() }
         fn label(&self) -> &'static str { *self.label.lock() }
+        /// Extraits écrits dans `learn/<d>` (attente de l'écriture en tâche de fond).
+        fn clips(&self, d: &str) -> usize {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            std::fs::read_dir(self.learn.path().join(d)).map_or(0, |r| r.count())
+        }
+        /// « Dis Iris », puis une demande parlée.
+        async fn command(&self) {
+            self.wake().await;
+            self.feed(0.001, 0.4).await;
+            self.feed(0.2, 0.5).await;
+            self.feed(0.001, 1.2).await;
+        }
         /// Armé, puis « Dis Iris » : l'écouteur enregistre la suite.
         async fn wake(&self) {
             self.feed(0.1, 1.0).await;
@@ -608,5 +673,56 @@ mod tests {
         assert!(h.f.has("speak"));
         assert_eq!(h.count("listen"), 2, "réarmé après le tour");
         assert_eq!(h.label(), "à l'écoute");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn nothing_written_when_learning_off() {
+        let h = h(base());
+        h.command().await;
+        assert_eq!(h.inputs(), ["wake", "wake_end:1"]);
+        h.feed(0.1, 3.0).await;
+        (h.send)(Input::FalseWake);
+        h.feed(0.1, 11.0).await;
+        assert_eq!(h.clips(""), 0, "le dossier reste vide");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn learning_keeps_positive_after_command() {
+        let h = h(Conf { learning: true, ..base() });
+        h.command().await;
+        assert_eq!(h.inputs(), ["wake", "wake_end:1"]);
+        h.feed(0.1, 5.0).await;
+        assert_eq!(h.clips("pos"), 0, "un faux réveil peut encore être signalé");
+        h.feed(0.1, 6.0).await;
+        assert_eq!((h.clips("pos"), h.clips("neg")), (1, 0));
+        // Mode coupé : collecteur et anneau détruits, plus rien n'est écrit.
+        *h.conf.lock() = base();
+        h.command().await;
+        h.feed(0.1, 11.0).await;
+        assert_eq!((h.clips("pos"), h.clips("neg")), (1, 0));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn false_wake_button_writes_negative() {
+        let h = h(Conf { learning: true, ..base() });
+        h.command().await;
+        h.feed(0.1, 2.0).await;
+        (h.send)(Input::FalseWake);
+        h.feed(0.1, 0.4).await;
+        assert_eq!(h.clips("neg"), 1);
+        h.feed(0.1, 11.0).await;
+        assert_eq!((h.clips("pos"), h.clips("neg")), (0, 1), "aucun positif pour ce réveil");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn expect_wake_button_keeps_best_score() {
+        let h = h(Conf { learning: true, ..base() });
+        h.feed(0.01, 1.0).await;
+        (h.send)(Input::ExpectWake);
+        h.feed(0.01, 0.4).await;
+        h.feed(0.2, 0.08).await; // « Dis Iris » pas reconnu
+        h.feed(0.01, 6.0).await;
+        assert!(h.inputs().is_empty());
+        assert_eq!((h.clips("pos"), h.clips("neg")), (1, 0));
     }
 }

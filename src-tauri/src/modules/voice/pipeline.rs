@@ -39,7 +39,7 @@ pub enum Ui { Phase(VoicePhase, Option<f32>), Toast(String), OpenPanel, Timing(T
 
 /// Réglages et état relus à chaque appui.
 #[derive(Debug, Clone, Default)]
-pub struct Conf { pub paused: bool, pub installed: bool, pub fullscreen: bool, pub device: String, pub tts: bool, pub volume: u8, pub user_name: String, pub wake: bool }
+pub struct Conf { pub paused: bool, pub installed: bool, pub fullscreen: bool, pub device: String, pub tts: bool, pub volume: u8, pub user_name: String, pub wake: bool, pub learning: bool }
 
 #[async_trait]
 pub trait Stt: Send + Sync {
@@ -84,6 +84,8 @@ pub struct Pipeline {
     /// Micro fermé d'office au-delà (PttEnd perdu) : jamais d'écoute sans touche tenue.
     max_hold: Duration,
     state: Mutex<State>,
+    /// Vidé par l'écouteur à chaque pas.
+    pub(super) marks: Mutex<Vec<Mark>>,
 }
 
 /// Maintien maximal de la touche.
@@ -111,7 +113,15 @@ pub enum Input {
     Wake(tokio::sync::oneshot::Sender<Option<u64>>),
     /// Demande enregistrée après le mot d'activation.
     WakeEnd(u64, Vec<f32>),
+    /// Boutons du mode apprentissage : « Je vais dire Iris » et « Faux réveil ».
+    #[cfg_attr(not(test), expect(dead_code, reason = "envoyé par les boutons de la pilule (Tâche 7)"))]
+    ExpectWake,
+    #[cfg_attr(not(test), expect(dead_code, reason = "envoyé par les boutons de la pilule (Tâche 7)"))]
+    FalseWake,
 }
+
+/// Entrées vues par le mode apprentissage, relevées par l'écouteur à chaque pas.
+pub enum Mark { Start, Escape, ExpectWake, FalseWake }
 
 impl Pipeline {
     fn current(&self, press: u64) -> bool { self.state.lock().press == press }
@@ -143,6 +153,16 @@ impl Pipeline {
 
     /// Une entrée du crochet, dans l'ordre d'arrivée ; la suite d'un appui part en tâche de fond.
     pub async fn handle(self: &Arc<Self>, i: Input) {
+        let mark = match i {
+            Input::Start => Some(Mark::Start),
+            Input::Escape => Some(Mark::Escape),
+            Input::ExpectWake => Some(Mark::ExpectWake),
+            Input::FalseWake => Some(Mark::FalseWake),
+            _ => None,
+        };
+        if let Some(m) = mark {
+            self.marks.lock().push(m);
+        }
         match i {
             Input::Start => self.start().await,
             Input::End => {
@@ -159,6 +179,7 @@ impl Pipeline {
                     tokio::spawn(self.clone().process((press, samples)));
                 }
             }
+            Input::ExpectWake | Input::FalseWake => {}
         }
     }
 
@@ -477,6 +498,7 @@ pub fn start(app: &AppHandle) {
             volume: s.voice_volume,
             user_name: s.user_name,
             wake: s.voice_wake,
+            learning: s.voice_wake_learning,
         }
     });
     let h = app.clone();
@@ -492,6 +514,7 @@ pub fn start(app: &AppHandle) {
         wake_open: Arc::default(),
         max_hold: MAX_HOLD,
         state: Mutex::default(),
+        marks: Mutex::default(),
     });
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
     if VOICE.set((tx, p.clone())).is_err() {
@@ -637,6 +660,7 @@ pub(super) mod tests {
             wake_open: Arc::default(),
             max_hold: o.max_hold,
             state: Mutex::default(),
+            marks: Mutex::default(),
         });
         Fx { p, log, ui, speaking, _dir: None }
     }

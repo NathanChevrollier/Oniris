@@ -60,6 +60,8 @@ function UpdateToast() {
   const [version, setVersion] = useState<string | null>(null);
   useEffect(() => {
     const un = onUpdate((u) => setVersion(u.version));
+    // Mise à jour déjà prête avant l'ouverture de la pilule (l'événement a pu partir sans elle).
+    void updateIpc.status().then((s) => { if (s.pending) setVersion((v) => v ?? s.pending![0]); }).catch(() => {});
     return () => { void un.then((f) => f()); };
   }, []);
   if (!version) return null;

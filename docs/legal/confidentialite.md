@@ -4,7 +4,7 @@ Version 10 — 13 novembre 2026. Ce document décrit simplement ce qu'Oniris fai
 
 ## En bref
 
-Oniris range tout chez toi, sur ton PC. Il n'envoie aucune statistique d'usage, et il n'y a aucun compte à créer pour l'utiliser. Oniris ne contacte Internet que pour ce que tu as choisi d'activer : la météo (si tu as choisi une ville), les icônes de tes favoris, les sondes de tes sites, le téléchargement de la voix (sur ton clic) et, si tu connectes tes comptes, Google (Gmail et Agenda) et Spotify. Les comptes ne sont jamais obligatoires : sans eux, rien de tout cela n'est contacté. IRIS, l'assistante, réfléchit d'abord **sur ton PC** ; elle ne passe par Claude (donc par Anthropic) que dans les cas décrits plus bas.
+Oniris range tout chez toi, sur ton PC. Il n'envoie aucune statistique d'usage, et il n'y a aucun compte à créer pour l'utiliser. Oniris ne contacte Internet que pour ce que tu as choisi d'activer : la météo (si tu as choisi une ville), les icônes de tes favoris, les sondes de tes sites, le téléchargement de la voix (sur ton clic), la recherche de mises à jour sur GitHub (activée par défaut et désactivable) et, si tu connectes tes comptes, Google (Gmail et Agenda) et Spotify. Les comptes ne sont jamais obligatoires : sans eux, rien de tout cela n'est contacté. IRIS, l'assistante, réfléchit d'abord **sur ton PC** ; elle ne passe par Claude (donc par Anthropic) que dans les cas décrits plus bas.
 
 ## Où sont tes données
 
@@ -231,7 +231,7 @@ IRIS peut exécuter une commande PowerShell, gérer des fichiers et lancer, ferm
 
 ## Mises à jour
 
-- **Ce qui est contacté** : `github.com`, où les versions d'Oniris sont publiées (page des publications du dépôt public). GitHub voit ton **adresse IP** et la **version d'Oniris** dans la requête. Aucun autre identifiant, aucun contenu venant de toi n'est envoyé.
+- **Ce qui est contacté** : `github.com` et son réseau de téléchargement, où les versions d'Oniris sont publiées (page des publications du dépôt public). GitHub voit ton **adresse IP** et la **version d'Oniris** dans la requête. Aucun autre identifiant, aucun contenu venant de toi n'est envoyé.
 - **Quand** : 3 minutes après le démarrage, puis toutes les 6 heures, tant que les mises à jour automatiques sont activées ; et quand tu cliques sur « Vérifier maintenant ».
 - **Signature** : une mise à jour téléchargée n'est installée que si sa signature correspond à la clé publique intégrée à Oniris ; sinon elle est ignorée.
 - **Installation** : jamais pendant que tu parles à IRIS ni en plein écran. Elle se fait quand tu fermes l'app, ou quand tu cliques sur « Redémarrer ». Tes données (réglages, base, voix, extraits d'apprentissage) ne sont pas touchées.

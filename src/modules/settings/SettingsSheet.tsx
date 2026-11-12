@@ -71,7 +71,7 @@ function UpdateInfo() {
     <div className="iris-field set-wide">
       {st && <span>Version {st.current}</span>}
       <button type="button" className="acc-btn" disabled={busy} onClick={() => void check()}>Vérifier maintenant</button>
-      {st?.pending && <><span>Version {st.pending[0]} prête</span><p className="voice-note">{st.pending[1]}</p></>}
+      {st?.pending && <><span>Version {st.pending[0]} prête</span>{st.pending[1] && <p className="voice-note">{st.pending[1]}</p>}</>}
     </div>
   );
 }

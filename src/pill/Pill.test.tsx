@@ -184,3 +184,10 @@ it("l'annonce reste discrète et se ferme", () => {
   fireEvent.click(screen.getByRole("button", { name: "Plus tard" }));
   expect(screen.queryByText("Mise à jour 1.2.1 prête")).toBeNull();
 });
+
+it("la pilule relit une mise à jour déjà prête au démarrage", async () => {
+  vi.spyOn(updateIpc, "status").mockResolvedValue({ current: "1.2.0", pending: ["1.2.1", ""], checking: false, last_error: null });
+  render(<Pill />);
+  await act(async () => {});
+  expect(screen.getByText("Mise à jour 1.2.1 prête")).toBeTruthy();
+});

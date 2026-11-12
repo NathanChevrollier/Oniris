@@ -5,7 +5,7 @@ Les mises à jour passent par GitHub et l'installeur réel : aucun test automati
 - [ ] Installer la 1.2.0 à la main (installeur NSIS).
 - [ ] Publier une 1.2.1 de test sur GitHub (signée).
 - [ ] Laisser tourner Oniris (3 min après le démarrage, ou « Vérifier maintenant » dans Paramètres > Mises à jour) : la pilule annonce « Mise à jour 1.2.1 prête » avec « Redémarrer » et « Plus tard ».
-- [ ] « Plus tard » ferme l'annonce sans rien installer ; les réglages affichent « Version 1.2.1 prête » et ses notes.
+- [ ] « Plus tard » ferme l'annonce sans rien installer ; elle reste masquée jusqu'à la prochaine mise à jour détectée ou au redémarrage d'Oniris (l'installation se fait toujours à la fermeture) ; les réglages affichent « Version 1.2.1 prête » et ses notes.
 - [ ] « Redémarrer » : l'installation passive se fait, puis Oniris se relance en 1.2.1.
 - [ ] Sans cliquer : fermer Oniris installe la 1.2.1 sans relance.
 - [ ] Pendant un tour IRIS ou en plein écran, « Redémarrer » attend le calme avant d'installer.

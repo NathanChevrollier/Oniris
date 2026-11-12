@@ -68,6 +68,7 @@
     "updater": {
       "endpoints": ["https://github.com/NathanChevrollier/Oniris/releases/latest/download/latest.json"],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDlFMTQ3MjhFMURCNjVDM0IKUldRN1hMWWRqbklVbmoxODdEWW9DQlZLK0N1VHJZUmQyWTVaOFNCcnhxVExJbnQwQUkwRnFlRXYK",
+      "requireSignedVersion": true,
       "windows": { "installMode": "passive" }
     }
   }

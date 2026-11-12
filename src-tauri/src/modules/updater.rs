@@ -38,6 +38,12 @@ pub struct UpdateStatus { current: String, pending: Option<(String, String)>, ch
 #[derive(Default)]
 struct St { pending: Option<Pending>, checking: bool, last_error: Option<String> }
 
+/// Fin de vérification quel que soit le chemin de sortie (panique ou future abandonnée comprises).
+struct CheckGuard<'a>(&'a Mutex<St>);
+impl Drop for CheckGuard<'_> {
+    fn drop(&mut self) { self.0.lock().checking = false }
+}
+
 type Launch = Box<dyn Fn(&Path, bool) -> bool + Send + Sync>;
 
 pub struct Updater {
@@ -80,6 +86,7 @@ impl Updater {
     }
 
     /// Au démarrage : supprime les installateurs déjà installés (version ≤ courante) et les `.part` orphelins.
+    // shortcut: un installateur plus récent resté sur disque n'est pas repris après un redémarrage (on ne fait pas confiance à un fichier non revérifié), il est retéléchargé ; upgrade : revérifier sa signature pour le reprendre.
     pub fn cleanup(&self) {
         let Ok(dir) = std::fs::read_dir(&self.dir) else { return };
         for e in dir.flatten() {
@@ -115,14 +122,13 @@ impl Updater {
             }
             s.checking = true;
         }
+        let _guard = CheckGuard(&self.st);
         self.schedule.lock().done(Instant::now());
         let res = self.cycle().await;
         if let Err(e) = &res {
             tracing::warn!("mise à jour : {e}");
         }
-        let mut s = self.st.lock();
-        s.checking = false;
-        s.last_error = res.err();
+        self.st.lock().last_error = res.err();
     }
 
     async fn cycle(&self) -> Result<(), String> {
@@ -162,7 +168,13 @@ impl Updater {
         if (self.launch)(&p.installer, true) {
             return true;
         }
-        self.st.lock().pending = Some(p);
+        // Une version plus récente a pu arriver pendant le lancement : elle garde la place, l'ancienne part.
+        let mut s = self.st.lock();
+        if s.pending.is_none() {
+            s.pending = Some(p);
+        } else {
+            let _ = std::fs::remove_file(&p.installer);
+        }
         false
     }
 
@@ -284,12 +296,15 @@ mod tests {
     use std::time::Duration;
 
     #[derive(Default)]
-    struct FakeSource { remote: Mutex<Option<Remote>>, fail_latest: AtomicBool, fail_download: AtomicBool, latest_calls: AtomicUsize, downloads: AtomicUsize }
+    struct FakeSource { remote: Mutex<Option<Remote>>, fail_latest: AtomicBool, panic_latest: AtomicBool, fail_download: AtomicBool, latest_calls: AtomicUsize, downloads: AtomicUsize }
 
     #[async_trait]
     impl Source for FakeSource {
         async fn latest(&self) -> Result<Option<Remote>, String> {
             self.latest_calls.fetch_add(1, Ordering::SeqCst);
+            if self.panic_latest.swap(false, Ordering::SeqCst) {
+                panic!("source en panique");
+            }
             if self.fail_latest.load(Ordering::SeqCst) {
                 return Err("hors ligne".into());
             }
@@ -307,7 +322,7 @@ mod tests {
     }
 
     type Launched = Arc<Mutex<Vec<(PathBuf, bool)>>>;
-    struct Fx { u: Arc<Updater>, src: Arc<FakeSource>, launched: Launched, events: Arc<Mutex<Vec<String>>>, busy: Arc<AtomicBool>, full: Arc<AtomicBool>, dir: tempfile::TempDir }
+    struct Fx { u: Arc<Updater>, src: Arc<FakeSource>, launched: Launched, events: Arc<Mutex<Vec<String>>>, busy: Arc<AtomicBool>, full: Arc<AtomicBool>, launch_ok: Arc<AtomicBool>, dir: tempfile::TempDir }
 
     fn fx(remote: Option<&str>, enabled: bool) -> Fx {
         let dir = tempfile::tempdir().unwrap();
@@ -316,17 +331,18 @@ mod tests {
         let launched: Launched = Arc::default();
         let events: Arc<Mutex<Vec<String>>> = Arc::default();
         let (busy, full) = (Arc::new(AtomicBool::new(false)), Arc::new(AtomicBool::new(false)));
-        let (l, e, b, f) = (launched.clone(), events.clone(), busy.clone(), full.clone());
+        let launch_ok = Arc::new(AtomicBool::new(true));
+        let (l, e, b, f, ok) = (launched.clone(), events.clone(), busy.clone(), full.clone(), launch_ok.clone());
         let u = Arc::new(Updater::new(
             "1.2.0".into(),
             dir.path().join("updates"),
             src.clone(),
-            Box::new(move |p: &Path, relaunch| { l.lock().push((p.to_path_buf(), relaunch)); true }),
+            Box::new(move |p: &Path, relaunch| { l.lock().push((p.to_path_buf(), relaunch)); ok.load(Ordering::SeqCst) }),
             Box::new(move |r: &Remote| e.lock().push(r.version.clone())),
             Box::new(move || Calm { voice_busy: b.load(Ordering::SeqCst), fullscreen: f.load(Ordering::SeqCst) }),
             Box::new(move || enabled),
         ));
-        Fx { u, src, launched, events, busy, full, dir }
+        Fx { u, src, launched, events, busy, full, launch_ok, dir }
     }
 
     fn files(f: &Fx) -> Vec<String> {
@@ -394,6 +410,29 @@ mod tests {
         // L'app quitte ensuite : la fermeture ne relance pas l'installateur.
         f.u.install_on_exit();
         assert_eq!(f.launched.lock().len(), 1);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn restart_keeps_pending_when_launch_fails() {
+        let f = fx(Some("1.2.1"), true);
+        f.u.check().await;
+        f.launch_ok.store(false, Ordering::SeqCst);
+        assert!(!f.u.restart().await, "pas de sortie de l'app");
+        assert_eq!(f.launched.lock().len(), 1);
+        assert_eq!(pending(&f).as_deref(), Some("1.2.1"));
+        assert_eq!(files(&f), ["Oniris-1.2.1-setup.exe"]);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn panicking_check_does_not_block_later_checks() {
+        let f = fx(Some("1.2.1"), true);
+        f.src.panic_latest.store(true, Ordering::SeqCst);
+        let u = f.u.clone();
+        assert!(tokio::spawn(async move { u.check().await }).await.is_err());
+        assert!(!f.u.status().checking);
+        f.u.check().await;
+        assert_eq!(f.src.latest_calls.load(Ordering::SeqCst), 2);
+        assert_eq!(pending(&f).as_deref(), Some("1.2.1"));
     }
 
     #[tokio::test(start_paused = true)]

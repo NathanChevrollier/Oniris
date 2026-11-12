@@ -85,7 +85,7 @@ def write(path: Path, x: np.ndarray) -> None:
 
 
 def synth(job):
-    """Rend True (créé), False (déjà là ou trop court) ou le texte de l'erreur."""
+    """Rend True (créé), False (déjà là ou trop court), ("abandon", chemin) si toujours trop long, ou l'erreur."""
     try:
         return _synth(job)
     except Exception as e:
@@ -102,7 +102,7 @@ def _synth(job) -> bool:
         if max_s is None or len(x) <= max_s * SR:
             break
     else:
-        return False
+        return ("abandon", str(path))
     if len(x) < SR // 5:
         return False
     write(path, x)
@@ -146,12 +146,16 @@ def jobs_for(split_dir: Path, n: int, texts: list, rng: random.Random, voice_spe
     return out
 
 
-def add_own(recordings: Path, out: Path, n_pos: int, rng: random.Random, globs: list) -> None:
+def add_own(recordings: Path, out: Path, n_pos: int, globs: list) -> None:
     own = sorted(f for g in globs for f in recordings.glob(g)) if recordings else []
+    # Copies d'un tirage précédent : sans ça, un enregistrement peut finir à la fois en entraînement et en test
+    # (arrivé le 12/11 : 20 des 22 clips de test de ta voix avaient aussi servi à l'entraînement).
+    for f in [f for d in ("positive_train", "positive_test") for f in (out / d).glob("own_*.wav")]:
+        f.unlink()
     if not own:
         print(f"Aucun enregistrement personnel ({', '.join(globs)}) : positifs 100 % synthétiques.")
         return
-    rng.shuffle(own)
+    random.Random(0).shuffle(own)  # même partage à chaque génération
     cut = max(1, len(own) // 5)
     test, train = own[:cut], own[cut:]
     dup = max(1, round(0.1 * n_pos / max(1, len(train))))
@@ -208,6 +212,10 @@ def main() -> None:
     if old:
         print(f"{len(old)} positifs de plus de {max_s} s supprimés, à refaire.")
 
+    # Positifs restés trop longs après TRIES tirages lors d'une génération précédente : inutile de les retenter.
+    abandoned_file = out / "abandonnes.txt"
+    abandoned = set(abandoned_file.read_text(encoding="utf-8").split()) if abandoned_file.exists() else set()
+
     rng = random.Random(a.seed)
     extra = 1.3  # ≈ 1 positif sur 4 reste trop long après TRIES tirages (souvent le même locuteur) : on en prévoit plus
     jobs = (
@@ -216,13 +224,16 @@ def main() -> None:
         + jobs_for(out / "negative_train", a.n_train, negatives, rng, speakers, "neg")
         + jobs_for(out / "negative_test", a.n_test, negatives, rng, speakers, "neg")
     )
+    jobs = [j for j in jobs if j[0] not in abandoned]
     done, errors = 0, 0
     # Un worker Piper grossit sans cesse (≈ 1,4 Go après 30 min) : on le recycle tous les 400 clips,
     # sinon WSL manque de mémoire, tue un worker, et le Pool attend pour toujours ses clips perdus.
     ctx = mp.get_context("spawn")
     with ctx.Pool(a.workers, initializer=load_voices, initargs=(str(voice_dir),), maxtasksperchild=400) as pool:
         for i, made in enumerate(pool.imap_unordered(synth, jobs, chunksize=32), 1):
-            if isinstance(made, str):
+            if isinstance(made, tuple):
+                abandoned.add(made[1])
+            elif isinstance(made, str):
                 errors += 1
                 if errors <= 3:
                     print(f"  erreur : {made}", flush=True)
@@ -232,11 +243,12 @@ def main() -> None:
                 done += made
             if i % 500 == 0:
                 print(f"  {i}/{len(jobs)} ({done} créés)", flush=True)
+    abandoned_file.write_text("".join(f"{p}\n" for p in sorted(abandoned)), encoding="utf-8")
     if errors:
         print(f"{errors} clips en erreur.")
     print(f"{done} clips générés ({len(jobs) - done} déjà présents ou trop courts).")
 
-    add_own(a.recordings, out, a.n_train, rng, own_globs)
+    add_own(a.recordings, out, a.n_train, own_globs)
     add_hard_negatives(a.recordings, out)
     for d in ("positive_train", "positive_test", "negative_train", "negative_test"):
         print(f"{d} : {len(list((out / d).glob('*.wav')))}")

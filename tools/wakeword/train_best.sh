@@ -3,6 +3,7 @@
 # mesurées de la même façon (sweep.py), la meilleure copiée dans Oniris. Environ 2 à 3 h, sans surveillance.
 #   bash train_best.sh                      « Dis Iris » / « Hé Iris », puis « Iris » seul
 #   MODELS=dis_iris bash train_best.sh      un seul modèle
+#   GRID=128:1000:100,128:600:300 bash ...  autres variantes que celles de sweep.py (largeur:poids:positifs)
 set -euo pipefail
 
 KIT="$(cd "$(dirname "$0")" && pwd)"
@@ -26,7 +27,7 @@ for m in ${MODELS:-dis_iris iris}; do
     echo "### $(date +%H:%M) $m : reprise (clips et caractéristiques déjà faits, FRESH=1 pour tout refaire)"
   fi
   echo "### $(date +%H:%M) $m : 5 variantes (≈ 10 min chacune)"
-  python "$KIT/sweep.py" --ww "$WW" --model "$m" 2>&1 | quiet
+  python "$KIT/sweep.py" --ww "$WW" --model "$m" ${GRID:+--grid "$GRID"} 2>&1 | quiet
   echo "### $(date +%H:%M) $m : copie dans Oniris"
   MODEL=$m bash "$KIT/train.sh" fixture 2>&1 | quiet
 done

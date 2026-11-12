@@ -2,12 +2,12 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal :** On dit « Iris », puis sa demande, sans toucher au clavier. IRIS traite la demande comme un push-to-talk. L'écoute continue est désactivée par défaut et ne transcrit ni n'envoie rien avant la détection.
+**Goal :** On dit « Dis Iris » ou « Hé Iris », puis sa demande, sans toucher au clavier. IRIS traite la demande comme un push-to-talk. L'écoute continue est désactivée par défaut et ne transcrit ni n'envoie rien avant la détection.
 
 **Architecture :** Le plan a deux parties.
 
 - **Partie A, entraînement :** un modèle openWakeWord « Iris » entraîné hors de l'app, par l'utilisateur, avec le kit `tools/wakeword/`. Cette partie est manuelle et ne passe pas par des sous-agents (règle R8).
-- **Partie B, intégration.** Oniris embarque trois petits modèles ONNX : mel, embedding et le classifieur `iris.onnx`.
+- **Partie B, intégration.** Oniris embarque trois petits modèles ONNX : mel, embedding et le classifieur `dis_iris.onnx`.
   - Un **détecteur en Rust pur** (`tract-onnx`, sans DLL) les exécute en flux, par pas de 80 ms.
   - Un **écouteur** possède un flux micro continu. À la détection, il bascule ce même flux en enregistrement, sans trou : la demande qui suit « Iris » est captée en entier.
   - Un **détecteur de fin de parole** (énergie) ferme l'enregistrement.
@@ -42,10 +42,34 @@
 - **Seuil :** une constante `WAKE_THRESHOLD`, fixée par l'évaluation de la partie A. Pas de réglage de sensibilité dans l'interface (YAGNI) : si les faux déclenchements gênent, on réentraîne.
 - **Période réfractaire :** 2 s après une détection.
 
+## Décisions du 2026-11-12 (amendement : intégrer maintenant, apprendre en usage)
+
+Elles remplacent les décisions ci-dessus quand elles les contredisent.
+
+- **Modèle livré : `dis_iris.onnx`**, une seule entrée qui reconnaît « Dis Iris » et « Hé Iris ». Variante `L128_N1000_P300` de la recherche de réglages du 12/11.
+- **« Iris » seul est désactivé.** `iris.onnx` n'est pas livré : sans faux déclenchements, il ne reconnaissait qu'environ 1 « Iris » sur 4.
+- **La partie B commence avec un modèle provisoire,** qui n'atteint pas encore l'objectif. Mesures du 12/11 au seuil retenu :
+  - ≈ 2 faux déclenchements par heure ;
+  - ≈ 50 % de la voix de l'utilisateur reconnue, mesuré sur 12 clips seulement, donc très imprécis ;
+  - 78 % des clips synthétiques propres reconnus.
+
+  L'objectif (au plus 0,1 faux déclenchement par heure et au moins 90 % de reconnaissance) devient celui du **mode apprentissage**, Tâches 6 et 7.
+- **`WAKE_THRESHOLD = 0.998`.** Les scores de ce modèle sont saturés près de 1 : c'est l'analyse fine du 12/11 (`~/oniris-wakeword/output/analyse_fine.json`) qui a fixé ce seuil.
+- **Mode apprentissage**, choisi par l'utilisateur :
+  - désactivé par défaut ;
+  - il garde sur le disque local des extraits étiquetés, qui servent au réentraînement du seul modèle principal ;
+  - étiquetage automatique d'après le comportement, plus deux boutons dans la pilule : « Je vais dire Iris » (positif certain) et « Faux réveil » (négatif certain) ;
+  - les boutons l'emportent sur l'étiquetage automatique.
+
 ## Global Constraints
 
 - Le mot d'activation est **désactivé par défaut** (`voice_wake: false`).
 - Avant la détection, l'audio ne vit qu'en mémoire, dans les tampons du détecteur (au plus 2 s). Il n'est **jamais** écrit sur le disque, transcrit, journalisé ni envoyé.
+  - **Seule exception : le mode apprentissage** (`voice_wake_learning`, désactivé par défaut, réglage distinct).
+  - Il écrit des extraits de 3 s au plus, seulement autour d'un réveil, d'un presque-réveil ou d'un appui sur « Je vais dire Iris ».
+  - Les extraits vont dans `%USERPROFILE%\oniris-wakeword\recordings\learn\{pos,neg}\` et nulle part ailleurs.
+  - Ils ne sont jamais transcrits ni envoyés.
+  - Désactiver le mode n'efface rien, c'est dit dans l'interface. Un bouton « Supprimer les extraits » vide le dossier.
 - Après la détection, l'audio suit les règles du push-to-talk : 30 s au plus, en mémoire, vers Whisper sur 127.0.0.1 seulement.
 - Zéro coût et zéro réseau à l'exécution.
 - Le push-to-talk reste la voie principale. Il garde la priorité sur l'écoute et ne doit pas régresser : les tests du plan 6 restent verts.
@@ -65,6 +89,8 @@
 3. **Désactiver le réglage, ou mettre la voix en pause, au milieu d'une demande.** Le micro se ferme tout de suite, l'audio est jeté, et aucun tour ne part. Test en Tâche 4.
 4. **Alt+Espace pressé alors que l'écoute est armée ou en train d'enregistrer après « Iris ».** Le push-to-talk gagne : l'enregistrement par mot est abandonné sans tour, et le micro passe au push-to-talk. Test en Tâche 4.
 5. **« Iris » suivi de rien** (déclenchement à tort, ou l'utilisateur se tait). Après 4 s sans parole, retour au repos sans transcription ni toast. Test en Tâche 3 (fin de parole) et en Tâche 4 (aucun tour).
+6. **Mode apprentissage, l'utilisateur appuie sur « Je vais dire Iris » puis ne dit rien,** ou parle d'autre chose. Après la fenêtre, l'extrait est gardé comme positif autour du meilleur score, **seulement si ce score dépasse 0,05**. Sinon rien n'est écrit, car ce serait un « positif » vide qui empoisonnerait l'entraînement. Test en Tâche 6.
+7. **Mode apprentissage et disque :** au-delà de 2 000 extraits ou de 200 Mo, les plus anciens sont supprimés. Le dossier ne grossit jamais sans limite. Test en Tâche 6.
 
 ---
 
@@ -87,7 +113,24 @@ Ce n'est pas une tâche de sous-agent. L'utilisateur la mène avec le contrôleu
   Noter le seuil et les bilans (`sessions.jsonl`) dans le journal du plan.
 - [ ] Commit : `feat(voix): ajoute le modèle du mot d'activation « Iris »`, avec les modèles, la fixture et le seuil noté dans le journal.
 
-**Si l'objectif n'est pas atteint :** appliquer la section « Si le modèle est mauvais » du README. Passer à « Dis Iris » demande l'accord de l'utilisateur. La partie B ne commence qu'avec un modèle qui atteint l'objectif.
+**Si l'objectif n'est pas atteint :** appliquer la section « Si le modèle est mauvais » du README.
+
+**Amendement du 2026-11-12 :** l'objectif n'est pas atteint, et l'utilisateur a choisi de l'atteindre en usage, avec le mode apprentissage. La Tâche 0 bis remplace donc les deux dernières cases ci-dessus.
+
+### Tâche 0 bis : Livrer le modèle provisoire (contrôleur, pas de sous-agent)
+
+- [ ] Dans WSL, rendre la variante choisie officielle, puis refaire la fixture :
+  ```bash
+  cp ~/oniris-wakeword/output/sweep/dis_iris_L128_N1000_P300.onnx ~/oniris-wakeword/output/dis_iris.onnx
+  MODEL=dis_iris bash tools/wakeword/train.sh fixture
+  ```
+- [ ] Retirer du dépôt de travail :
+  - `src-tauri/resources/wake/iris.onnx` ;
+  - `src-tauri/tests/fixtures/wake/iris/` ;
+  - les anciens `src-tauri/tests/fixtures/wake/{sequence.wav,scores.json}`, restés à la racine.
+
+  Puis régénérer `SHA256SUMS` sans `iris.onnx` : `make_fixture.py` le refait à partir des `*.onnx` présents.
+- [ ] Commit : `feat(voix): ajoute le modèle provisoire « Dis Iris »`, avec les modèles, la fixture `wake/dis_iris/` et, dans le message, le seuil 0,998 et les mesures du 12/11.
 
 ---
 
@@ -98,12 +141,12 @@ Ce n'est pas une tâche de sous-agent. L'utilisateur la mène avec le contrôleu
 **Files:**
 - Create: `crates/core/src/voice/wake.rs`
 - Modify: `crates/core/src/voice/mod.rs` (ajout de `pub mod wake;`), `crates/core/Cargo.toml` (`tract-onnx`)
-- Test: `crates/core/src/voice/wake.rs` (module `tests`), qui lit `src-tauri/tests/fixtures/wake/` et `src-tauri/resources/wake/` via `env!("CARGO_MANIFEST_DIR")/../../src-tauri/...`
+- Test: `crates/core/src/voice/wake.rs` (module `tests`), qui lit `src-tauri/tests/fixtures/wake/dis_iris/` et `src-tauri/resources/wake/` via `env!("CARGO_MANIFEST_DIR")/../../src-tauri/...`
 
 **Interfaces:**
 - Produces:
   - `pub struct WakeModels { pub mel: PathBuf, pub embedding: PathBuf, pub classifier: PathBuf }`
-  - `impl WakeModels { pub fn in_dir(dir: &Path) -> Self }` : les noms `melspectrogram.onnx`, `embedding_model.onnx` et `iris.onnx`.
+  - `impl WakeModels { pub fn in_dir(dir: &Path) -> Self }` : les noms `melspectrogram.onnx`, `embedding_model.onnx` et `dis_iris.onnx`.
   - `pub fn verify(dir: &Path) -> Result<(), WakeError>` : compare chaque fichier à `SHA256SUMS`.
   - `pub enum WakeError { Missing(String), Corrupt(String), Model(String) }`, avec `Display` en français.
   - `pub struct WakeDetector`
@@ -228,7 +271,8 @@ Ce n'est pas une tâche de sous-agent. L'utilisateur la mène avec le contrôleu
   - de la Tâche 3 : `Endpointer`, `Endpoint`.
 - Produces :
   - `pub trait Detector: Send { fn push(&mut self, s: &[f32]) -> Vec<f32>; fn reset(&mut self); }`, implémenté pour `WakeDetector` et pour un faux détecteur de test.
-  - `pub const WAKE_THRESHOLD: f32` = la valeur notée en Tâche 0.
+  - `pub const WAKE_THRESHOLD: f32 = 0.998;` (Tâche 0 bis).
+  - `pub const NEAR_MISS: f32 = 0.3;` : un « presque-réveil », utilisé seulement par le mode apprentissage (Tâche 6).
   - `pub const REFRACTORY: Duration = 2 s`
   - `pub const AFTER_SPEECH: Duration = 500 ms`
   - Dans `pipeline.rs` :
@@ -279,7 +323,7 @@ Ce n'est pas une tâche de sous-agent. L'utilisateur la mène avec le contrôleu
   - `src/modules/voice/voice.test.tsx` ;
   - `src-tauri/tauri.conf.json` (`bundle.resources` : `"resources/wake/*"`) ;
   - `src-tauri/tests/nsis_config.rs` ;
-  - `docs/legal/confidentialite.md` (v8) ;
+  - `docs/legal/confidentialite.md` (v9) ;
   - la spec, §4.3 ;
   - `docs/superpowers/plans/2026-11-03-oniris-feuille-de-route.md` (plan 8 ✅) ;
   - `README.md`.
@@ -298,7 +342,7 @@ Ce n'est pas une tâche de sous-agent. L'utilisateur la mène avec le contrôleu
 ```
 ```tsx
 // voice.test.tsx
-it("le mot d'activation est décoché par défaut et s'enregistre", ...)  // libellé « Mot d'activation « Iris » » ; coché + Enregistrer → save({voice_wake: true})
+it("le mot d'activation est décoché par défaut et s'enregistre", ...)  // libellé « Mot d'activation « Dis Iris » » ; coché + Enregistrer → save({voice_wake: true})
 it("grisé tant que la voix n'est pas installée", ...)
 it("affiche l'état de l'écoute", ...) // voice_wake_state = "à l'écoute" → texte visible
 ```
@@ -307,10 +351,10 @@ it("affiche l'état de l'écoute", ...) // voice_wake_state = "à l'écoute" →
 - [ ] **Step 3 : écrire le code**
   - La case reprend le texte exact suivant, sous elle, en `voice-note` :
 
-    > « Oniris écoute en continu et réagit quand tu dis « Iris ». Avant ça, rien n'est transcrit, enregistré ni envoyé. Windows affiche l'icône du micro tant que l'écoute est active. »
+    > « Oniris écoute en continu et réagit quand tu dis « Dis Iris » ou « Hé Iris ». Avant ça, rien n'est transcrit, enregistré ni envoyé. Windows affiche l'icône du micro tant que l'écoute est active. »
 
   - L'état est affiché à côté de la case : `voice_wake_state`.
-  - `confidentialite.md` v8 : la section « Mot d'activation » remplace la ligne « à venir ». Elle dit :
+  - `confidentialite.md` v9 : la section « Mot d'activation » remplace la ligne « à venir ». Le mode apprentissage s'y ajoute en Tâche 7. Elle dit :
     - ce qui est écouté ;
     - les 2 s en mémoire ;
     - aucune écriture ;
@@ -318,7 +362,7 @@ it("affiche l'état de l'écoute", ...) // voice_wake_state = "à l'écoute" →
     - que le modèle est entraîné sur des voix synthétiques et, si l'utilisateur l'a fait, sur ses propres enregistrements, restés sur son PC.
   - La spec, §4.3, gagne la mention « [décision du 2026-11-09] livré au plan 8 », avec le seuil retenu.
   - La liste de vérification couvre :
-    - activer le réglage, puis dire « Iris, quelle heure est-il ? » à 1 m et à 3 m ;
+    - activer le réglage, puis dire « Dis Iris, quelle heure est-il ? » à 1 m et à 3 m ;
     - une soirée de jeu en plein écran, sans aucune détection ;
     - une heure de musique et de vidéo avec l'écoute active, en comptant les faux déclenchements ;
     - le CPU au repos avec l'écoute active, avec `tools/perf/budgets.mjs` et le gestionnaire des tâches (≤ 1 %) ;
@@ -327,9 +371,137 @@ it("affiche l'état de l'écoute", ...) // voice_wake_state = "à l'écoute" →
 - [ ] **Step 4 : lancer les tests et vérifier qu'ils passent.** Mêmes commandes, plus `pnpm lint` et `pnpm build`. Attendu : tout est vert.
 - [ ] **Step 5 : commit.** `feat(voix): réglage du mot d'activation et documents`
 
+### Tâche 6 : Mode apprentissage, collecte étiquetée (Rust)
+
+**Files:**
+- Create: `src-tauri/src/modules/voice/learn.rs`
+- Modify:
+  - `src-tauri/src/modules/voice/wake.rs` (l'écouteur alimente le collecteur) ;
+  - `src-tauri/src/modules/voice/pipeline.rs` (`Conf` gagne `learning: bool` ; `Input` gagne `ExpectWake` et `FalseWake`) ;
+  - `crates/core/src/settings.rs` (`voice_wake_learning: bool`, défaut `false`).
+- Test: `learn.rs` (module `tests`, horloge et dossier injectés) et `wake.rs`.
+
+**Interfaces:**
+- Consumes : l'écouteur de la Tâche 4 (`WAKE_THRESHOLD`, `NEAR_MISS`, la machine à états) et `Endpoint` (Tâche 3).
+- Produces :
+  - `pub enum Label { Pos, Neg }`
+  - `pub enum Event { Score { at_ms: u64, score: f32 }, Woke { at_ms: u64 }, Command, NoSpeech, Cancelled, ManualStart { at_ms: u64 }, ExpectWake { at_ms: u64 }, FalseWake { at_ms: u64 } }`
+  - `pub struct Collector` :
+    - `pub fn new(dir: PathBuf) -> Self` ;
+    - `pub fn push_audio(&mut self, samples_16k: &[f32])`, avec un anneau de 6 s, en mémoire ;
+    - `pub fn on(&mut self, e: Event) -> Option<(Label, Vec<f32>)>` : rend l'extrait à écrire, la logique pure, testée sans disque ;
+    - `pub fn save(&mut self, label: Label, clip: &[f32]) -> std::io::Result<PathBuf>` : WAV 16 kHz mono i16, `learn/{pos,neg}/<horodatage>.wav`, puis rotation.
+  - Constantes :
+    - `POS_BEFORE_MS = 1400` et `POS_AFTER_MS = 200` : un positif fait 1,6 s et **finit 0,2 s après le meilleur score**. openWakeWord tronque les clips de plus de 2 s par la fin, ce qui couperait le mot.
+    - `NEG_MS = 3000` ;
+    - `RETRY_WINDOW_MS = 5000` ;
+    - `EXPECT_WINDOW_MS = 5000` ;
+    - `FALSE_WAKE_WINDOW_MS = 10000` ;
+    - `EXPECT_MIN_SCORE = 0.05` ;
+    - `MAX_FILES = 2000`, `MAX_BYTES = 200 Mo`.
+
+**Règles d'étiquetage** (une ligne = un test ; les boutons l'emportent sur tout le reste) :
+
+| Situation | Extrait |
+|---|---|
+| `ExpectWake`, puis `Woke` dans la fenêtre | `Pos`, autour du score du réveil |
+| `ExpectWake`, puis aucun réveil dans la fenêtre | `Pos`, autour du meilleur score de la fenêtre, s'il dépasse `EXPECT_MIN_SCORE`, sinon rien |
+| `FalseWake` moins de 10 s après un `Woke` | `Neg` (3 s finissant au réveil), et aucun `Pos` pour ce réveil |
+| `Woke` puis `Command`, sans bouton | `Pos`, autour du score du réveil |
+| `Woke` puis `NoSpeech` ou `Cancelled`, sans bouton | `Neg` |
+| Score ≥ `NEAR_MISS` et < `WAKE_THRESHOLD`, puis `Woke` ou `ManualStart` dans les 5 s | `Pos`, autour du presque-réveil (raté, puis l'utilisateur a répété) |
+| Presque-réveil sans suite dans les 5 s | rien (on ne sait pas) |
+
+- [ ] **Step 1 : écrire les tests qui échouent.** Une fonction par ligne du tableau, plus :
+  - `positive_clip_is_1600ms_ending_200ms_after_peak()` ;
+  - `nothing_written_when_learning_off()` (`wake.rs` : `Conf.learning=false`, réveil puis commande → le dossier reste vide) ;
+  - `rotation_keeps_newest_2000()` (2 005 sauvegardes → 2 000 fichiers, les 5 plus anciens supprimés) ;
+  - `expect_wake_silence_writes_nothing()` (Review Focus 6).
+- [ ] **Step 2 : lancer les tests et vérifier qu'ils échouent.** `cargo test -p oniris voice::learn`. Attendu : ÉCHEC à la compilation.
+- [ ] **Step 3 : écrire `Collector`, puis le brancher**
+  - L'écouteur crée le `Collector` seulement si `Conf.learning` est vrai, et le détruit (anneau compris) dès que ce réglage repasse à faux.
+  - L'écriture sur disque se fait hors du thread audio, par `tokio::task::spawn_blocking`.
+  - Correspondance des événements :
+    - `ManualStart` = `Input::Start` ;
+    - `Cancelled` = `Input::Escape` entre `Woke` et la fin de l'enregistrement ;
+    - `Command` = `Endpoint::End` ou `TooLong`.
+  - Journal : une ligne `info` par extrait (« extrait d'apprentissage gardé : positif »), sans chemin ni score.
+- [ ] **Step 4 : lancer les tests et vérifier qu'ils passent.** `cargo test -p oniris`. Attendu : PASS, avec les tests des Tâches 4 et 6 et ceux du plan 6.
+- [ ] **Step 5 : commit.** `feat(voix): mode apprentissage du mot d'activation`
+
+### Tâche 7 : Boutons de la pilule, réentraînement du modèle principal, documents
+
+**Files:**
+- Modify :
+  - `src/pill/Pill.tsx`, `src/pill/pill.css`, `src/pill/Pill.test.tsx` ;
+  - `src/modules/voice/VoiceSection.tsx`, `src/modules/voice/voice.test.tsx`, `src/modules/voice/api.ts` ;
+  - `src/lib/settings.ts` ;
+  - `src-tauri/src/modules/voice/pipeline.rs` (commandes) ;
+  - `tools/wakeword/generate_clips.py`, `tools/wakeword/README.md` ;
+  - `docs/legal/confidentialite.md` (v9, section « Mode apprentissage ») ;
+  - `docs/verifications/plan-08-mot-activation.md`.
+- Create: `tools/wakeword/retrain.sh`
+
+**Interfaces:**
+- Consumes : `Input::ExpectWake`, `Input::FalseWake` et `voice_wake_learning` (Tâche 6).
+- Produces :
+  - commandes Tauri `voice_expect_wake()`, `voice_false_wake()` et `voice_learn_clear() -> u32` (nombre de fichiers supprimés) ;
+  - `voice_learn_count() -> (u32, u32)`, soit (positifs, négatifs).
+  - `PhaseEvent` (`oniris://voice`) gagne `by_wake: bool` : vrai quand la phase `Listening` vient du mot d'activation, et c'est ce qui affiche « Faux réveil ».
+
+- [ ] **Step 1 : écrire les tests qui échouent**
+
+```tsx
+// Pill.test.tsx
+it("bouton « Je vais dire Iris » seulement en mode apprentissage", ...) // learning=false → absent ; true → présent ; clic → invoke("voice_expect_wake")
+it("« Faux réveil » apparaît 10 s après un réveil par la voix", ...)   // phase Listening venue du mot → bouton ; clic → invoke("voice_false_wake") ; disparaît après 10 s (timers simulés)
+// voice.test.tsx
+it("la case apprentissage est grisée tant que le mot d'activation est désactivé", ...)
+it("affiche le compte des extraits et les supprime", ...)            // « 12 positifs, 3 négatifs » ; clic + confirmation → invoke("voice_learn_clear")
+```
+```python
+# generate_clips.py --self-test (asserts, dossier temporaire)
+# recordings/learn/pos/a.wav → positive_train/own_learn_a_000.wav, jamais dans positive_test
+# recordings/learn/neg/b.wav → negative_train/live_learn_b_00.wav
+```
+
+- [ ] **Step 2 : lancer les tests et vérifier qu'ils échouent.** `pnpm vitest run src/pill src/modules/voice`, puis `python tools/wakeword/generate_clips.py --self-test`. Attendu : ÉCHEC.
+- [ ] **Step 3 : écrire le code**
+  - **Pilule.** Les deux boutons ne s'affichent que si `voice_wake_learning` est actif. Ils sont petits, sans texte d'aide, avec un `aria-label` égal à leur libellé.
+    - « Je vais dire Iris » est toujours visible en mode apprentissage. Après un clic, il passe 5 s en état armé (anneau animé), sans autre retour.
+    - « Faux réveil » n'est visible que pendant les 10 s qui suivent un réveil par la voix.
+  - **Réglages,** sous la case du mot d'activation :
+    - une case « Mode apprentissage » ;
+    - la note exacte : « Garde sur ton PC de courts extraits autour des réveils pour réentraîner « Dis Iris ». Rien n'est envoyé. Les boutons de la pilule permettent de corriger IRIS. » ;
+    - le compte des extraits et le bouton « Supprimer les extraits », avec une confirmation.
+  - **`generate_clips.py`.**
+    - `add_own` prend aussi `learn/pos/*.wav`, toujours en entraînement, jamais en test : le test reste tes enregistrements guidés, comparables d'un entraînement à l'autre.
+    - `add_hard_negatives` prend aussi `learn/neg/*.wav`.
+    - Les noms en sortie sont préfixés `learn_`.
+  - **`retrain.sh`** réentraîne seulement le modèle principal :
+    ```bash
+    MODELS=dis_iris FRESH=1 GRID=${GRID:-128:1000:300,128:800:250,128:600:200} exec bash "$(dirname "$0")/train_best.sh"
+    ```
+    Le README gagne une section « 3 bis. Réentraîner avec le mode apprentissage » : quand relancer (après une centaine de nouveaux extraits), la commande, puis la vérification des nouveaux scores avant de garder le modèle.
+  - **`confidentialite.md` v9, section « Mode apprentissage » :**
+    - ce qui est gardé (extraits de 1,6 à 3 s autour d'un réveil ou d'un presque-réveil) ;
+    - où ils sont gardés ;
+    - qu'ils peuvent contenir d'autres voix de la pièce ;
+    - la limite (2 000 fichiers ou 200 Mo) ;
+    - comment les supprimer ;
+    - que rien n'est transcrit ni envoyé.
+  - **Vérifications.** La liste gagne :
+    - activer le mode apprentissage, puis : réveil réussi suivi d'une commande → +1 positif ;
+    - clic sur « Je vais dire Iris » suivi de « Dis Iris » sans réveil → +1 positif ;
+    - réveil à tort puis clic sur « Faux réveil » → +1 négatif ;
+    - « Supprimer les extraits » vide le dossier.
+- [ ] **Step 4 : lancer les tests et vérifier qu'ils passent.** Mêmes commandes, plus `pnpm lint` et `pnpm build`. Attendu : tout est vert.
+- [ ] **Step 5 : commit.** `feat(voix): boutons d'apprentissage et réentraînement du modèle principal`
+
 ---
 
 ## Après la partie B
 
 - Revue finale de toute la branche, puis fusion `--ff-only` et `graphify update .`, comme aux plans 5 à 7.
 - **Nouveau build de l'installateur (1.1.0) seulement avec l'accord de l'utilisateur**, puis la liste de vérification du plan 8.
+- **Boucle d'amélioration :** usage avec le mode apprentissage, `retrain.sh` après une centaine d'extraits, puis comparaison des mesures (`sweep_dis_iris.md`) avant de remplacer le modèle livré. Chaque remplacement passe par la Tâche 0 bis (fixture, `SHA256SUMS`, commit), puis un nouveau build avec accord. Le plan 8 est fini quand l'objectif de la Tâche 0 est atteint en usage.

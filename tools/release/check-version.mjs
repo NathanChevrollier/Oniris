@@ -16,7 +16,7 @@ const fichiers = [
 const versions = fichiers.map(([f, lire]) => {
   try {
     return [f, lire(f)];
-  } catch (e) {
+  } catch {
     return [f, undefined];
   }
 });

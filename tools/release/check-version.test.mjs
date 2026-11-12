@@ -4,8 +4,9 @@ import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
-const script = new URL('./check-version.mjs', import.meta.url).pathname.replace(/^\/(\w:)/, '$1');
+const script = fileURLToPath(new URL('./check-version.mjs', import.meta.url));
 
 function repo(v, core = v) {
   const d = mkdtempSync(join(tmpdir(), 'cv-'));

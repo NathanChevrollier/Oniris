@@ -19,8 +19,6 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: pnpm/action-setup@v4
-        with:
-          version: 12
 
       - uses: actions/setup-node@v4
         with:
@@ -34,7 +32,9 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - name: Vérifier les versions
-        run: node tools/release/check-version.mjs ${{ github.ref_name }}
+        env:
+          TAG: ${{ github.ref_name }}
+        run: node tools/release/check-version.mjs "$TAG"
 
       - name: Lire les notes de version
         id: notes
@@ -43,6 +43,10 @@ jobs:
           f="docs/releases/${GITHUB_REF_NAME}.md"
           if [ ! -f "$f" ]; then
             echo "::error::Notes de version manquantes : $f"
+            exit 1
+          fi
+          if ! grep -q '[^[:space:]]' "$f"; then
+            echo "::error::Notes de version vides : $f"
             exit 1
           fi
           {
@@ -54,6 +58,7 @@ jobs:
 
       - name: Tests
         run: |
+          node --test tools/release/check-version.test.mjs
           cargo test -p oniris-core
           cargo test -p oniris
           pnpm vitest run

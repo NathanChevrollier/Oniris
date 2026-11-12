@@ -39,6 +39,7 @@ pub fn run() {
         ))
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             commands::panel_open,
             commands::panel_close,
@@ -145,6 +146,9 @@ pub fn run() {
             modules::indexer::index_status,
             modules::search::search_query,
             modules::search::search_open,
+            modules::updater::update_status,
+            modules::updater::update_check_now,
+            modules::updater::update_restart,
             #[cfg(any(debug_assertions, feature = "perf"))]
             perf::perf_frame,
             #[cfg(any(debug_assertions, feature = "perf"))]
@@ -199,6 +203,7 @@ pub fn run() {
             modules::voice::wake::WakeListener::start(app.handle());
             hotkey::start_hook(app.handle().clone(), hotkey_cfg);
             fullscreen::start_watcher(app.handle().clone());
+            modules::updater::start(app.handle());
             // Accueil non terminé : le panneau s'ouvre dessus, une fois par lancement (le temps que la page charge).
             if !modules::onboarding::load(&app.state::<state::AppState>().db.lock()).done {
                 let h = app.handle().clone();
@@ -223,6 +228,7 @@ pub fn run() {
                         }
                     }
                 }
+                modules::updater::install_on_exit(app);
                 modules::zenytt::shutdown(); // Zenytt ne survit pas à Oniris
             }
         });

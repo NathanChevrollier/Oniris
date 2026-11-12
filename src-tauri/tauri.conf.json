@@ -47,6 +47,7 @@
   "bundle": {
     "active": true,
     "targets": ["nsis"],
+    "createUpdaterArtifacts": true,
     "publisher": "Oniris",
     "copyright": "© 2026 Oniris",
     "shortDescription": "Tableau de bord personnel pour Windows",
@@ -62,5 +63,12 @@
     },
     "resources": ["resources/wake/*"],
     "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.ico"]
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": ["https://github.com/NathanChevrollier/Oniris/releases/latest/download/latest.json"],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDlFMTQ3MjhFMURCNjVDM0IKUldRN1hMWWRqbklVbmoxODdEWW9DQlZLK0N1VHJZUmQyWTVaOFNCcnhxVExJbnQwQUkwRnFlRXYK",
+      "windows": { "installMode": "passive" }
+    }
   }
 }

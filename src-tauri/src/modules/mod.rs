@@ -20,6 +20,7 @@ pub mod smtc;
 pub mod notes;
 pub mod onboarding;
 pub mod timers;
+pub mod updater;
 pub mod system;
 pub mod voice;
 pub mod weather;

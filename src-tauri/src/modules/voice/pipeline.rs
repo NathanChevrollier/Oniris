@@ -384,6 +384,11 @@ static VOICE: OnceLock<Voice> = OnceLock::new();
 /// Entrée et pipeline, pour l'écouteur du mot d'activation.
 pub(super) fn voice() -> Option<&'static Voice> { VOICE.get() }
 
+/// Pipeline voix occupé : tour en cours (écoute et transcription comprises) ou IRIS qui parle.
+pub fn voice_busy() -> bool {
+    SPEAKING.load(Ordering::SeqCst) || VOICE.get().is_some_and(|(_, p)| p.snapshot().1)
+}
+
 /// Sans attente : appelable depuis le crochet clavier.
 pub fn send(i: Input) {
     if let Some((tx, _)) = VOICE.get() {

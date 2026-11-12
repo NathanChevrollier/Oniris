@@ -21,6 +21,37 @@ pub fn resample_to_16k(input: &[f32], rate: u32, channels: u16) -> Vec<f32> {
         .collect()
 }
 
+/// Version en flux de `resample_to_16k` : même interpolation linéaire, état gardé entre les appels.
+pub struct Resampler16k {
+    step: f64,
+    channels: usize,
+    passthrough: bool,
+    prev: Option<f32>,
+    pos: f64, // position de la prochaine sortie, relative à `prev`
+}
+
+impl Resampler16k {
+    pub fn new(rate: u32, channels: u16) -> Self {
+        Self { step: rate as f64 / 16_000.0, channels: channels.max(1) as usize, passthrough: rate == 16_000, prev: None, pos: 0.0 }
+    }
+
+    /// Ajoute des échantillons entrelacés ; `out` reçoit le mono 16 kHz produit (sans être effacé).
+    pub fn push(&mut self, interleaved: &[f32], out: &mut Vec<f32>) {
+        if self.step <= 0.0 { return; }
+        let ch = self.channels;
+        for f in interleaved.chunks_exact(ch) {
+            let s = f.iter().sum::<f32>() / ch as f32;
+            if self.passthrough { out.push(s); continue; }
+            let Some(p) = self.prev.replace(s) else { continue };
+            while self.pos < 1.0 {
+                out.push(p + (s - p) * self.pos as f32);
+                self.pos += self.step;
+            }
+            self.pos -= 1.0;
+        }
+    }
+}
+
 /// Valeur efficace d'une trame (0 si vide).
 pub fn rms(frame: &[f32]) -> f32 {
     if frame.is_empty() { return 0.0 }
@@ -71,6 +102,32 @@ mod tests {
         assert!((out.len() as i64 - 16_000).abs() <= 1);
         let crossings = out.windows(2).filter(|w| w[0] < 0.0 && w[1] >= 0.0).count();
         assert!((crossings as i64 - 440).abs() <= 2, "{crossings}");
+    }
+
+    #[test]
+    fn streaming_equals_one_shot() {
+        let input = sine(440.0, 48_000, 2.0, 2);
+        let expected = resample_to_16k(&input, 48_000, 2);
+        let mut r = Resampler16k::new(48_000, 2);
+        let mut got = Vec::new();
+        let (mut i, mut k) = (0, 0);
+        while i < input.len() {
+            let n = ([1usize, 7, 480, 1023, 4800][k % 5] * 2).min(input.len() - i);
+            r.push(&input[i..i + n], &mut got);
+            i += n;
+            k += 1;
+        }
+        assert!((got.len() as i64 - expected.len() as i64).abs() <= 1, "{} vs {}", got.len(), expected.len());
+        let max = got.iter().zip(&expected).map(|(a, b)| (a - b).abs()).fold(0.0f32, f32::max);
+        assert!(max <= 1e-4, "{max}");
+    }
+
+    #[test]
+    fn sixteen_k_mono_passthrough() {
+        let input = sine(440.0, 16_000, 0.1, 1);
+        let mut out = Vec::new();
+        Resampler16k::new(16_000, 1).push(&input, &mut out);
+        assert_eq!(out, input);
     }
 
     #[test]

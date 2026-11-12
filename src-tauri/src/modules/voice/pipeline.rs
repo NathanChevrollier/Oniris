@@ -440,6 +440,9 @@ mod tests {
             }
             Ok(Box::new(FakeRec(vec![0.5; (16_000.0 * self.secs) as usize])))
         }
+        fn listen(&self, _: &str, _: Box<dyn FnMut(&[f32]) + Send>) -> Result<Box<dyn crate::modules::voice::capture::Listening>, MicError> {
+            Err(MicError::NoDevice)
+        }
     }
 
     struct FakeStt { log: Log, text: String }

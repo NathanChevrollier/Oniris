@@ -146,6 +146,15 @@ it("« Faux réveil » apparaît 10 s après un réveil par la voix", async () =
   act(() => voiceCb({ phase: "transcribing" }));
   fireEvent.click(screen.getByRole("button", { name: "Faux réveil" }));
   expect(falseWake).toHaveBeenCalledOnce();
-  act(() => { vi.advanceTimersByTime(10_000); });
+  expect(screen.queryByRole("button", { name: "Faux réveil" })).toBeNull(); // le clic le retire
+});
+
+it("« Faux réveil » disparaît seul au bout de 10 s", async () => {
+  await withLearning(true);
+  act(() => voiceCb({ phase: "listening", by_wake: true }));
+  expect(screen.getByRole("button", { name: "Faux réveil" })).toBeInTheDocument();
+  act(() => { vi.advanceTimersByTime(9_900); });
+  expect(screen.getByRole("button", { name: "Faux réveil" })).toBeInTheDocument();
+  act(() => { vi.advanceTimersByTime(200); });
   expect(screen.queryByRole("button", { name: "Faux réveil" })).toBeNull();
 });

@@ -707,6 +707,22 @@ pub(super) mod tests {
     }
 
     #[tokio::test]
+    async fn wake_begin_emits_wake_listening_only_when_accepted() {
+        let wake_events = |f: &Fx| f.ui.lock().iter().filter(|u| **u == Ui::WakeListening).count();
+        let f = simple(Opts::default());
+        assert!(f.p.wake_begin().is_some());
+        let ui = f.ui.lock();
+        let at = ui.iter().position(|u| *u == Ui::WakeListening).expect("réveil vocal signalé");
+        assert_eq!(ui[at - 1], Ui::Phase(VoicePhase::Listening, None), "après la phase Listening");
+        drop(ui);
+        assert!(f.p.wake_begin().is_none(), "occupé");
+        assert_eq!(wake_events(&f), 1);
+        let f = simple(Opts { conf: Conf { paused: true, ..Opts::default().conf }, ..Opts::default() });
+        assert!(f.p.wake_begin().is_none());
+        assert_eq!(wake_events(&f), 0);
+    }
+
+    #[tokio::test]
     async fn voix_en_pause_ou_non_installee_le_micro_n_est_jamais_ouvert() {
         let f = simple(Opts { conf: Conf { paused: true, ..Opts::default().conf }, ..Opts::default() });
         f.press().await;

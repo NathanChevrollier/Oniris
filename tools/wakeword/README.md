@@ -102,6 +102,16 @@ Objectif du plan 8 :
 
 Le seuil par défaut est 0,5 (`--threshold`). `train.sh eval` en conseille un d'après les tests synthétiques et ta voix. Le seuil retenu devient la constante `WAKE_THRESHOLD` de la partie B.
 
+### 3 bis. Réentraîner avec le mode apprentissage
+
+Quand : après une centaine de nouveaux extraits (compte dans les réglages d'Oniris, section « Voix »). Les extraits positifs vont en entraînement seulement, jamais en test : tes enregistrements guidés restent la référence, comparable d'un entraînement à l'autre. Les négatifs rejoignent les faux déclenchements.
+
+```bash
+bash /mnt/c/Users/natha/Desktop/Utilitaires/Projets/Oniris/tools/wakeword/retrain.sh
+```
+
+Seul le modèle principal (« Dis Iris ») est réentraîné, 3 variantes, à partir de zéro. Avant de garder le nouveau modèle, compare ses scores dans `~/oniris-wakeword/output/sweep_*.md` à ceux d'avant : rappel sur tes enregistrements de test au moins aussi bon, et faux déclenchements par heure toujours ≤ 0,5. Sinon, remets l'ancien modèle (`git checkout src-tauri/resources/wake`).
+
 ### 4. Passage à la partie B
 
 Une fois `train.sh fixture` passé, ces fichiers sont créés dans le dépôt :

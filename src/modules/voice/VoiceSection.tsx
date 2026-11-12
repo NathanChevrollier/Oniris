@@ -7,6 +7,27 @@ import "./voice.css";
 
 const mo = (bytes: number) => Math.round(bytes / 1_000_000);
 
+const plural = (n: number, one: string, many: string) => `${n} ${n > 1 ? many : one}`;
+
+/** Compte des extraits du mode apprentissage et leur suppression, avec confirmation. */
+function LearnClips() {
+  const [count, setCount] = useState<[number, number] | null>(null);
+  const [confirm, setConfirm] = useState(false);
+  const load = useCallback(() => { voiceIpc.learnCount().then(setCount, () => {}); }, []);
+  useEffect(load, [load]);
+  return (
+    <div className="iris-row">
+      {count && <span className="acc-state">{plural(count[0], "positif", "positifs")}, {plural(count[1], "négatif", "négatifs")}</span>}
+      {!confirm
+        ? <button type="button" className="acc-btn" onClick={() => setConfirm(true)}>Supprimer les extraits</button>
+        : <span role="alertdialog" aria-label="Confirmer la suppression">
+          <button type="button" className="acc-btn primary" onClick={() => void voiceIpc.learnClear().finally(() => { setConfirm(false); load(); })}>Confirmer la suppression</button>
+          <button type="button" className="acc-btn" onClick={() => setConfirm(false)}>Garder</button>
+        </span>}
+    </div>
+  );
+}
+
 /** Section « Voix » de la feuille IRIS : installation sur clic, modèle, volume, micro. */
 export function VoiceSection() {
   const s = useSettings();
@@ -16,6 +37,7 @@ export function VoiceSection() {
   const [minutes, setMinutes] = useState(String(s.voice_unload_minutes));
   const [device, setDevice] = useState(s.voice_input_device);
   const [wake, setWake] = useState(s.voice_wake);
+  const [learning, setLearning] = useState(s.voice_wake_learning);
   const [wakeState, setWakeState] = useState("");
   const [devices, setDevices] = useState<string[]>([]);
   const [status, setStatus] = useState<VoiceStatus | null>(null);
@@ -23,8 +45,8 @@ export function VoiceSection() {
   const [installing, setInstalling] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [save, note] = useSave();
-  useEffect(() => { setStt(s.voice_stt_model); setTts(s.voice_tts); setVolume(s.voice_volume); setMinutes(String(s.voice_unload_minutes)); setDevice(s.voice_input_device); setWake(s.voice_wake); },
-    [s.voice_stt_model, s.voice_tts, s.voice_volume, s.voice_unload_minutes, s.voice_input_device, s.voice_wake]);
+  useEffect(() => { setStt(s.voice_stt_model); setTts(s.voice_tts); setVolume(s.voice_volume); setMinutes(String(s.voice_unload_minutes)); setDevice(s.voice_input_device); setWake(s.voice_wake); setLearning(s.voice_wake_learning); },
+    [s.voice_stt_model, s.voice_tts, s.voice_volume, s.voice_unload_minutes, s.voice_input_device, s.voice_wake, s.voice_wake_learning]);
   const reload = useCallback(() => { voiceIpc.status().then(setStatus, () => {}); voiceIpc.wakeState().then(setWakeState, () => {}); }, []);
   useEffect(() => { reload(); voiceIpc.devices().then(setDevices, () => {}); }, [reload]);
   useEffect(() => {
@@ -40,7 +62,7 @@ export function VoiceSection() {
       .finally(() => { setInstalling(false); setFile(null); reload(); });
   };
   const pct = file && file.total > 0 ? Math.round((file.done / file.total) * 100) : null;
-  const patch: Partial<Settings> = { voice_stt_model: stt, voice_tts: tts, voice_volume: volume, voice_unload_minutes: Number(minutes), voice_input_device: device, voice_wake: wake };
+  const patch: Partial<Settings> = { voice_stt_model: stt, voice_tts: tts, voice_volume: volume, voice_unload_minutes: Number(minutes), voice_input_device: device, voice_wake: wake, voice_wake_learning: learning };
   return (
     <>
       <h3>Voix</h3>
@@ -54,7 +76,7 @@ export function VoiceSection() {
       {file && <progress className="iris-progress" aria-label={`Téléchargement : ${file.key}`} max={file.total || undefined} value={file.total ? file.done : undefined} />}
       {file && <span role="status" className="acc-wait">{file.key}{pct !== null ? ` : ${pct} %` : "…"}</span>}
       {error && <p className="err" role="alert">{error}</p>}
-      <form className="iris-grid" onSubmit={(e) => { e.preventDefault(); void save(patch).then(reload); }}>
+      <form className="iris-grid" onSubmit={(e) => { e.preventDefault(); void save(patch).then(() => { reload(); setTimeout(reload, 1200); }); }}>
         <label>Transcription
           <select value={stt} onChange={(e) => setStt(e.target.value as Settings["voice_stt_model"])}>
             <option value="small">Rapide (small)</option>
@@ -71,6 +93,10 @@ export function VoiceSection() {
         <label className="voice-check"><input type="checkbox" checked={wake} disabled={!status?.installed} onChange={(e) => setWake(e.target.checked)} />Mot d'activation « Dis Iris »</label>
         {wakeState && <span className="acc-state">{wakeState}</span>}
         <p className="voice-note">Oniris écoute en continu et réagit quand tu dis « Dis Iris » ou « Hé Iris ». Avant ça, rien n'est transcrit, enregistré ni envoyé. Windows affiche l'icône du micro tant que l'écoute est active.</p>
+        <label className="voice-check"><input type="checkbox" checked={learning} disabled={!wake} onChange={(e) => setLearning(e.target.checked)} />Mode apprentissage</label>
+        <p className="voice-note">Garde sur ton PC de courts extraits autour des réveils pour réentraîner « Dis Iris ». Rien n'est envoyé. Les boutons de la pilule permettent de corriger IRIS.</p>
+        <p className="voice-note">Désactiver le mode n'efface rien : les extraits restent jusqu'à ce que tu les supprimes.</p>
+        <LearnClips />
         <button type="submit" className="acc-btn primary">Enregistrer la voix</button>
       </form>
       {note}

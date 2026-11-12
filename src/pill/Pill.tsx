@@ -5,7 +5,7 @@ import { hhmm, useNow } from "../lib/time";
 import { PillTimer } from "../modules/timers/PillTimer";
 import { Orb } from "../ui/Orb";
 import { onIris } from "../modules/iris/api";
-import { orbFor, useVoice } from "../modules/voice/api";
+import { onVoice, orbFor, useVoice, voiceIpc } from "../modules/voice/api";
 import { PillToast } from "../modules/voice/PillToast";
 import "../ui/tokens.css";
 import "../ui/glass.css";
@@ -19,6 +19,39 @@ const HOVER_REARM_MS = 600;
 export function VoiceOrb({ thinking }: { thinking: boolean }) {
   const voice = useVoice();
   return <Orb state={orbFor(voice.phase, thinking)} size={24} level={voice.level} />;
+}
+
+const ARMED_MS = 5000;
+const FALSE_WAKE_MS = 10_000;
+
+/** Boutons du mode apprentissage : « Faux réveil » seulement dans les 10 s qui suivent un réveil par la voix. */
+function LearnButtons() {
+  const [armed, setArmed] = useState(false);
+  const [recent, setRecent] = useState(false);
+  const armT = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const wakeT = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => {
+    const un = onVoice((e) => {
+      if (!e.by_wake) return;
+      setRecent(true);
+      clearTimeout(wakeT.current);
+      wakeT.current = setTimeout(() => setRecent(false), FALSE_WAKE_MS);
+    });
+    return () => { void un.then((f) => f()); clearTimeout(armT.current); clearTimeout(wakeT.current); };
+  }, []);
+  return (
+    <>
+      <button type="button" className="pill-learn" aria-label="Je vais dire Iris" data-armed={armed || undefined}
+        onClick={() => {
+          void voiceIpc.expectWake();
+          setArmed(true);
+          clearTimeout(armT.current);
+          armT.current = setTimeout(() => setArmed(false), ARMED_MS);
+        }}>Iris ?</button>
+      {recent && <button type="button" className="pill-learn" aria-label="Faux réveil"
+        onClick={() => { void voiceIpc.falseWake(); setRecent(false); }}>Faux</button>}
+    </>
+  );
 }
 
 export function Pill() {
@@ -73,6 +106,7 @@ export function Pill() {
         <PillToast />
         <VoiceOrb thinking={thinking} />
       </button>
+      {settings.voice_wake_learning && <LearnButtons />}
     </div>
   );
 }

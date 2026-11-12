@@ -148,45 +148,71 @@ def jobs_for(split_dir: Path, n: int, texts: list, rng: random.Random, voice_spe
 
 def add_own(recordings: Path, out: Path, n_pos: int, globs: list) -> None:
     own = sorted(f for g in globs for f in recordings.glob(g)) if recordings else []
+    # Extraits du mode apprentissage : toujours en entraînement, jamais en test (le test reste tes enregistrements guidés,
+    # comparables d'un entraînement à l'autre).
+    learned = sorted((recordings / "learn" / "pos").glob("*.wav")) if recordings else []
     # Copies d'un tirage précédent : sans ça, un enregistrement peut finir à la fois en entraînement et en test
     # (arrivé le 12/11 : 20 des 22 clips de test de ta voix avaient aussi servi à l'entraînement).
     for f in [f for d in ("positive_train", "positive_test") for f in (out / d).glob("own_*.wav")]:
         f.unlink()
-    if not own:
+    if not own and not learned:
         print(f"Aucun enregistrement personnel ({', '.join(globs)}) : positifs 100 % synthétiques.")
         return
     random.Random(0).shuffle(own)  # même partage à chaque génération
-    cut = max(1, len(own) // 5)
+    cut = max(1, len(own) // 5) if own else 0
     test, train = own[:cut], own[cut:]
-    dup = max(1, round(0.1 * n_pos / max(1, len(train))))
-    for split, files, copies in (("positive_train", train, dup), ("positive_test", test, 1)):
-        for f in files:
+    dup = max(1, round(0.1 * n_pos / max(1, len(train) + len(learned))))
+    for split, files, copies in (("positive_train", [(f, f.stem) for f in train] + [(f, f"learn_{f.stem}") for f in learned], dup),
+                                 ("positive_test", [(f, f.stem) for f in test], 1)):
+        for f, name in files:
             x, sr = sf.read(f, dtype="float32", always_2d=False)
             x = trim(to_16k(x, sr))
             for c in range(copies):
-                p = out / split / f"own_{f.stem}_{c:03d}.wav"
+                p = out / split / f"own_{name}_{c:03d}.wav"
                 if not p.exists():
                     write(p, x)
-    print(f"Enregistrements personnels : {len(train)} × {dup} en entraînement, {len(test)} en test.")
+    print(f"Enregistrements personnels : {len(train)} + {len(learned)} appris × {dup} en entraînement, {len(test)} en test.")
 
 
 def add_hard_negatives(recordings: Path, out: Path, copies: int = 20) -> None:
-    """Extraits captés par listen_live.py (faux et quasi-déclenchements) : négatifs les plus utiles."""
-    found = [f for d in ("false_triggers", "near_misses") for f in sorted((recordings / d).glob("*.wav"))] if recordings else []
-    for f in found:
+    """Extraits captés par listen_live.py (faux et quasi-déclenchements) et par le mode apprentissage : négatifs les plus utiles."""
+    found = [(f, f.stem) for d in ("false_triggers", "near_misses") for f in sorted((recordings / d).glob("*.wav"))] if recordings else []
+    found += [(f, f"learn_{f.stem}") for f in sorted((recordings / "learn" / "neg").glob("*.wav"))] if recordings else []
+    for f, name in found:
         x, sr = sf.read(f, dtype="float32", always_2d=False)
         x = to_16k(x, sr)
         for c in range(copies):
-            p = out / "negative_train" / f"live_{f.stem}_{c:02d}.wav"
+            p = out / "negative_train" / f"live_{name}_{c:02d}.wav"
             if not p.exists():
                 write(p, x)
     if found:
         print(f"Extraits de l'écoute en direct : {len(found)} × {copies} en négatifs d'entraînement.")
 
 
+def self_test() -> None:
+    """Dossier temporaire seulement : les extraits appris vont en entraînement, jamais en test."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as t:
+        rec, out = Path(t) / "recordings", Path(t) / "out"
+        for d in ("positive_train", "positive_test", "negative_train"):
+            (out / d).mkdir(parents=True)
+        tone = (0.1 * np.sin(np.linspace(0, 400, SR))).astype(np.float32)
+        for sub, name in (("pos", "a"), ("neg", "b")):
+            (rec / "learn" / sub).mkdir(parents=True)
+            sf.write(rec / "learn" / sub / f"{name}.wav", tone, SR, subtype="PCM_16")
+        add_own(rec, out, 100, ["dis_*.wav"])
+        add_hard_negatives(rec, out)
+        assert (out / "positive_train" / "own_learn_a_000.wav").exists()
+        assert not list((out / "positive_test").glob("*"))
+        assert (out / "negative_train" / "live_learn_b_00.wav").exists()
+    print("auto-test : ok")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--ww", type=Path, required=True, help="dossier de travail ($WW_HOME)")
+    ap.add_argument("--self-test", action="store_true")
+    ap.add_argument("--ww", type=Path, help="dossier de travail ($WW_HOME)")
     ap.add_argument("--recordings", type=Path, default=None)
     ap.add_argument("--n-train", type=int, default=20000)
     ap.add_argument("--n-test", type=int, default=2000)
@@ -194,6 +220,10 @@ def main() -> None:
     ap.add_argument("--seed", type=int, default=8)
     ap.add_argument("--model", choices=sorted(MODELS), default="iris")
     a = ap.parse_args()
+    if a.self_test:
+        return self_test()
+    if a.ww is None:
+        ap.error("--ww est requis")
 
     out = a.ww / "output" / a.model
     positive_texts, own_globs, max_s = MODELS[a.model]

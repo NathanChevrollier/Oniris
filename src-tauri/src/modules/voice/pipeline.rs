@@ -34,8 +34,9 @@ pub enum VoicePhase { Idle, Listening, Transcribing, Speaking }
 pub struct Timing { pub speech_to_text_ms: u64, pub text_to_tool_ms: Option<u64>, pub total_ms: u64 }
 
 /// Ce que le pipeline montre : phase (et niveau du micro), toast de la pilule, ouverture du panneau, mesures.
+/// `WakeListening` : écoute ouverte par le mot d'activation (`by_wake` côté interface).
 #[derive(Debug, Clone, PartialEq)]
-pub enum Ui { Phase(VoicePhase, Option<f32>), Toast(String), OpenPanel, Timing(Timing) }
+pub enum Ui { Phase(VoicePhase, Option<f32>), WakeListening, Toast(String), OpenPanel, Timing(Timing) }
 
 /// Réglages et état relus à chaque appui.
 #[derive(Debug, Clone, Default)]
@@ -114,9 +115,7 @@ pub enum Input {
     /// Demande enregistrée après le mot d'activation.
     WakeEnd(u64, Vec<f32>),
     /// Boutons du mode apprentissage : « Je vais dire Iris » et « Faux réveil ».
-    #[cfg_attr(not(test), expect(dead_code, reason = "envoyé par les boutons de la pilule (Tâche 7)"))]
     ExpectWake,
-    #[cfg_attr(not(test), expect(dead_code, reason = "envoyé par les boutons de la pilule (Tâche 7)"))]
     FalseWake,
 }
 
@@ -202,6 +201,7 @@ impl Pipeline {
         };
         self.speaker.stop();
         self.phase(press, VoicePhase::Listening);
+        (self.ui)(Ui::WakeListening);
         let stt = self.stt.clone();
         tokio::spawn(async move { stt.warm().await });
         Some(press)
@@ -407,6 +407,21 @@ pub fn status_label() -> &'static str {
 #[tauri::command]
 pub fn voice_wake_state() -> String { super::wake::wake_state().into() }
 
+/// Boutons de la pilule en mode apprentissage : « Je vais dire Iris » et « Faux réveil ».
+#[tauri::command]
+pub fn voice_expect_wake() { send(Input::ExpectWake) }
+
+#[tauri::command]
+pub fn voice_false_wake() { send(Input::FalseWake) }
+
+/// (positifs, négatifs) gardés par le mode apprentissage.
+#[tauri::command]
+pub fn voice_learn_count() -> (u32, u32) { super::learn::learn_dir().map_or((0, 0), |d| super::learn::count_in(&d)) }
+
+/// Supprime les extraits du mode apprentissage ; renvoie leur nombre.
+#[tauri::command]
+pub fn voice_learn_clear() -> u32 { super::learn::learn_dir().map_or(0, |d| super::learn::clear_in(&d)) }
+
 /// Modèle Whisper choisi dans les réglages.
 fn model_path(dir: &std::path::Path, stt_model: &str) -> PathBuf {
     let dest = assets::needed(stt_model).into_iter().find_map(|a| match a.kind {
@@ -453,7 +468,7 @@ impl Turns for VoiceTurns {
 }
 
 #[derive(Serialize, Clone)]
-struct PhaseEvent { phase: VoicePhase, #[serde(skip_serializing_if = "Option::is_none")] level: Option<f32> }
+struct PhaseEvent { phase: VoicePhase, #[serde(skip_serializing_if = "Option::is_none")] level: Option<f32>, by_wake: bool }
 
 #[derive(Serialize, Clone)]
 struct Toast { text: String }
@@ -461,7 +476,10 @@ struct Toast { text: String }
 fn emit_ui(app: &AppHandle, u: Ui) {
     match u {
         Ui::Phase(phase, level) => {
-            let _ = app.emit("oniris://voice", PhaseEvent { phase, level });
+            let _ = app.emit("oniris://voice", PhaseEvent { phase, level, by_wake: false });
+        }
+        Ui::WakeListening => {
+            let _ = app.emit("oniris://voice", PhaseEvent { phase: VoicePhase::Listening, level: None, by_wake: true });
         }
         Ui::Toast(text) => {
             let _ = app.emit_to("pill", "oniris://toast", Toast { text });

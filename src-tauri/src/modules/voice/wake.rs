@@ -102,7 +102,7 @@ impl WakeListener {
         let Some((tx, p)) = pipeline::voice() else { return };
         let dir = app.path().resolve("resources/wake", tauri::path::BaseDirectory::Resource).unwrap_or_default();
         let tx = tx.clone();
-        let learn_dir = dirs::home_dir().map(|h| h.join("oniris-wakeword").join("recordings").join("learn"));
+        let learn_dir = super::learn::learn_dir();
         let l = Self::new(p.clone(), Arc::new(CpalMic), Box::new(move || load_models(&dir)), Arc::new(move |i| { let _ = tx.send(i); }), learn_dir);
         if LABEL.set(l.label.clone()).is_err() {
             return;

@@ -23,6 +23,25 @@ pub const EXPECT_MIN_SCORE: f32 = 0.05;
 pub const MAX_FILES: usize = 2000;
 pub const MAX_BYTES: u64 = 200 * 1024 * 1024;
 
+/// Dossier des extraits (`None` : pas de dossier personnel).
+pub fn learn_dir() -> Option<PathBuf> {
+    dirs::home_dir().map(|h| h.join("oniris-wakeword").join("recordings").join("learn"))
+}
+
+/// Les `*.wav` de `pos` et de `neg`, rien d'autre.
+fn wavs(dir: &std::path::Path, sub: &str) -> Vec<PathBuf> {
+    std::fs::read_dir(dir.join(sub)).into_iter().flatten().flatten().map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|x| x == "wav")).collect()
+}
+
+/// (positifs, négatifs) présents dans `dir`.
+pub fn count_in(dir: &std::path::Path) -> (u32, u32) { (wavs(dir, "pos").len() as u32, wavs(dir, "neg").len() as u32) }
+
+/// Supprime les extraits de `dir` et renvoie leur nombre.
+pub fn clear_in(dir: &std::path::Path) -> u32 {
+    ["pos", "neg"].iter().flat_map(|s| wavs(dir, s)).filter(|p| std::fs::remove_file(p).is_ok()).count() as u32
+}
+
 const PER_MS: u64 = 16;
 const RING: usize = 6000 * PER_MS as usize;
 /// En deçà, l'anneau ne tient pas assez d'audio : rien n'est écrit.
@@ -512,5 +531,23 @@ mod tests {
         }
         Collector::new(dir.path().to_path_buf()).rotate(MAX_FILES, 250);
         assert!(!neg.join("0.wav").exists() && neg.join("1.wav").exists() && neg.join("2.wav").exists());
+    }
+
+    #[test]
+    fn count_and_clear_only_touch_learned_wavs() {
+        let dir = tempfile::tempdir().unwrap();
+        for (d, n) in [("pos", 3), ("neg", 2)] {
+            std::fs::create_dir_all(dir.path().join(d)).unwrap();
+            for i in 0..n {
+                std::fs::write(dir.path().join(d).join(format!("{i}.wav")), b"x").unwrap();
+            }
+        }
+        std::fs::write(dir.path().join("pos").join("note.txt"), b"x").unwrap();
+        std::fs::write(dir.path().join("keep.wav"), b"x").unwrap();
+        assert_eq!(count_in(dir.path()), (3, 2));
+        assert_eq!(clear_in(dir.path()), 5);
+        assert_eq!(count_in(dir.path()), (0, 0));
+        assert!(dir.path().join("pos").join("note.txt").exists() && dir.path().join("keep.wav").exists());
+        assert_eq!(count_in(&dir.path().join("absent")), (0, 0));
     }
 }

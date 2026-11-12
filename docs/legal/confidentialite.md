@@ -203,9 +203,20 @@ Le mot d'activation (« Dis Iris » ou « Hé Iris ») est **désactivé par dé
 - **Ce qui est écouté** : une fois activé, Oniris écoute le micro en continu, sur ton PC, pour repérer ce seul mot. Windows affiche l'icône du micro tant que l'écoute est active.
 - **Les 2 dernières secondes, en mémoire** : avant la détection, l'audio ne vit que dans la mémoire du détecteur, sur 2 secondes au plus, et s'efface au fur et à mesure.
 - **Aucune écriture** : rien n'est écrit sur le disque, transcrit, journalisé ni envoyé avant la détection. Après la détection, l'audio suit les mêmes règles que le raccourci Alt+Espace : 30 secondes au plus, en mémoire, vers Whisper sur ton PC seulement.
-- **Suspensions** : l'écoute s'arrête quand la voix est en pause (zone de notification), quand une application est en plein écran, pendant qu'IRIS parle et un court instant après, et pendant que tu utilises le raccourci.
+- **Suspensions** : l'écoute s'arrête quand la voix est en pause (zone de notification), quand une application est en plein écran, pendant qu'IRIS traite ta demande ou répond, et pendant que tu utilises le raccourci.
 - **Le modèle** : il est fourni avec l'app et tourne sur ton PC. Il a été entraîné sur des voix synthétiques et, si tu l'as fait, sur tes propres enregistrements, qui restent sur ton PC.
 - Désactiver le réglage arrête l'écoute immédiatement.
+
+### Mode apprentissage
+
+Le mode apprentissage est **désactivé par défaut**, c'est un réglage distinct, grisé tant que le mot d'activation est désactivé. C'est la seule exception à « aucune écriture » ci-dessus.
+
+- **Ce qui est gardé** : de courts extraits audio, de 1,6 à 3 secondes, autour d'un réveil, d'un presque-réveil ou d'un appui sur « Je vais dire Iris ». Un extrait positif s'arrête 0,2 seconde après le mot d'activation : il peut donc contenir le tout début de ta demande.
+- **Où** : sur ton PC seulement, dans `%USERPROFILE%\oniris-wakeword\recordings\learn\` (sous-dossiers `pos` et `neg`).
+- **D'autres voix** : un extrait peut contenir d'autres voix ou sons de la pièce.
+- **Limite** : 2 000 fichiers ou 200 Mo ; au-delà, les plus anciens sont supprimés.
+- **Supprimer** : le bouton « Supprimer les extraits » de la section « Voix » vide ces dossiers. Désactiver le mode n'efface rien ; tu peux aussi supprimer le dossier toi-même.
+- **Rien n'est transcrit ni envoyé** : les extraits ne servent qu'à réentraîner le modèle « Dis Iris », à ta demande, sur ton PC.
 
 ## Journal des commandes et des fichiers
 
@@ -219,6 +230,4 @@ IRIS peut exécuter une commande PowerShell, gérer des fichiers et lancer, ferm
 
 ## À venir
 
-Ces fonctions n'existent pas encore. Chacune ajoutera sa propre section ici avant d'être disponible. Outlook n'est pas prévu : seul Gmail est géré.
-
-- Le mode apprentissage du mot d'activation (enregistrer des extraits pour améliorer le modèle) : pas encore disponible ; il aura sa propre section ici avant d'exister.
+Outlook n'est pas prévu : seul Gmail est géré. Toute nouvelle fonction qui touche à tes données ajoutera sa propre section ici avant d'être disponible.

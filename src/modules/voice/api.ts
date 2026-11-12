@@ -4,8 +4,8 @@ import { invoke, listen } from "../../lib/ipc";
 import type { OrbState } from "../../ui/Orb";
 
 export type VoicePhase = "idle" | "listening" | "transcribing" | "speaking";
-/** `oniris://voice` : phase du pipeline, et niveau du micro (0..1) pendant l'écoute. */
-export type VoiceEvent = { phase: VoicePhase; level?: number };
+/** `oniris://voice` : phase du pipeline, niveau du micro (0..1) pendant l'écoute, et `by_wake` quand l'écoute vient du mot d'activation. */
+export type VoiceEvent = { phase: VoicePhase; level?: number; by_wake?: boolean };
 /** `oniris://voice-install` : progression d'un fichier, erreur ou fin. */
 export type InstallEvent = { key?: string; done?: number; total?: number; error?: string; finished?: boolean };
 /** Miroir de `oniris_core::voice::assets::VoiceStatus`. */
@@ -16,6 +16,11 @@ export const voiceIpc = {
   install: (): Promise<void> => invoke("voice_install"),
   devices: (): Promise<string[]> => invoke("voice_devices"),
   wakeState: (): Promise<string> => invoke("voice_wake_state"),
+  expectWake: (): Promise<void> => invoke("voice_expect_wake"),
+  falseWake: (): Promise<void> => invoke("voice_false_wake"),
+  /** (positifs, négatifs) */
+  learnCount: (): Promise<[number, number]> => invoke("voice_learn_count"),
+  learnClear: (): Promise<number> => invoke("voice_learn_clear"),
 };
 
 export const onVoice = (cb: (e: VoiceEvent) => void): Promise<UnlistenFn> => listen<VoiceEvent>("oniris://voice", (e) => cb(e.payload));

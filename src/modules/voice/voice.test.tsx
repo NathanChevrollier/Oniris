@@ -128,3 +128,28 @@ it("affiche l'état de l'écoute", async () => {
   render(<IrisSheet open onClose={() => {}} />);
   expect(await screen.findByText("à l'écoute")).toBeTruthy();
 });
+
+const LEARN = /Mode apprentissage/;
+
+it("la case apprentissage est grisée tant que le mot d'activation est désactivé", async () => {
+  vi.mocked(voiceIpc.status).mockResolvedValue(ready);
+  vi.spyOn(voiceIpc, "learnCount").mockResolvedValue([0, 0]);
+  vi.spyOn(ipc, "getSettings").mockResolvedValue({ ...DEFAULT_SETTINGS, voice_wake: false });
+  render(<IrisSheet open onClose={() => {}} />);
+  const box = (await screen.findByLabelText(LEARN)) as HTMLInputElement;
+  expect(box.disabled).toBe(true);
+});
+
+it("affiche le compte des extraits et les supprime", async () => {
+  vi.mocked(voiceIpc.status).mockResolvedValue(ready);
+  const count = vi.spyOn(voiceIpc, "learnCount").mockResolvedValue([12, 3]);
+  const clear = vi.spyOn(voiceIpc, "learnClear").mockResolvedValue(15);
+  vi.spyOn(ipc, "getSettings").mockResolvedValue({ ...DEFAULT_SETTINGS, voice_wake: true, voice_wake_learning: true });
+  render(<IrisSheet open onClose={() => {}} />);
+  expect(await screen.findByText("12 positifs, 3 négatifs")).toBeTruthy();
+  count.mockResolvedValue([0, 0]);
+  await userEvent.click(screen.getByRole("button", { name: "Supprimer les extraits" }));
+  await userEvent.click(screen.getByRole("button", { name: "Confirmer la suppression" }));
+  await waitFor(() => expect(clear).toHaveBeenCalledOnce());
+  expect(await screen.findByText("0 positif, 0 négatif")).toBeTruthy();
+});

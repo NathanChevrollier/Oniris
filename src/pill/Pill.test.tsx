@@ -4,6 +4,8 @@ import { Pill } from "./Pill";
 import { ipc, type PanelState } from "../lib/ipc";
 import type { VoiceEvent } from "../modules/voice/api";
 import { timersIpc } from "../modules/timers/api";
+import { voiceIpc } from "../modules/voice/api";
+import { DEFAULT_SETTINGS } from "../lib/settings";
 
 let panelState: (p: PanelState) => void = () => {};
 vi.mock("../lib/ipc", async (orig) => ({
@@ -112,4 +114,38 @@ it("le niveau du micro ne redessine que l'orbe, pas la pilule", () => {
   for (const level of [0.2, 0.5, 0.9]) act(() => voiceCb({ phase: "listening", level }));
   expect(orb().style.getPropertyValue("--level")).toBe("0.9");
   expect(settingsReads.mock.calls.length).toBe(before);
+});
+
+const withLearning = async (on: boolean) => {
+  vi.spyOn(ipc, "getSettings").mockResolvedValue({ ...DEFAULT_SETTINGS, voice_wake_learning: on });
+  render(<Pill />);
+  await act(async () => {});
+};
+
+it("bouton « Je vais dire Iris » seulement en mode apprentissage", async () => {
+  await withLearning(false);
+  expect(screen.queryByRole("button", { name: "Je vais dire Iris" })).toBeNull();
+  cleanup();
+  const expectWake = vi.spyOn(voiceIpc, "expectWake").mockResolvedValue(undefined);
+  await withLearning(true);
+  const b = screen.getByRole("button", { name: "Je vais dire Iris" });
+  fireEvent.click(b);
+  expect(expectWake).toHaveBeenCalledOnce();
+  expect(b).toHaveAttribute("data-armed", "true");
+  act(() => { vi.advanceTimersByTime(5000); });
+  expect(b).not.toHaveAttribute("data-armed");
+});
+
+it("« Faux réveil » apparaît 10 s après un réveil par la voix", async () => {
+  const falseWake = vi.spyOn(voiceIpc, "falseWake").mockResolvedValue(undefined);
+  await withLearning(true);
+  expect(screen.queryByRole("button", { name: "Faux réveil" })).toBeNull();
+  act(() => voiceCb({ phase: "listening", level: 0.2 })); // push-to-talk : pas de bouton
+  expect(screen.queryByRole("button", { name: "Faux réveil" })).toBeNull();
+  act(() => voiceCb({ phase: "listening", by_wake: true }));
+  act(() => voiceCb({ phase: "transcribing" }));
+  fireEvent.click(screen.getByRole("button", { name: "Faux réveil" }));
+  expect(falseWake).toHaveBeenCalledOnce();
+  act(() => { vi.advanceTimersByTime(10_000); });
+  expect(screen.queryByRole("button", { name: "Faux réveil" })).toBeNull();
 });

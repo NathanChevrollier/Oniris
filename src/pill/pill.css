@@ -1,5 +1,5 @@
 /* Pilule — la fenêtre (48 px de haut) prend la largeur mesurée de .pill-root. Pas de backdrop-filter ici. */
-.pill-root{width:max-content;margin:0 auto;padding:10px 12px 0}
+.pill-root{width:max-content;margin:0 auto;padding:10px 12px 0;display:flex;align-items:center;gap:6px}
 .island{height:38px;padding:0 8px 0 14px;border-radius:999px;display:flex;align-items:center;gap:14px;
   font:500 13px var(--font);font-feature-settings:"tnum" 1;color:var(--txt);cursor:pointer;
   background:rgba(12,12,16,.9);border:1px solid var(--line2);box-shadow:0 2px 6px rgba(0,0,0,.35);
@@ -9,3 +9,8 @@
 .island .orb[data-state=idle]::before,.island .orb[data-state=idle] .glow{animation:none}
 .island .orb[data-state=idle] .glow{opacity:.75}
 .pill-timer{font-feature-settings:"tnum" 1;color:var(--acc)}
+.pill-root.open .pill-learn{display:none}
+.pill-learn{height:26px;padding:0 10px;border-radius:999px;font:500 11px var(--font);color:var(--txt2);cursor:pointer;
+  background:rgba(12,12,16,.9);border:1px solid var(--line2)}
+.pill-learn[data-armed]{color:var(--acc);border-color:var(--acc);animation:pill-armed 1.2s ease-in-out infinite}
+@keyframes pill-armed{50%{box-shadow:0 0 0 3px color-mix(in srgb,var(--acc) 35%,transparent)}}

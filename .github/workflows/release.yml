@@ -15,6 +15,9 @@ permissions:
 jobs:
   release:
     runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
 
@@ -34,11 +37,12 @@ jobs:
       - name: Vérifier les versions
         env:
           TAG: ${{ github.ref_name }}
-        run: node tools/release/check-version.mjs "$TAG"
+        run: |
+          test -n "$TAG"
+          node tools/release/check-version.mjs "$TAG"
 
       - name: Lire les notes de version
         id: notes
-        shell: bash
         run: |
           f="docs/releases/${GITHUB_REF_NAME}.md"
           if [ ! -f "$f" ]; then

@@ -25,9 +25,9 @@ use tauri::{AppHandle, Emitter, Manager};
 const MIN_SPEECH_MS: u32 = 300;
 const TOAST_MAX: usize = 80;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
-pub enum VoicePhase { #[default] Idle, Listening, Transcribing, Speaking }
+pub enum VoicePhase { Idle, Listening, Transcribing, Speaking }
 
 /// Mesures d'un tour vocal (sans contenu).
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -56,9 +56,16 @@ pub trait Turns: Send + Sync {
     async fn run(&self, text: String) -> Result<TurnResult, TurnError>;
 }
 
-/// Appui en cours : son numéro (un nouvel appui rend les suites de l'ancien muettes), sa phase et l'enregistrement.
+/// Appui en cours : son numéro (un nouvel appui rend les suites de l'ancien muettes), son tour en cours
+/// (de l'appui jusqu'à la fin de `process`, voix comprise) et l'enregistrement.
 #[derive(Default)]
-struct State { press: u64, phase: VoicePhase, rec: Option<Box<dyn Recording>> }
+struct State { press: u64, busy: bool, rec: Option<Box<dyn Recording>> }
+
+/// Fin du tour de `press` quand `process` se termine, quel que soit le chemin de sortie.
+struct TurnGuard(Arc<Pipeline>, u64);
+impl Drop for TurnGuard {
+    fn drop(&mut self) { self.0.done(self.1) }
+}
 
 type Recorded = (u64, Vec<f32>);
 
@@ -111,18 +118,25 @@ impl Pipeline {
 
     /// Phase émise seulement si `press` est toujours l'appui courant (vérifié et émis sous le même verrou).
     fn phase(&self, press: u64, p: VoicePhase) {
-        let mut s = self.state.lock();
+        let s = self.state.lock();
         if s.press == press {
-            s.phase = p;
             self.speaking.store(p == VoicePhase::Speaking, Ordering::SeqCst);
             (self.ui)(Ui::Phase(p, None));
         }
     }
 
-    /// Appui courant et sa phase (relus par l'écouteur à chaque pas).
-    pub(super) fn snapshot(&self) -> (u64, VoicePhase) {
+    /// Appui courant et tour en cours (relus par l'écouteur à chaque pas).
+    pub(super) fn snapshot(&self) -> (u64, bool) {
         let s = self.state.lock();
-        (s.press, s.phase)
+        (s.press, s.busy)
+    }
+
+    /// Le tour de `press` est fini (s'il est toujours le courant).
+    fn done(&self, press: u64) {
+        let mut s = self.state.lock();
+        if s.press == press {
+            s.busy = false;
+        }
     }
 
     pub(super) fn toast(&self, text: impl Into<String>) { (self.ui)(Ui::Toast(text.into())) }
@@ -149,7 +163,7 @@ impl Pipeline {
     }
 
     /// Début d'une demande par le mot d'activation : comme `start`, sans ouvrir le micro (l'écouteur enregistre).
-    /// `None` si la voix est en pause, non installée, ou déjà occupée (le push-to-talk garde la priorité).
+    /// `None` si la voix est en pause, non installée, ou si un tour est en cours (push-to-talk ou réponse d'IRIS).
     pub fn wake_begin(self: &Arc<Self>) -> Option<u64> {
         let conf = (self.conf)();
         if conf.paused || !conf.installed {
@@ -157,9 +171,10 @@ impl Pipeline {
         }
         let press = {
             let mut s = self.state.lock();
-            if s.phase != VoicePhase::Idle {
+            if s.busy {
                 return None;
             }
+            s.busy = true;
             s.press += 1;
             s.rec = None;
             s.press
@@ -172,13 +187,17 @@ impl Pipeline {
     }
 
     /// Demande par le mot abandonnée (rien dit, réglage coupé) : la pilule revient au repos, sans toast.
-    pub(super) fn wake_abort(&self, press: u64) { self.phase(press, VoicePhase::Idle) }
+    pub(super) fn wake_abort(&self, press: u64) {
+        self.phase(press, VoicePhase::Idle);
+        self.done(press);
+    }
 
     /// Début d'appui : coupe IRIS si elle parle, puis ouvre le micro et préchauffe Whisper.
     pub async fn start(self: &Arc<Self>) {
         let press = {
             let mut s = self.state.lock();
             s.press += 1;
+            s.busy = true;
             s.rec = None;
             s.press
         };
@@ -186,6 +205,7 @@ impl Pipeline {
         let conf = (self.conf)();
         if conf.paused || !conf.installed {
             self.phase(press, VoicePhase::Idle); // une voix coupée ne laisse pas la pilule en Speaking
+            self.done(press);
             return self.toast(if conf.paused { "Voix en pause" } else { "Voix non installée" });
         }
         self.phase(press, VoicePhase::Listening);
@@ -213,10 +233,12 @@ impl Pipeline {
             }
             Ok(Err(e)) => {
                 self.phase(press, VoicePhase::Idle);
+                self.done(press);
                 self.toast(e.to_string());
             }
             Err(_) => {
                 self.phase(press, VoicePhase::Idle);
+                self.done(press);
                 self.toast("Le micro n'a pas pu démarrer.");
             }
         }
@@ -260,6 +282,7 @@ impl Pipeline {
 
     /// Transcription, tour d'IRIS, puis toast et voix (ou panneau).
     pub async fn process(self: Arc<Self>, (press, samples): Recorded) {
+        let _turn = TurnGuard(self.clone(), press);
         let t0 = Instant::now();
         let speech = audio::speech_ms(&samples, 0.01);
         let text = self.hear(press, &samples, speech).await;
@@ -617,8 +640,8 @@ pub(super) mod tests {
     fn simple(o: Opts) -> Fx { fx(o, Log::default()) }
 
     /// Pipeline de l'écouteur : micro et réglages fournis, même journal que le micro.
-    pub(crate) fn for_wake(mic: Arc<dyn Mic>, conf: Arc<Mutex<Conf>>, log: Log) -> Fx {
-        let mut f = fx(Opts::default(), log);
+    pub(crate) fn for_wake(mic: Arc<dyn Mic>, conf: Arc<Mutex<Conf>>, log: Log, turns: Option<Arc<dyn Turns>>) -> Fx {
+        let mut f = fx(Opts { turns, ..Opts::default() }, log);
         let p = Arc::get_mut(&mut f.p).unwrap();
         p.mic = mic;
         p.conf = Arc::new(move || conf.lock().clone());

@@ -3,7 +3,7 @@
 //! traite comme un push-to-talk. Avant la détection, l'audio ne vit qu'en mémoire (canal et tampons du détecteur) :
 //! jamais écrit, transcrit ni journalisé.
 use super::capture::{CpalMic, Listening, Mic};
-use super::pipeline::{self, Input, Pipeline, VoicePhase};
+use super::pipeline::{self, Input, Pipeline};
 use oniris_core::voice::endpoint::{Endpoint, Endpointer};
 use oniris_core::voice::wake::{verify, WakeDetector, WakeError, WakeModels};
 use parking_lot::Mutex;
@@ -56,7 +56,7 @@ enum State {
     Armed,
     /// Demande en cours d'enregistrement, pour l'appui `press` du pipeline.
     Recording { press: u64, rec: Vec<f32>, ep: Endpointer },
-    /// Pause, voix non installée, plein écran, IRIS qui parle ou tour en cours.
+    /// Pause, voix non installée, plein écran, IRIS qui parle (et 500 ms après) ou tour en cours.
     Suspended,
     /// Micro indisponible : nouvel essai à `retry_at`.
     Failed { retry_at: Instant },
@@ -136,7 +136,7 @@ impl WakeListener {
         if self.p.speaking.load(Ordering::SeqCst) {
             self.spoke = Some(now);
         }
-        let (press, phase) = self.p.snapshot();
+        let (press, busy) = self.p.snapshot();
         let hold = if !c.wake {
             Some(State::Off)
         } else if c.paused || !c.installed || c.fullscreen || self.spoke.is_some_and(|t| now - t < AFTER_SPEECH) {
@@ -144,7 +144,7 @@ impl WakeListener {
         } else if let State::Recording { press: mine, .. } = self.state {
             (mine != press).then_some(State::Suspended) // push-to-talk : il prend la main, sans tour pour le mot
         } else {
-            (phase != VoicePhase::Idle).then_some(State::Suspended)
+            busy.then_some(State::Suspended) // push-to-talk, ou tour d'IRIS jusqu'à la fin de sa réponse
         };
         if let Some(next) = hold {
             self.abort_recording(press);
@@ -287,7 +287,9 @@ mod tests {
     use oniris_core::voice::wake::WAKE_CHUNK;
     use crate::modules::voice::capture::{MicError, Recording};
     use crate::modules::voice::pipeline::tests::{for_wake, Fx, Log};
-    use crate::modules::voice::pipeline::Conf;
+    use crate::modules::voice::pipeline::{Conf, Turns, VoicePhase};
+    use crate::modules::iris::{TurnError, TurnResult};
+    use oniris_core::iris::Segment;
     use std::sync::atomic::{AtomicBool, AtomicUsize};
     use tokio::time::sleep;
 
@@ -344,11 +346,11 @@ mod tests {
     fn base() -> Conf { Conf { installed: true, tts: true, volume: 80, wake: true, user_name: "Nathan".into(), ..Conf::default() } }
 
     /// Écouteur lancé sur un pipeline réel (faux micro, faux détecteur) ; `refuse` : les `Wake` reçoivent `None`.
-    fn h_with(conf: Conf, fails: usize, refuse: bool, load: Option<Load>) -> H {
+    fn h_with(conf: Conf, fails: usize, refuse: bool, load: Option<Load>, turns: Option<Arc<dyn Turns>>) -> H {
         let log = Log::default();
         let mic = Arc::new(FakeMic { log: log.clone(), sink: Sink::default(), fails: AtomicUsize::new(fails), attempts: Mutex::default(), broken: Arc::default() });
         let conf = Arc::new(Mutex::new(conf));
-        let f = for_wake(mic.clone(), conf.clone(), log);
+        let f = for_wake(mic.clone(), conf.clone(), log.clone(), turns);
         let (inputs, ends): (Log, Arc<Mutex<Vec<Vec<f32>>>>) = Default::default();
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<Input>();
         let (p, i2, e2) = (f.p.clone(), inputs.clone(), ends.clone());
@@ -379,7 +381,7 @@ mod tests {
         H { f, conf, mic, inputs, ends, label, send }
     }
 
-    fn h(conf: Conf) -> H { h_with(conf, 0, false, None) }
+    fn h(conf: Conf) -> H { h_with(conf, 0, false, None, None) }
 
     impl H {
         /// `secs` d'audio de valeur `v`, par pas de 80 ms en temps réel simulé (perdu si le micro est fermé).
@@ -438,7 +440,7 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn refractory_two_seconds() {
-        let h = h_with(base(), 0, true, None);
+        let h = h_with(base(), 0, true, None, None);
         h.wake().await;
         h.feed(0.1, 0.92).await;
         h.feed(0.999, 0.08).await; // 1 s après le premier pic
@@ -512,7 +514,7 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn mic_failure_backs_off_with_one_toast() {
-        let h = h_with(base(), 5, false, None);
+        let h = h_with(base(), 5, false, None, None);
         sleep(Duration::from_secs(2)).await;
         assert_eq!(h.label(), "micro indisponible");
         sleep(Duration::from_secs(30)).await;
@@ -555,7 +557,7 @@ mod tests {
     async fn missing_models_disable_cleanly() {
         let dir = tempfile::tempdir().unwrap();
         let p = dir.path().to_path_buf();
-        let h = h_with(base(), 0, false, Some(Box::new(move || load_models(&p))));
+        let h = h_with(base(), 0, false, Some(Box::new(move || load_models(&p))), None);
         sleep(Duration::from_secs(2)).await;
         assert_eq!(h.label(), "modèle absent");
         assert!(h.mic.attempts.lock().is_empty());
@@ -570,5 +572,40 @@ mod tests {
         assert_eq!(h.count("unlisten"), 1);
         h.feed(0.999, 1.0).await;
         assert!(h.inputs().is_empty());
+    }
+
+    /// Tour qui dure 3 s (cerveau lent) puis répond.
+    struct SlowTurns(Log);
+    #[async_trait::async_trait]
+    impl Turns for SlowTurns {
+        async fn run(&self, text: String) -> Result<TurnResult, TurnError> {
+            sleep(Duration::from_secs(3)).await;
+            self.0.lock().push(format!("turn:{text}"));
+            Ok(TurnResult { shown: vec![Segment::Text { text: "Il fait beau.".into() }], pending: false, first_tool: None })
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn no_wake_during_turn() {
+        let log = Log::default();
+        let h = h_with(base(), 0, false, None, Some(Arc::new(SlowTurns(log.clone()))));
+        h.wake().await;
+        h.feed(0.001, 0.4).await;
+        h.feed(0.2, 0.5).await;
+        h.feed(0.001, 1.0).await;
+        assert_eq!(h.inputs(), ["wake", "wake_end:1"]);
+        // Tour en cours (Whisper fini, phase Idle) : un « Dis Iris » n'est pas entendu.
+        h.feed(0.1, 0.5).await;
+        h.feed(0.999, 0.08).await;
+        h.feed(0.1, 0.5).await;
+        assert!(log.lock().is_empty(), "le tour n'est pas fini");
+        assert_eq!(h.inputs(), ["wake", "wake_end:1"]);
+        assert_eq!(h.count("listen"), 1, "micro pas rouvert pendant le tour");
+        sleep(Duration::from_secs(3)).await;
+        assert_eq!(*log.lock(), ["turn:Quel temps fait-il ?"]);
+        assert_eq!(h.f.toasts(), ["Il fait beau."]);
+        assert!(h.f.has("speak"));
+        assert_eq!(h.count("listen"), 2, "réarmé après le tour");
+        assert_eq!(h.label(), "à l'écoute");
     }
 }

@@ -4,6 +4,7 @@ import { it, expect, vi, afterEach } from "vitest";
 import { SettingsSheet, hotkeyFromEvent } from "./SettingsSheet";
 import { ipc } from "../../lib/ipc";
 import { DEFAULT_SETTINGS } from "../../lib/settings";
+import { updateIpc } from "./update";
 import { projectsIpc, type Project } from "../projects/api";
 
 vi.mock("../../lib/settings", async (orig) => ({ ...(await orig<typeof import("../../lib/settings")>()), useSettings: () => (globalThis as { __s?: typeof DEFAULT_SETTINGS }).__s ?? DEFAULT_SETTINGS }));
@@ -11,6 +12,7 @@ vi.mock("../../lib/settings", async (orig) => ({ ...(await orig<typeof import(".
 const hidden = (): Project => ({ path: "C:/p/Vieux", name: "Vieux", last_activity_ms: 0, branch: null, dirty: 0, activity_14d: [], plan: null, last_session: null, pinned: false, hidden: true });
 const setup = () => {
   vi.spyOn(projectsIpc, "listHidden").mockResolvedValue([]);
+  vi.spyOn(updateIpc, "status").mockResolvedValue({ current: "1.2.0", pending: null, checking: false, last_error: null });
   return render(<SettingsSheet open onClose={() => {}} onGo={() => {}} />);
 };
 afterEach(() => { cleanup(); vi.restoreAllMocks(); delete (globalThis as { __s?: unknown }).__s; });
@@ -107,4 +109,26 @@ it("une valeur hors bornes part quand même à Rust, qui seul formule le refus",
   await userEvent.click(screen.getByRole("button", { name: "Enregistrer · Mails" }));
   await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ mail_poll_minutes: 9 })));
   expect((await screen.findByRole("alert")).textContent).toBe("la relève doit être de 2 à 5 minutes");
+});
+
+it("réglages : mises à jour automatiques cochées par défaut", async () => {
+  vi.spyOn(ipc, "getSettings").mockResolvedValue(DEFAULT_SETTINGS);
+  const save = vi.spyOn(ipc, "saveSettings").mockResolvedValue(undefined);
+  setup();
+  const box = screen.getByLabelText("Mises à jour automatiques") as HTMLInputElement;
+  expect(box.checked).toBe(true);
+  await userEvent.click(box);
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer · Mises à jour" }));
+  await waitFor(() => expect(save).toHaveBeenCalledWith({ ...DEFAULT_SETTINGS, auto_update: false }));
+});
+
+it("réglages : version installée et vérification manuelle", async () => {
+  vi.spyOn(ipc, "getSettings").mockResolvedValue(DEFAULT_SETTINGS);
+  const check = vi.spyOn(updateIpc, "checkNow").mockResolvedValue({ current: "1.2.0", pending: ["1.2.1", "Corrections diverses"], checking: false, last_error: null });
+  setup();
+  expect(await screen.findByText("Version 1.2.0")).toBeTruthy();
+  await userEvent.click(screen.getByRole("button", { name: "Vérifier maintenant" }));
+  expect(check).toHaveBeenCalled();
+  expect(await screen.findByText("Version 1.2.1 prête")).toBeTruthy();
+  expect(screen.getByText("Corrections diverses")).toBeTruthy();
 });

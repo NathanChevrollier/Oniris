@@ -6,6 +6,7 @@ import { PillTimer } from "../modules/timers/PillTimer";
 import { Orb } from "../ui/Orb";
 import { onIris } from "../modules/iris/api";
 import { onVoice, orbFor, useVoice, voiceIpc } from "../modules/voice/api";
+import { onUpdate, updateIpc } from "../modules/settings/update";
 import { PillToast } from "../modules/voice/PillToast";
 import "../ui/tokens.css";
 import "../ui/glass.css";
@@ -51,6 +52,23 @@ function LearnButtons() {
       {recent && <button type="button" className="pill-learn" aria-label="Faux réveil"
         onClick={() => { void voiceIpc.falseWake(); setRecent(false); }}>Faux</button>}
     </>
+  );
+}
+
+/** Annonce d'une mise à jour prête : hors de l'îlot (pas de bouton dans un bouton), sans prendre le focus. */
+function UpdateToast() {
+  const [version, setVersion] = useState<string | null>(null);
+  useEffect(() => {
+    const un = onUpdate((u) => setVersion(u.version));
+    return () => { void un.then((f) => f()); };
+  }, []);
+  if (!version) return null;
+  return (
+    <div className="pill-update" role="status">
+      <span>Mise à jour {version} prête</span>
+      <button type="button" className="pill-learn" onClick={() => void updateIpc.restart().catch(() => {})}>Redémarrer</button>
+      <button type="button" className="pill-learn" onClick={() => setVersion(null)}>Plus tard</button>
+    </div>
   );
 }
 
@@ -106,6 +124,7 @@ export function Pill() {
         <PillToast />
         <VoiceOrb thinking={thinking} />
       </button>
+      <UpdateToast />
       {settings.voice_wake && settings.voice_wake_learning && <LearnButtons />}
     </div>
   );

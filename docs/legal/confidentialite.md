@@ -1,6 +1,6 @@
 # Confidentialité d'Oniris
 
-Version 9 — 12 novembre 2026. Ce document décrit simplement ce qu'Oniris fait de tes données. Il est mis à jour à chaque nouveauté qui touche à ta vie privée.
+Version 10 — 13 novembre 2026. Ce document décrit simplement ce qu'Oniris fait de tes données. Il est mis à jour à chaque nouveauté qui touche à ta vie privée.
 
 ## En bref
 
@@ -228,6 +228,14 @@ IRIS peut exécuter une commande PowerShell, gérer des fichiers et lancer, ferm
 - **Démarrage automatique** : Oniris ne s'ajoute au démarrage de Windows (clé `Run` de ton compte, valeur « Oniris ») qu'**après ton accord**, demandé une seule fois au premier lancement. Tant que tu n'as pas fini l'accueil ni répondu, rien n'est écrit. Tu peux le changer ensuite dans les réglages.
 - **Journaux techniques** : ils sont dans `%APPDATA%\Oniris\logs` et ne contiennent aucun contenu venant de toi (voir « Où sont tes données »).
 - **Installeur** : il s'installe pour ton compte seulement (pas d'administrateur), en français. À la désinstallation, il retire la valeur « Oniris » de la clé `Run` mais **garde volontairement** `%APPDATA%\Oniris` et `%LOCALAPPDATA%\Oniris` (tes données et la voix), pour qu'une réinstallation retrouve tout. Pour tout effacer, supprime ces deux dossiers toi-même, ainsi que `%LOCALAPPDATA%\dev.oniris.app` (cache WebView2 : images et icônes récupérées en https).
+
+## Mises à jour
+
+- **Ce qui est contacté** : `github.com`, où les versions d'Oniris sont publiées (page des publications du dépôt public). GitHub voit ton **adresse IP** et la **version d'Oniris** dans la requête. Aucun autre identifiant, aucun contenu venant de toi n'est envoyé.
+- **Quand** : 3 minutes après le démarrage, puis toutes les 6 heures, tant que les mises à jour automatiques sont activées ; et quand tu cliques sur « Vérifier maintenant ».
+- **Signature** : une mise à jour téléchargée n'est installée que si sa signature correspond à la clé publique intégrée à Oniris ; sinon elle est ignorée.
+- **Installation** : jamais pendant que tu parles à IRIS ni en plein écran. Elle se fait quand tu fermes l'app, ou quand tu cliques sur « Redémarrer ». Tes données (réglages, base, voix, extraits d'apprentissage) ne sont pas touchées.
+- **Couper** : décoche « Mises à jour automatiques » dans les réglages (section « Mises à jour ») : plus aucune requête automatique. « Vérifier maintenant » reste disponible.
 
 ## À venir
 

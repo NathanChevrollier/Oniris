@@ -5,6 +5,7 @@ import { ipc, type PanelState } from "../lib/ipc";
 import type { VoiceEvent } from "../modules/voice/api";
 import { timersIpc } from "../modules/timers/api";
 import { voiceIpc } from "../modules/voice/api";
+import { updateIpc } from "../modules/settings/update";
 import { DEFAULT_SETTINGS } from "../lib/settings";
 
 let panelState: (p: PanelState) => void = () => {};
@@ -13,10 +14,12 @@ vi.mock("../lib/ipc", async (orig) => ({
   onPanelState: (cb: (p: PanelState) => void) => { panelState = cb; return Promise.resolve(() => {}); },
   listen: (name: string, cb: (e: { payload: unknown }) => void) => {
     if (name === "oniris://voice") voiceCb = (payload) => cb({ payload });
+    if (name === "oniris://update") updateCb = (payload) => cb({ payload });
     return Promise.resolve(() => {});
   },
 }));
 
+let updateCb: (e: { version: string; notes: string }) => void = () => {};
 let voiceCb: (e: VoiceEvent) => void = () => {};
 const settingsReads = vi.fn();
 vi.mock("../lib/settings", async (orig) => {
@@ -164,4 +167,20 @@ it("« Faux réveil » disparaît seul au bout de 10 s", async () => {
   expect(screen.getByRole("button", { name: "Faux réveil" })).toBeInTheDocument();
   act(() => { vi.advanceTimersByTime(200); });
   expect(screen.queryByRole("button", { name: "Faux réveil" })).toBeNull();
+});
+
+it("la pilule annonce une mise à jour prête", () => {
+  const restart = vi.spyOn(updateIpc, "restart").mockResolvedValue(undefined);
+  render(<Pill />);
+  act(() => updateCb({ version: "1.2.1", notes: "" }));
+  expect(screen.getByText("Mise à jour 1.2.1 prête")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Redémarrer" }));
+  expect(restart).toHaveBeenCalled();
+});
+
+it("l'annonce reste discrète et se ferme", () => {
+  render(<Pill />);
+  act(() => updateCb({ version: "1.2.1", notes: "" }));
+  fireEvent.click(screen.getByRole("button", { name: "Plus tard" }));
+  expect(screen.queryByText("Mise à jour 1.2.1 prête")).toBeNull();
 });

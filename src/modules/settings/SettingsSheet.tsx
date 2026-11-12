@@ -4,6 +4,7 @@ import { useSettings, type HotkeySetting, type Settings } from "../../lib/settin
 import { useSave } from "../../lib/useSave";
 import { projectsIpc } from "../projects/api";
 import { HiddenProjects } from "../projects/HiddenProjects";
+import { updateIpc, type UpdateStatus } from "./update";
 import "../accounts/accounts.css";
 import "../iris/iris.css";
 import "../voice/voice.css";
@@ -53,6 +54,24 @@ export function Folders({ label, value, onChange }: { label: string; value: stri
           <button type="button" className="acc-icon" aria-label={`Retirer ${p}`} onClick={() => onChange(value.filter((x) => x !== p))}><X size={14} /></button></div></li>
       ))}</ul>
       <button type="button" className="acc-btn" aria-label={`Ajouter un dossier : ${label}`} onClick={() => void add()}>Ajouter un dossier</button>
+    </div>
+  );
+}
+
+/** Version installée, vérification manuelle et mise à jour en attente (lecture seule : le réglage est dans le formulaire). */
+function UpdateInfo() {
+  const [st, setSt] = useState<UpdateStatus | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { void updateIpc.status().then(setSt).catch(() => {}); }, []);
+  const check = async () => {
+    setBusy(true);
+    try { setSt(await updateIpc.checkNow()); } catch { /* l'échec est journalisé côté Rust */ } finally { setBusy(false); }
+  };
+  return (
+    <div className="iris-field set-wide">
+      {st && <span>Version {st.current}</span>}
+      <button type="button" className="acc-btn" disabled={busy} onClick={() => void check()}>Vérifier maintenant</button>
+      {st?.pending && <><span>Version {st.pending[0]} prête</span><p className="voice-note">{st.pending[1]}</p></>}
     </div>
   );
 }
@@ -112,6 +131,13 @@ export function SettingsSheet({ open, onClose, onGo }: { open: boolean; onClose:
               <textarea className="iris-area" rows={3} value={d.resume_prompt_normal} onChange={(e) => set({ resume_prompt_normal: e.target.value })} /></label>
             <label className="set-wide">Invite « Reprendre » (orchestrateur)
               <textarea className="iris-area" rows={3} value={d.resume_prompt_orchestrator} onChange={(e) => set({ resume_prompt_orchestrator: e.target.value })} /></label>
+          </>}
+        </Section>
+        <Section title="Mises à jour" keys={["auto_update"]}>
+          {(d, set) => <>
+            {check("Mises à jour automatiques", d.auto_update, (v) => set({ auto_update: v }))}
+            <p className="voice-note set-wide">Oniris vérifie toutes les 6 h s'il existe une nouvelle version sur GitHub, la télécharge en arrière-plan et l'installe quand tu fermes l'app, jamais pendant que tu joues ou que tu parles à IRIS.</p>
+            <UpdateInfo />
           </>}
         </Section>
         <HiddenProjects />

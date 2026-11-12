@@ -27,6 +27,7 @@ pub const REFRACTORY: Duration = Duration::from_secs(2);
 pub const AFTER_SPEECH: Duration = Duration::from_millis(500);
 /// Un pas du détecteur (1 280 échantillons à 16 kHz) ; l'état est relu à chaque pas.
 const STEP: Duration = Duration::from_millis(80);
+const OFF_STEP: Duration = Duration::from_secs(1);
 const MAX_REC: usize = 30 * 16_000;
 const MAX_BACKOFF: Duration = Duration::from_secs(60);
 /// Une panne du micro n'est close qu'après ce temps d'écoute sans erreur : un micro instable ne multiplie pas les toasts.
@@ -84,7 +85,6 @@ pub struct WakeListener {
 static LABEL: OnceLock<Arc<Mutex<&'static str>>> = OnceLock::new();
 
 /// État de l'écoute, pour la feuille IRIS.
-#[expect(dead_code, reason = "lu par la feuille IRIS (Tâche 5)")]
 pub fn wake_state() -> &'static str { LABEL.get().map_or("désactivé", |l| *l.lock()) }
 
 impl WakeListener {
@@ -115,7 +115,6 @@ impl WakeListener {
 
     async fn run(mut self) {
         loop {
-            tokio::time::sleep(STEP).await;
             self.step().await;
             *self.label.lock() = match self.state {
                 State::Off => "désactivé",
@@ -124,6 +123,8 @@ impl WakeListener {
                 State::Failed { .. } => "micro indisponible",
                 State::Broken => "modèle absent",
             };
+            // Désactivé : on ne relit la conf qu'une fois par seconde.
+            tokio::time::sleep(if matches!(self.state, State::Off) { OFF_STEP } else { STEP }).await;
         }
     }
 

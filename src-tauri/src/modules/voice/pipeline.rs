@@ -382,6 +382,10 @@ pub fn status_label() -> &'static str {
     VOICE.get().map_or(NOT_INSTALLED, |(_, p)| label(&(p.conf)()))
 }
 
+/// État de l'écoute du mot d'activation, pour la feuille IRIS.
+#[tauri::command]
+pub fn voice_wake_state() -> String { super::wake::wake_state().into() }
+
 /// Modèle Whisper choisi dans les réglages.
 fn model_path(dir: &std::path::Path, stt_model: &str) -> PathBuf {
     let dest = assets::needed(stt_model).into_iter().find_map(|a| match a.kind {
@@ -472,7 +476,7 @@ pub fn start(app: &AppHandle) {
             tts: s.voice_tts,
             volume: s.voice_volume,
             user_name: s.user_name,
-            wake: false, // réglage `voice_wake` : Tâche 5
+            wake: s.voice_wake,
         }
     });
     let h = app.clone();

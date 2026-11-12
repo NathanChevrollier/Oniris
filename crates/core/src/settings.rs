@@ -158,6 +158,8 @@ pub struct Settings {
     pub voice_unload_minutes: u8,
     /// Nom du micro : vide = périphérique par défaut ; 200 caractères au plus.
     pub voice_input_device: String,
+    /// Mot d'activation « Dis Iris » : écoute continue, désactivé par défaut.
+    pub voice_wake: bool,
 }
 
 /// Commandes en lecture seule (aucun de leurs arguments sûrs n'écrit).
@@ -204,6 +206,7 @@ impl Default for Settings {
             voice_volume: 80,
             voice_unload_minutes: 3,
             voice_input_device: String::new(),
+            voice_wake: false,
         }
     }
 }
@@ -516,6 +519,7 @@ mod tests {
         assert!(u(1).is_ok() && u(60).is_ok());
         assert!(u(0).is_err() && u(61).is_err());
     }
+    #[test] fn voice_wake_defaults_to_false() { assert!(!Settings::default().voice_wake); }
     #[test] fn reglages_de_la_voix() {
         let d = Settings::default();
         assert_eq!((d.voice_stt_model.as_str(), d.voice_tts, d.voice_volume, d.voice_unload_minutes, d.voice_input_device.as_str()), ("small", true, 80, 3, ""));

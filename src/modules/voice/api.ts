@@ -15,6 +15,7 @@ export const voiceIpc = {
   status: (): Promise<VoiceStatus> => invoke("voice_status"),
   install: (): Promise<void> => invoke("voice_install"),
   devices: (): Promise<string[]> => invoke("voice_devices"),
+  wakeState: (): Promise<string> => invoke("voice_wake_state"),
 };
 
 export const onVoice = (cb: (e: VoiceEvent) => void): Promise<UnlistenFn> => listen<VoiceEvent>("oniris://voice", (e) => cb(e.payload));

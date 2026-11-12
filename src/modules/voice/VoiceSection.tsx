@@ -15,15 +15,17 @@ export function VoiceSection() {
   const [volume, setVolume] = useState(s.voice_volume);
   const [minutes, setMinutes] = useState(String(s.voice_unload_minutes));
   const [device, setDevice] = useState(s.voice_input_device);
+  const [wake, setWake] = useState(s.voice_wake);
+  const [wakeState, setWakeState] = useState("");
   const [devices, setDevices] = useState<string[]>([]);
   const [status, setStatus] = useState<VoiceStatus | null>(null);
   const [file, setFile] = useState<{ key: string; done: number; total: number } | null>(null);
   const [installing, setInstalling] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [save, note] = useSave();
-  useEffect(() => { setStt(s.voice_stt_model); setTts(s.voice_tts); setVolume(s.voice_volume); setMinutes(String(s.voice_unload_minutes)); setDevice(s.voice_input_device); },
-    [s.voice_stt_model, s.voice_tts, s.voice_volume, s.voice_unload_minutes, s.voice_input_device]);
-  const reload = useCallback(() => { voiceIpc.status().then(setStatus, () => {}); }, []);
+  useEffect(() => { setStt(s.voice_stt_model); setTts(s.voice_tts); setVolume(s.voice_volume); setMinutes(String(s.voice_unload_minutes)); setDevice(s.voice_input_device); setWake(s.voice_wake); },
+    [s.voice_stt_model, s.voice_tts, s.voice_volume, s.voice_unload_minutes, s.voice_input_device, s.voice_wake]);
+  const reload = useCallback(() => { voiceIpc.status().then(setStatus, () => {}); voiceIpc.wakeState().then(setWakeState, () => {}); }, []);
   useEffect(() => { reload(); voiceIpc.devices().then(setDevices, () => {}); }, [reload]);
   useEffect(() => {
     const un = onVoiceInstall((e) => {
@@ -38,7 +40,7 @@ export function VoiceSection() {
       .finally(() => { setInstalling(false); setFile(null); reload(); });
   };
   const pct = file && file.total > 0 ? Math.round((file.done / file.total) * 100) : null;
-  const patch: Partial<Settings> = { voice_stt_model: stt, voice_tts: tts, voice_volume: volume, voice_unload_minutes: Number(minutes), voice_input_device: device };
+  const patch: Partial<Settings> = { voice_stt_model: stt, voice_tts: tts, voice_volume: volume, voice_unload_minutes: Number(minutes), voice_input_device: device, voice_wake: wake };
   return (
     <>
       <h3>Voix</h3>
@@ -66,7 +68,9 @@ export function VoiceSection() {
         <label>Volume ({volume} %)<input type="range" min={0} max={100} value={volume} onChange={(e) => setVolume(Number(e.target.value))} /></label>
         <label>Libération (minutes)<input type="number" min={1} max={30} value={minutes} onChange={(e) => setMinutes(e.target.value)} /></label>
         <label className="voice-check"><input type="checkbox" checked={tts} onChange={(e) => setTts(e.target.checked)} />IRIS répond à voix haute</label>
-        <label className="voice-check"><input type="checkbox" disabled />Mot d'activation : bientôt</label>
+        <label className="voice-check"><input type="checkbox" checked={wake} disabled={!status?.installed} onChange={(e) => setWake(e.target.checked)} />Mot d'activation « Dis Iris »</label>
+        {wakeState && <span className="acc-state">{wakeState}</span>}
+        <p className="voice-note">Oniris écoute en continu et réagit quand tu dis « Dis Iris » ou « Hé Iris ». Avant ça, rien n'est transcrit, enregistré ni envoyé. Windows affiche l'icône du micro tant que l'écoute est active.</p>
         <button type="submit" className="acc-btn primary">Enregistrer la voix</button>
       </form>
       {note}

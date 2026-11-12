@@ -76,6 +76,7 @@ export type Settings = {
   voice_unload_minutes: number;
   /** Nom du micro : vide = périphérique par défaut ; 200 caractères au plus. */
   voice_input_device: string;
+  voice_wake: boolean;
 };
 
 const RESUME_NORMAL = "Reprends là où tu en étais sur ce projet. Appuie-toi sur le plan de développement et l'historique git. Commence par me dire où on en est.";
@@ -120,6 +121,7 @@ export const DEFAULT_SETTINGS: Settings = {
   voice_volume: 80,
   voice_unload_minutes: 3,
   voice_input_device: "",
+  voice_wake: false,
 };
 
 /** Paramètres courants : chargés au montage, puis suivis via `oniris://settings`. */

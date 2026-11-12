@@ -119,6 +119,7 @@ pub fn run() {
             modules::voice::install::voice_status,
             modules::voice::install::voice_install,
             modules::voice::capture::voice_devices,
+            modules::voice::pipeline::voice_wake_state,
             modules::onboarding::onboarding_get,
             modules::onboarding::onboarding_set,
             modules::mail::mail_open_web,

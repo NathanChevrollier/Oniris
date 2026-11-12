@@ -1,6 +1,6 @@
 # Confidentialité d'Oniris
 
-Version 8 — 9 novembre 2026. Ce document décrit simplement ce qu'Oniris fait de tes données. Il est mis à jour à chaque nouveauté qui touche à ta vie privée.
+Version 9 — 12 novembre 2026. Ce document décrit simplement ce qu'Oniris fait de tes données. Il est mis à jour à chaque nouveauté qui touche à ta vie privée.
 
 ## En bref
 
@@ -196,6 +196,17 @@ Oniris ne télécharge la voix que **sur ton clic** (« Installer la voix » dan
 - GitHub et Hugging Face voient, comme tout site web, l'adresse IP de ta connexion et le nom des fichiers demandés ; Oniris n'envoie rien d'autre, et ne les recontacte pas ensuite (sauf si tu passes au modèle « précis », qui demande un fichier de plus) ;
 - tout est rangé dans `%LOCALAPPDATA%\Oniris\voice`.
 
+## IRIS : le mot d'activation
+
+Le mot d'activation (« Dis Iris » ou « Hé Iris ») est **désactivé par défaut**. Tu l'actives toi-même dans la section « Voix » de la feuille IRIS.
+
+- **Ce qui est écouté** : une fois activé, Oniris écoute le micro en continu, sur ton PC, pour repérer ce seul mot. Windows affiche l'icône du micro tant que l'écoute est active.
+- **Les 2 dernières secondes, en mémoire** : avant la détection, l'audio ne vit que dans la mémoire du détecteur, sur 2 secondes au plus, et s'efface au fur et à mesure.
+- **Aucune écriture** : rien n'est écrit sur le disque, transcrit, journalisé ni envoyé avant la détection. Après la détection, l'audio suit les mêmes règles que le raccourci Alt+Espace : 30 secondes au plus, en mémoire, vers Whisper sur ton PC seulement.
+- **Suspensions** : l'écoute s'arrête quand la voix est en pause (zone de notification), quand une application est en plein écran, pendant qu'IRIS parle et un court instant après, et pendant que tu utilises le raccourci.
+- **Le modèle** : il est fourni avec l'app et tourne sur ton PC. Il a été entraîné sur des voix synthétiques et, si tu l'as fait, sur tes propres enregistrements, qui restent sur ton PC.
+- Désactiver le réglage arrête l'écoute immédiatement.
+
 ## Journal des commandes et des fichiers
 
 IRIS peut exécuter une commande PowerShell, gérer des fichiers et lancer, fermer ou mettre au premier plan une application, toujours dans des limites fixes (pas d'administrateur, dossiers système et `%APPDATA%\Oniris` protégés, suppressions envoyées à la **Corbeille** et jamais définitives). Le journal des actions garde pour cela la **commande exacte**, les **chemins complets** des fichiers concernés et les noms d'applications, pour que tu puisses voir ce qui s'est passé et annuler quand c'est possible. Le résultat, lui, est raccourci. Les journaux techniques, eux, ne contiennent ni commande ni chemin. Le journal d'actions n'est pas encore purgé automatiquement.
@@ -210,4 +221,4 @@ IRIS peut exécuter une commande PowerShell, gérer des fichiers et lancer, ferm
 
 Ces fonctions n'existent pas encore. Chacune ajoutera sa propre section ici avant d'être disponible. Outlook n'est pas prévu : seul Gmail est géré.
 
-- Le mot d'activation « IRIS » (écoute continue, mains libres) : à venir, peut-être. Il demandera une section dédiée avant d'exister ; pour l'instant l'écoute ne se fait que pendant le maintien du raccourci.
+- Le mode apprentissage du mot d'activation (enregistrer des extraits pour améliorer le modèle) : pas encore disponible ; il aura sa propre section ici avant d'exister.

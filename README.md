@@ -19,7 +19,7 @@ La désinstallation retire l'entrée de démarrage automatique et **garde** `%AP
 
 ## Premier lancement
 
-Un accueil guidé te fait choisir tes réglages et te demande, une seule fois, si Oniris doit démarrer avec Windows : rien n'est ajouté au démarrage sans ton accord. Un appui bref sur Alt+Espace ouvre ou ferme le panneau ; en le maintenant, tu parles à IRIS (la voix se télécharge sur ton clic).
+Un accueil guidé te fait choisir tes réglages et te demande, une seule fois, si Oniris doit démarrer avec Windows : rien n'est ajouté au démarrage sans ton accord. Un appui bref sur Alt+Espace ouvre ou ferme le panneau ; en le maintenant, tu parles à IRIS (la voix se télécharge sur ton clic). En option, le mot d'activation « Dis Iris » (désactivé par défaut) permet de lui parler sans les mains : réglage dans la section Voix.
 
 ## Données et confidentialité
 

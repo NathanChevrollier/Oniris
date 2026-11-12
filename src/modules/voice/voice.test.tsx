@@ -19,10 +19,12 @@ const voiceCb = (e: VoiceEvent) => handlers["oniris://voice"](e);
 const toastCb = (text: string) => handlers["oniris://toast"]({ text });
 const installCb = (e: InstallEvent) => handlers["oniris://voice-install"](e);
 
+const ready: VoiceStatus = { installed: true, missing: [], bytes_missing: 0 };
 const missing: VoiceStatus = { installed: false, missing: ["a"], bytes_missing: 276_000_000 };
 beforeEach(() => {
   usePanelStore.setState({ open: true });
   vi.spyOn(voiceIpc, "status").mockResolvedValue(missing);
+  vi.spyOn(voiceIpc, "wakeState").mockResolvedValue("désactivé");
   vi.spyOn(voiceIpc, "devices").mockResolvedValue(["Micro USB"]);
   vi.spyOn(irisIpc, "status").mockResolvedValue({ local: "ready", model: "m", claude: { kind: "missing" } });
   vi.spyOn(irisIpc, "memories").mockResolvedValue([]);
@@ -91,9 +93,38 @@ it("les réglages de la voix sont enregistrés sur des réglages relus", async (
   const save = vi.spyOn(ipc, "saveSettings").mockResolvedValue(undefined);
   render(<IrisSheet open onClose={() => {}} />);
   expect(screen.getByText("Ta voix reste sur ton PC : rien n'est enregistré ni envoyé.")).toBeTruthy();
-  expect((screen.getByLabelText(/Mot d'activation : bientôt/) as HTMLInputElement).disabled).toBe(true);
   await userEvent.selectOptions(screen.getByLabelText("Transcription"), "turbo");
   await userEvent.selectOptions(screen.getByLabelText("Micro"), "Micro USB");
   await userEvent.click(screen.getByRole("button", { name: "Enregistrer la voix" }));
   await waitFor(() => expect(save).toHaveBeenCalledWith({ ...fresh, voice_stt_model: "turbo", voice_input_device: "Micro USB" }));
+});
+
+const WAKE = /Mot d'activation « Dis Iris »/;
+
+it("le mot d'activation est décoché par défaut et s'enregistre", async () => {
+  vi.mocked(voiceIpc.status).mockResolvedValue(ready);
+  const fresh = { ...DEFAULT_SETTINGS };
+  vi.spyOn(ipc, "getSettings").mockResolvedValue(fresh);
+  const save = vi.spyOn(ipc, "saveSettings").mockResolvedValue(undefined);
+  render(<IrisSheet open onClose={() => {}} />);
+  const box = (await screen.findByLabelText(WAKE)) as HTMLInputElement;
+  expect(box.checked).toBe(false);
+  expect(screen.getByText(/Oniris écoute en continu et réagit quand tu dis « Dis Iris » ou « Hé Iris »\. Avant ça, rien n'est transcrit, enregistré ni envoyé\. Windows affiche l'icône du micro tant que l'écoute est active\./)).toBeTruthy();
+  await waitFor(() => expect(box.disabled).toBe(false));
+  await userEvent.click(box);
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer la voix" }));
+  await waitFor(() => expect(save).toHaveBeenCalledWith({ ...fresh, voice_wake: true }));
+});
+
+it("grisé tant que la voix n'est pas installée", async () => {
+  render(<IrisSheet open onClose={() => {}} />);
+  await screen.findByText("À installer · 276 Mo");
+  expect((screen.getByLabelText(WAKE) as HTMLInputElement).disabled).toBe(true);
+});
+
+it("affiche l'état de l'écoute", async () => {
+  vi.mocked(voiceIpc.status).mockResolvedValue(ready);
+  vi.mocked(voiceIpc.wakeState).mockResolvedValue("à l'écoute");
+  render(<IrisSheet open onClose={() => {}} />);
+  expect(await screen.findByText("à l'écoute")).toBeTruthy();
 });

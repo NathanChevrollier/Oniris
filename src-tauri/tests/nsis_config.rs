@@ -39,3 +39,8 @@ fn la_desinstallation_retire_run_et_garde_les_donnees() {
     let lower = hooks.to_lowercase();
     assert!(!lower.contains("rmdir") && !lower.contains("appdata"));
 }
+
+#[test]
+fn wake_models_are_bundled() {
+    assert!(conf()["bundle"]["resources"].as_array().unwrap().iter().any(|r| r == "resources/wake/*"));
+}

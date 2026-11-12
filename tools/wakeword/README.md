@@ -110,7 +110,7 @@ Quand : après une centaine de nouveaux extraits (compte dans les réglages d'On
 bash /mnt/c/Users/natha/Desktop/Utilitaires/Projets/Oniris/tools/wakeword/retrain.sh
 ```
 
-Seul le modèle principal (« Dis Iris ») est réentraîné, 3 variantes, à partir de zéro. Avant de garder le nouveau modèle, compare ses scores dans `~/oniris-wakeword/output/sweep_*.md` à ceux d'avant : rappel sur tes enregistrements de test au moins aussi bon, et faux déclenchements par heure toujours ≤ 0,5. Sinon, remets l'ancien modèle (`git checkout src-tauri/resources/wake`).
+Seul le modèle principal (« Dis Iris ») est réentraîné, 3 variantes, à partir de zéro. Avant de garder le nouveau modèle, compare ses scores dans `~/oniris-wakeword/output/sweep_*.md` à ceux d'avant : ne garde le nouveau modèle que s'il n'est pas moins bon que l'actuel, à la fois en faux déclenchements par heure et en rappel sur ta voix ; vise ≤ 0,1 par heure et ≥ 90 %. Sinon, remets l'ancien modèle (`git checkout src-tauri/resources/wake`).
 
 ### 4. Passage à la partie B
 

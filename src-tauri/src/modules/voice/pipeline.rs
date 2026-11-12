@@ -117,10 +117,12 @@ pub enum Input {
     /// Boutons du mode apprentissage : « Je vais dire Iris » et « Faux réveil ».
     ExpectWake,
     FalseWake,
+    /// « Supprimer les extraits » : l'écouteur abandonne aussi ce qu'il tenait en attente.
+    ClearLearn,
 }
 
 /// Entrées vues par le mode apprentissage, relevées par l'écouteur à chaque pas.
-pub enum Mark { Start, Escape, ExpectWake, FalseWake }
+pub enum Mark { Start, Escape, ExpectWake, FalseWake, ClearLearn }
 
 impl Pipeline {
     fn current(&self, press: u64) -> bool { self.state.lock().press == press }
@@ -157,6 +159,7 @@ impl Pipeline {
             Input::Escape => Some(Mark::Escape),
             Input::ExpectWake => Some(Mark::ExpectWake),
             Input::FalseWake => Some(Mark::FalseWake),
+            Input::ClearLearn => Some(Mark::ClearLearn),
             _ => None,
         };
         if let Some(m) = mark {
@@ -178,7 +181,7 @@ impl Pipeline {
                     tokio::spawn(self.clone().process((press, samples)));
                 }
             }
-            Input::ExpectWake | Input::FalseWake => {}
+            Input::ExpectWake | Input::FalseWake | Input::ClearLearn => {}
         }
     }
 
@@ -415,12 +418,17 @@ pub fn voice_expect_wake() { send(Input::ExpectWake) }
 pub fn voice_false_wake() { send(Input::FalseWake) }
 
 /// (positifs, négatifs) gardés par le mode apprentissage.
-#[tauri::command]
-pub fn voice_learn_count() -> (u32, u32) { super::learn::learn_dir().map_or((0, 0), |d| super::learn::count_in(&d)) }
+#[tauri::command(async)]
+pub async fn voice_learn_count() -> (u32, u32) {
+    tokio::task::spawn_blocking(|| super::learn::learn_dir().map_or((0, 0), |d| super::learn::count_in(&d))).await.unwrap_or_default()
+}
 
 /// Supprime les extraits du mode apprentissage ; renvoie leur nombre.
-#[tauri::command]
-pub fn voice_learn_clear() -> u32 { super::learn::learn_dir().map_or(0, |d| super::learn::clear_in(&d)) }
+#[tauri::command(async)]
+pub async fn voice_learn_clear() -> u32 {
+    send(Input::ClearLearn); // d'abord : ce qui attend dans l'écouteur ne doit pas réapparaître après
+    tokio::task::spawn_blocking(|| super::learn::learn_dir().map_or(0, |d| super::learn::clear_in(&d))).await.unwrap_or(0)
+}
 
 /// Modèle Whisper choisi dans les réglages.
 fn model_path(dir: &std::path::Path, stt_model: &str) -> PathBuf {
@@ -500,16 +508,35 @@ fn emit_ui(app: &AppHandle, u: Ui) {
     }
 }
 
+/// Installation relue au plus toutes les 5 s : `Conf` est construite à chaque pas de l'écouteur (80 ms).
+#[derive(Default)]
+struct Recheck(Option<(tokio::time::Instant, bool)>);
+
+impl Recheck {
+    fn get(&mut self, read: impl FnOnce() -> bool) -> bool {
+        let now = tokio::time::Instant::now();
+        match self.0 {
+            Some((at, v)) if now - at < Duration::from_secs(5) => v,
+            _ => {
+                let v = read();
+                self.0 = Some((now, v));
+                v
+            }
+        }
+    }
+}
+
 /// Lance la boucle du pipeline : les appuis sont traités dans l'ordre, la suite d'un appui en tâche de fond
 /// (un nouvel appui peut ainsi couper IRIS pendant qu'elle parle).
 pub fn start(app: &AppHandle) {
     let h = app.clone();
+    let installed = Mutex::new(Recheck::default());
     let conf = Arc::new(move || {
         let st = h.state::<AppState>();
         let s = st.settings.read().clone();
         Conf {
             paused: st.voice_paused.load(Ordering::SeqCst),
-            installed: assets::status(&voice_dir(), &s.voice_stt_model).installed,
+            installed: installed.lock().get(|| assets::status(&voice_dir(), &s.voice_stt_model).installed),
             fullscreen: crate::fullscreen::active(),
             device: s.voice_input_device,
             tts: s.voice_tts,
@@ -1035,5 +1062,15 @@ pub(super) mod tests {
         let j = broker.journal(5);
         assert_eq!((j[0].tool.as_str(), &j[0].provenance), ("music.next", &Provenance::User));
         assert_eq!(f.toasts(), ["C'est fait."]);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn installation_is_reread_every_5s_only() {
+        let (mut r, mut reads) = (Recheck::default(), 0);
+        for _ in 0..100 {
+            r.get(|| { reads += 1; true });
+            tokio::time::sleep(Duration::from_millis(80)).await;
+        }
+        assert_eq!(reads, 2, "8 s de pas de 80 ms : à 0 s puis à 5 s");
     }
 }

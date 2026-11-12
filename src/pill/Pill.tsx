@@ -106,7 +106,7 @@ export function Pill() {
         <PillToast />
         <VoiceOrb thinking={thinking} />
       </button>
-      {settings.voice_wake_learning && <LearnButtons />}
+      {settings.voice_wake && settings.voice_wake_learning && <LearnButtons />}
     </div>
   );
 }

@@ -154,6 +154,12 @@ impl WakeListener {
                 Mark::Escape => continue,
                 Mark::ExpectWake => Event::ExpectWake { at_ms },
                 Mark::FalseWake => Event::FalseWake { at_ms },
+                Mark::ClearLearn => {
+                    if let Some(c) = self.learn.as_mut() {
+                        c.drop_pending();
+                    }
+                    continue;
+                }
             });
         }
         if self.p.speaking.load(Ordering::SeqCst) {
@@ -424,7 +430,7 @@ mod tests {
                         e2.lock().push(s.clone());
                     }
                     Input::Start => i2.lock().push("start".into()),
-                    Input::End | Input::Escape | Input::ExpectWake | Input::FalseWake => {}
+                    Input::End | Input::Escape | Input::ExpectWake | Input::FalseWake | Input::ClearLearn => {}
                 }
                 p.handle(i).await;
             }

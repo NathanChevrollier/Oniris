@@ -212,6 +212,7 @@ Le mot d'activation (« Dis Iris » ou « Hé Iris ») est **désactivé par dé
 Le mode apprentissage est **désactivé par défaut**, c'est un réglage distinct, grisé tant que le mot d'activation est désactivé. C'est la seule exception à « aucune écriture » ci-dessus.
 
 - **Ce qui est gardé** : de courts extraits audio, de 1,6 à 3 secondes, autour d'un réveil, d'un presque-réveil ou d'un appui sur « Je vais dire Iris ». Un extrait positif s'arrête 0,2 seconde après le mot d'activation : il peut donc contenir le tout début de ta demande.
+- **En mémoire** : mode activé, les 6 dernières secondes d'audio écouté restent en mémoire (2 secondes sinon) ; elles ne sont jamais écrites, sauf les extraits décrits ici.
 - **Où** : sur ton PC seulement, dans `%USERPROFILE%\oniris-wakeword\recordings\learn\` (sous-dossiers `pos` et `neg`).
 - **D'autres voix** : un extrait peut contenir d'autres voix ou sons de la pièce.
 - **Limite** : 2 000 fichiers ou 200 Mo ; au-delà, les plus anciens sont supprimés.

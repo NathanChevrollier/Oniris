@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useSettings, type Settings } from "../../lib/settings";
 import { errorText } from "../accounts/api";
 import { useSave } from "../../lib/useSave";
@@ -21,7 +21,7 @@ function LearnClips() {
       {!confirm
         ? <button type="button" className="acc-btn" onClick={() => setConfirm(true)}>Supprimer les extraits</button>
         : <span role="alertdialog" aria-label="Confirmer la suppression">
-          <button type="button" className="acc-btn primary" onClick={() => void voiceIpc.learnClear().finally(() => { setConfirm(false); load(); })}>Confirmer la suppression</button>
+          <button type="button" className="acc-btn primary" onClick={() => void voiceIpc.learnClear().catch(() => {}).finally(() => { setConfirm(false); load(); })}>Confirmer la suppression</button>
           <button type="button" className="acc-btn" onClick={() => setConfirm(false)}>Garder</button>
         </span>}
     </div>
@@ -44,6 +44,8 @@ export function VoiceSection() {
   const [file, setFile] = useState<{ key: string; done: number; total: number } | null>(null);
   const [installing, setInstalling] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const reloadTimer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(reloadTimer.current), []);
   const [save, note] = useSave();
   useEffect(() => { setStt(s.voice_stt_model); setTts(s.voice_tts); setVolume(s.voice_volume); setMinutes(String(s.voice_unload_minutes)); setDevice(s.voice_input_device); setWake(s.voice_wake); setLearning(s.voice_wake_learning); },
     [s.voice_stt_model, s.voice_tts, s.voice_volume, s.voice_unload_minutes, s.voice_input_device, s.voice_wake, s.voice_wake_learning]);
@@ -76,7 +78,7 @@ export function VoiceSection() {
       {file && <progress className="iris-progress" aria-label={`Téléchargement : ${file.key}`} max={file.total || undefined} value={file.total ? file.done : undefined} />}
       {file && <span role="status" className="acc-wait">{file.key}{pct !== null ? ` : ${pct} %` : "…"}</span>}
       {error && <p className="err" role="alert">{error}</p>}
-      <form className="iris-grid" onSubmit={(e) => { e.preventDefault(); void save(patch).then(() => { reload(); setTimeout(reload, 1200); }); }}>
+      <form className="iris-grid" onSubmit={(e) => { e.preventDefault(); void save(patch).then(() => { reload(); window.clearTimeout(reloadTimer.current); reloadTimer.current = window.setTimeout(reload, 1200); }); }}>
         <label>Transcription
           <select value={stt} onChange={(e) => setStt(e.target.value as Settings["voice_stt_model"])}>
             <option value="small">Rapide (small)</option>

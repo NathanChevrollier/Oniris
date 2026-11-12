@@ -116,8 +116,8 @@ it("le niveau du micro ne redessine que l'orbe, pas la pilule", () => {
   expect(settingsReads.mock.calls.length).toBe(before);
 });
 
-const withLearning = async (on: boolean) => {
-  vi.spyOn(ipc, "getSettings").mockResolvedValue({ ...DEFAULT_SETTINGS, voice_wake_learning: on });
+const withLearning = async (on: boolean, wake = true) => {
+  vi.spyOn(ipc, "getSettings").mockResolvedValue({ ...DEFAULT_SETTINGS, voice_wake: wake, voice_wake_learning: on });
   render(<Pill />);
   await act(async () => {});
 };
@@ -134,6 +134,13 @@ it("bouton « Je vais dire Iris » seulement en mode apprentissage", async () =>
   expect(b).toHaveAttribute("data-armed", "true");
   act(() => { vi.advanceTimersByTime(5000); });
   expect(b).not.toHaveAttribute("data-armed");
+});
+
+it("mode apprentissage gardé mais mot d'activation coupé : aucun bouton", async () => {
+  await withLearning(true, false);
+  expect(screen.queryByRole("button", { name: "Je vais dire Iris" })).toBeNull();
+  act(() => voiceCb({ phase: "listening", by_wake: true }));
+  expect(screen.queryByRole("button", { name: "Faux réveil" })).toBeNull();
 });
 
 it("« Faux réveil » apparaît 10 s après un réveil par la voix", async () => {

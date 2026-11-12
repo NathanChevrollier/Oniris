@@ -129,6 +129,12 @@ impl Collector {
     /// L'horloge continue : `cut` rend un extrait plus court, ou rien sous 1 s. Ce qui a été copié au réveil reste.
     pub fn gap(&mut self) { self.ring.buf.clear() }
 
+    /// Abandonne tout ce qui attend d'être écrit (« Supprimer les extraits »).
+    pub fn drop_pending(&mut self) {
+        (self.near, self.expect, self.wake) = (None, None, None);
+        self.out.clear();
+    }
+
     pub fn push_audio(&mut self, samples_16k: &[f32]) {
         let r = &mut self.ring;
         r.buf.extend(samples_16k);
@@ -500,6 +506,22 @@ mod tests {
         assert_eq!(s.out.len(), 1);
         assert_eq!(s.out[0].0, Label::Neg);
         assert_eq!(*s.out[0].1.last().unwrap(), (t * 16 - 1) as f32);
+    }
+
+    #[test]
+    fn drop_pending_forgets_wake_near_and_expect() {
+        let mut s = Sim::new();
+        s.run(3000, quiet);
+        s.peak(0.5);
+        s.on(Event::ExpectWake { at_ms: s.now() });
+        s.run(2000, quiet);
+        s.wake();
+        s.feed(1000);
+        s.on(Event::Command);
+        s.c.drop_pending();
+        s.run(12_000, quiet);
+        s.on(Event::FalseWake { at_ms: s.now() });
+        assert!(s.out.is_empty(), "rien n'est écrit pour ce qui attendait");
     }
 
     #[test]

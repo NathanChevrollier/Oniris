@@ -7,7 +7,15 @@
 .iris-chip:disabled{opacity:.5;cursor:default}
 
 /* conversation : réutilise .brief (panel.css) ; seuls transform et opacity s'animent */
+.iris-reply{animation:enter .5s var(--ease) both}
+.iris-reply .spark{transition:background .4s,color .4s}
+.iris-reply[aria-busy=true] .spark{color:var(--purple);background:color-mix(in srgb,var(--purple) 18%,transparent)}
+.iris-reply[aria-busy=true] .spark svg{animation:blink 1.6s ease-in-out infinite}
 .iris-body{flex:1;min-width:0}
+.iris-dots{display:inline-flex;gap:4px;margin-left:4px;vertical-align:middle}
+.iris-dots i{width:6px;height:6px;border-radius:50%;background:var(--acc);animation:dot 1.2s ease-in-out infinite}
+.iris-dots i:nth-child(2){background:var(--acc2);animation-delay:.15s}
+.iris-dots i:nth-child(3){background:var(--purple);animation-delay:.3s}
 .iris-user{font-size:12.5px;color:var(--txt3);margin-bottom:2px}
 .iris-text{white-space:pre-wrap;overflow-wrap:anywhere}
 .iris-err{margin-top:6px;color:var(--txt2)}

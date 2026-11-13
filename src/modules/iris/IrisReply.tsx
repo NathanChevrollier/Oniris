@@ -30,7 +30,7 @@ export function IrisStatusLine({ onFix }: { onFix?: () => void }) {
   const down = !thinking && local != null && local !== "ready";
   const text = thinking ? `Réfléchit · ${brain ? BRAIN[brain] : "local"}` : down ? "Local indisponible" : local ? "Prêt · local" : "Prêt";
   if (down && onFix) return <button type="button" className="orb-status off" onClick={onFix} title="Ouvrir IRIS pour réparer"><i />{text} · Réparer</button>;
-  return <div className={down ? "orb-status off" : "orb-status"} role="status"><i />{text}</div>;
+  return <div className={down ? "orb-status off" : thinking ? "orb-status busy" : "orb-status"} role="status"><i />{text}</div>;
 }
 
 /** Échange avec IRIS ; le briefing reprend la place sans échange (au bout de 2 min d'inactivité ou sur « × »). */
@@ -56,11 +56,11 @@ export function IrisReply() {
   if (!user) return <Briefing />;
   const thinking = state === "thinking";
   return (
-    <div className="brief iris-reply" aria-busy={thinking}>
+    <div key={user} className="brief iris-reply" aria-busy={thinking}>
       <div className="spark"><Sparkles size={15} /></div>
       <div className="iris-body">
         <p className="iris-user">{user}</p>
-        <p className="iris-text" aria-live="polite">{segments.length ? segments.map((s, i) => <SegmentText key={i} s={s} />) : thinking ? "…" : null}</p>
+        <p className="iris-text" aria-live="polite">{segments.map((s, i) => <SegmentText key={i} s={s} />)}{thinking && <span className="iris-dots" aria-hidden="true"><i /><i /><i /></span>}</p>
         {error && (
           <div className="iris-err" role="alert">
             <p>{error.message}</p>

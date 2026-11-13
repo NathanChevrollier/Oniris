@@ -28,6 +28,68 @@ function LearnClips() {
   );
 }
 
+/** Voix neurales Microsoft. */
+export const AZURE_VOICES: [string, string][] = [
+  ["fr-FR-VivienneMultilingualNeural", "Vivienne (femme, très naturelle)"],
+  ["fr-FR-DeniseNeural", "Denise (femme)"],
+  ["fr-FR-RemyMultilingualNeural", "Rémy (homme, très naturel)"],
+  ["fr-FR-HenriNeural", "Henri (homme)"],
+  ["fr-FR-EloiseNeural", "Éloïse (jeune femme)"],
+];
+
+/** Voix naturelle Azure : réglages, clé dans le coffre Windows et essai. Piper reste le secours hors ligne. */
+function AzureVoice() {
+  const s = useSettings();
+  const [on, setOn] = useState(s.voice_azure);
+  const [region, setRegion] = useState(s.voice_azure_region);
+  const [voice, setVoice] = useState(s.voice_azure_voice);
+  const [hasKey, setHasKey] = useState<boolean | null>(null);
+  const [key, setKey] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [save, note] = useSave();
+  useEffect(() => { setOn(s.voice_azure); setRegion(s.voice_azure_region); setVoice(s.voice_azure_voice); }, [s.voice_azure, s.voice_azure_region, s.voice_azure_voice]);
+  const loadKey = useCallback(() => { voiceIpc.azureKeyStatus().then(setHasKey, () => {}); }, []);
+  useEffect(loadKey, [loadKey]);
+  const fail = (e: unknown, fallback: string) => setMsg({ ok: false, text: errorText(e, fallback) });
+  const saveKey = () => {
+    setMsg(null);
+    voiceIpc.azureKeySet(key).then(() => { setKey(""); setMsg({ ok: true, text: "Clé enregistrée dans le coffre Windows." }); loadKey(); }, (e) => fail(e, "Clé refusée."));
+  };
+  const test = () => {
+    setMsg(null); setBusy(true);
+    voiceIpc.azureTest(region.trim(), voice).then(() => setMsg({ ok: true, text: "Ça marche !" }), (e) => fail(e, "Essai impossible.")).finally(() => setBusy(false));
+  };
+  return (
+    <>
+      <h3>Voix naturelle (Azure)</h3>
+      <p className="voice-note">Les voix neurales de Microsoft, bien plus naturelles que la voix intégrée. La formule gratuite (F0) couvre 500 000 caractères par mois. Les phrases dites par IRIS sont alors envoyées à Microsoft. Sans clé ou hors ligne, la voix intégrée prend le relais.</p>
+      <div className="iris-row">
+        <b>Clé Azure</b>
+        {hasKey === true && <><span className="acc-state">Enregistrée</span>
+          <button type="button" className="acc-btn" onClick={() => void voiceIpc.azureKeyClear().then(loadKey)}>Retirer</button></>}
+        {hasKey === false && <span className="acc-state warn">Aucune</span>}
+      </div>
+      <form className="iris-row" onSubmit={(e) => { e.preventDefault(); saveKey(); }}>
+        <input type="password" aria-label="Clé Azure" placeholder="Colle ici la Clé 1 de ta ressource Speech" value={key} onChange={(e) => setKey(e.target.value)} autoComplete="off" spellCheck={false} />
+        <button type="submit" className="acc-btn" disabled={key.trim() === ""}>Enregistrer la clé</button>
+      </form>
+      <form className="iris-grid" onSubmit={(e) => { e.preventDefault(); void save({ voice_azure: on, voice_azure_region: region.trim(), voice_azure_voice: voice }); }}>
+        <label>Région<input value={region} onChange={(e) => setRegion(e.target.value)} spellCheck={false} placeholder="francecentral" /></label>
+        <label>Voix
+          <select value={voice} onChange={(e) => setVoice(e.target.value)}>
+            {[...AZURE_VOICES, ...(AZURE_VOICES.some(([v]) => v === voice) ? [] : [[voice, voice] as [string, string]])].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </select></label>
+        <label className="voice-check"><input type="checkbox" checked={on} onChange={(e) => setOn(e.target.checked)} />Utiliser la voix Azure</label>
+        <button type="button" className="acc-btn" disabled={busy || !hasKey} onClick={test}>{busy ? "Écoute…" : "Écouter"}</button>
+        <button type="submit" className="acc-btn primary">Enregistrer la voix naturelle</button>
+      </form>
+      {msg && <p className={msg.ok ? "voice-note" : "err"} role={msg.ok ? "status" : "alert"}>{msg.text}</p>}
+      {note}
+    </>
+  );
+}
+
 /** Section « Voix » de la feuille IRIS : installation sur clic, modèle, volume, micro. */
 export function VoiceSection() {
   const s = useSettings();
@@ -97,14 +159,15 @@ export function VoiceSection() {
         {wakeState && <span className="acc-state">{wakeState}</span>}
         <p className="voice-note">Oniris écoute en continu et réagit quand tu dis « Dis Iris » ou « Hé Iris ». Avant ça, rien n'est transcrit, enregistré ni envoyé. Windows affiche l'icône du micro tant que l'écoute est active.</p>
         <label className="voice-check"><input type="checkbox" checked={learning} disabled={!wake} onChange={(e) => setLearning(e.target.checked)} />Mode apprentissage</label>
-        <label className="voice-check"><input type="checkbox" checked={followUp} onChange={(e) => setFollowUp(e.target.checked)} />Conversation continue : après sa réponse, IRIS t'écoute encore quelques secondes</label>
         <p className="voice-note">Garde sur ton PC de courts extraits autour des réveils pour réentraîner « Dis Iris ». Rien n'est envoyé. Les boutons de la pilule permettent de corriger IRIS.</p>
         <p className="voice-note">Désactiver le mode n'efface rien : les extraits restent jusqu'à ce que tu les supprimes.</p>
         <LearnClips />
+        <label className="voice-check"><input type="checkbox" checked={followUp} onChange={(e) => setFollowUp(e.target.checked)} />Conversation continue : après sa réponse, IRIS t'écoute encore quelques secondes</label>
         <button type="submit" className="acc-btn primary">Enregistrer la voix</button>
       </form>
       {note}
       <p className="voice-note">Ta voix reste sur ton PC : rien n'est enregistré ni envoyé.</p>
+      <AzureVoice />
     </>
   );
 }

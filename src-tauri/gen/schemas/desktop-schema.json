@@ -783,6 +783,30 @@
           "markdownDescription": "Enables the update_status command without any pre-configured scope."
         },
         {
+          "description": "Enables the voice_azure_key_clear command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-voice-azure-key-clear",
+          "markdownDescription": "Enables the voice_azure_key_clear command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the voice_azure_key_set command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-voice-azure-key-set",
+          "markdownDescription": "Enables the voice_azure_key_set command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the voice_azure_key_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-voice-azure-key-status",
+          "markdownDescription": "Enables the voice_azure_key_status command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the voice_azure_test command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-voice-azure-test",
+          "markdownDescription": "Enables the voice_azure_test command without any pre-configured scope."
+        },
+        {
           "description": "Enables the voice_devices command without any pre-configured scope.",
           "type": "string",
           "const": "allow-voice-devices",
@@ -1453,6 +1477,30 @@
           "type": "string",
           "const": "deny-update-status",
           "markdownDescription": "Denies the update_status command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the voice_azure_key_clear command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-voice-azure-key-clear",
+          "markdownDescription": "Denies the voice_azure_key_clear command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the voice_azure_key_set command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-voice-azure-key-set",
+          "markdownDescription": "Denies the voice_azure_key_set command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the voice_azure_key_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-voice-azure-key-status",
+          "markdownDescription": "Denies the voice_azure_key_status command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the voice_azure_test command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-voice-azure-test",
+          "markdownDescription": "Denies the voice_azure_test command without any pre-configured scope."
         },
         {
           "description": "Denies the voice_devices command without any pre-configured scope.",

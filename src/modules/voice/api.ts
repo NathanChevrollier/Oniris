@@ -23,6 +23,11 @@ export const voiceIpc = {
   learnClear: (): Promise<number> => invoke("voice_learn_clear"),
   /** Clic pour parler : ouvre l'écoute (fermée à la fin de la parole) ou la ferme. */
   tap: (): Promise<void> => invoke("voice_tap"),
+  azureKeySet: (key: string): Promise<void> => invoke("voice_azure_key_set", { key }),
+  azureKeyStatus: (): Promise<boolean> => invoke("voice_azure_key_status"),
+  azureKeyClear: (): Promise<void> => invoke("voice_azure_key_clear"),
+  /** Dit une phrase d'essai avec cette région et cette voix (même non enregistrées). */
+  azureTest: (region: string, voice: string): Promise<void> => invoke("voice_azure_test", { region, voice }),
 };
 
 export const onVoice = (cb: (e: VoiceEvent) => void): Promise<UnlistenFn> => listen<VoiceEvent>("oniris://voice", (e) => cb(e.payload));

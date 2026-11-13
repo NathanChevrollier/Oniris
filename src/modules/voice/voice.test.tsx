@@ -26,6 +26,7 @@ beforeEach(() => {
   vi.spyOn(voiceIpc, "status").mockResolvedValue(missing);
   vi.spyOn(voiceIpc, "wakeState").mockResolvedValue("désactivé");
   vi.spyOn(voiceIpc, "devices").mockResolvedValue(["Micro USB"]);
+  vi.spyOn(voiceIpc, "azureKeyStatus").mockResolvedValue(false);
   vi.spyOn(irisIpc, "status").mockResolvedValue({ local: "ready", model: "m", recommended: "m", vram_mb: null, ollama_installed: true, claude: { kind: "missing" } });
   vi.spyOn(irisIpc, "memories").mockResolvedValue([]);
   vi.spyOn(irisIpc, "history").mockResolvedValue([]);
@@ -152,4 +153,23 @@ it("affiche le compte des extraits et les supprime", async () => {
   await userEvent.click(screen.getByRole("button", { name: "Confirmer la suppression" }));
   await waitFor(() => expect(clear).toHaveBeenCalledOnce());
   expect(await screen.findByText("0 positif, 0 négatif")).toBeTruthy();
+});
+
+it("voix Azure : clé rangée, essai, puis réglage enregistré", async () => {
+  vi.spyOn(ipc, "getSettings").mockResolvedValue(DEFAULT_SETTINGS);
+  const save = vi.spyOn(ipc, "saveSettings").mockResolvedValue(undefined);
+  const setKey = vi.spyOn(voiceIpc, "azureKeySet").mockResolvedValue();
+  const test = vi.spyOn(voiceIpc, "azureTest").mockRejectedValue("clé Azure refusée");
+  render(<IrisSheet open onClose={() => {}} />);
+  expect(await screen.findByText("Aucune")).toBeTruthy();
+  vi.mocked(voiceIpc.azureKeyStatus).mockResolvedValue(true);
+  await userEvent.type(screen.getByLabelText("Clé Azure"), "abc123{Enter}");
+  expect(setKey).toHaveBeenCalledWith("abc123");
+  expect(await screen.findByText("Enregistrée")).toBeTruthy();
+  await userEvent.click(screen.getByRole("button", { name: "Écouter" }));
+  expect(test).toHaveBeenCalledWith("francecentral", "fr-FR-VivienneMultilingualNeural");
+  expect((await screen.findByRole("alert")).textContent).toBe("clé Azure refusée");
+  await userEvent.click(screen.getByRole("checkbox", { name: "Utiliser la voix Azure" }));
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer la voix naturelle" }));
+  await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ voice_azure: true, voice_azure_region: "francecentral" })));
 });

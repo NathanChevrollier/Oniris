@@ -168,6 +168,12 @@ pub struct Settings {
     pub voice_wake_learning: bool,
     /// Conversation continue : après une réponse dite, le micro se rouvre pour une suite.
     pub voice_follow_up: bool,
+    /// Voix Azure AI Speech (texte envoyé à Microsoft) ; désactivée par défaut, la clé est dans le coffre Windows.
+    pub voice_azure: bool,
+    /// Région de la ressource (minuscules et chiffres, 32 au plus), ex. « francecentral ».
+    pub voice_azure_region: String,
+    /// Nom de la voix neurale (lettres, chiffres et tirets, 80 au plus).
+    pub voice_azure_voice: String,
 }
 
 /// Commandes en lecture seule (aucun de leurs arguments sûrs n'écrit).
@@ -219,6 +225,9 @@ impl Default for Settings {
             voice_wake: false,
             voice_wake_learning: false,
             voice_follow_up: true,
+            voice_azure: false,
+            voice_azure_region: "francecentral".into(),
+            voice_azure_voice: "fr-FR-VivienneMultilingualNeural".into(),
         }
     }
 }
@@ -451,6 +460,17 @@ impl Settings {
             errs.push("micro : 200 caractères au plus".into());
             self.voice_input_device = d.voice_input_device.clone();
         }
+        // Entrent dans une URL et dans le SSML : jeu de caractères fermé.
+        let region = &self.voice_azure_region;
+        if region.is_empty() || region.len() > 32 || !region.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit()) {
+            errs.push("région Azure : minuscules et chiffres, 32 au plus".into());
+            self.voice_azure_region = d.voice_azure_region.clone();
+        }
+        let voice = &self.voice_azure_voice;
+        if voice.is_empty() || voice.len() > 80 || !voice.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+            errs.push("voix Azure : lettres, chiffres et tirets, 80 au plus".into());
+            self.voice_azure_voice = d.voice_azure_voice.clone();
+        }
         if let Err(e) = check_hotkey(&self.hotkey) {
             errs.push(e);
             self.hotkey = d.hotkey;
@@ -531,6 +551,12 @@ mod tests {
         assert!(m("QWEN 3").is_err() && m("").is_err() && m(&"a".repeat(101)).is_err());
         assert!(u(1).is_ok() && u(60).is_ok());
         assert!(u(0).is_err() && u(61).is_err());
+    }
+    #[test] fn azure_desactive_par_defaut_et_region_voix_bornees() {
+        assert!(!Settings::default().voice_azure);
+        assert!(Settings { voice_azure_region: "francecentral".into(), voice_azure_voice: "fr-FR-DeniseNeural".into(), ..Settings::default() }.validate().is_ok());
+        for r in ["", "France", "a.evil.com/", "x y"] { assert!(Settings { voice_azure_region: r.into(), ..Settings::default() }.validate().is_err(), "{r}"); }
+        for v in ["", "a'b", "<x>"] { assert!(Settings { voice_azure_voice: v.into(), ..Settings::default() }.validate().is_err(), "{v}"); }
     }
     #[test] fn voice_wake_defaults_to_false() { assert!(!Settings::default().voice_wake && !Settings::default().voice_wake_learning); }
     #[test] fn reglages_de_la_voix() {

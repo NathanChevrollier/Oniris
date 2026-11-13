@@ -603,7 +603,10 @@ pub fn start(app: &AppHandle) {
         mic: Arc::new(CpalMic),
         // Jamais de proxy : l'audio ne quitte pas 127.0.0.1.
         stt: Arc::new(Whisper { proc: WHISPER.clone(), http: reqwest::Client::builder().no_proxy().build().expect("client HTTP local"), app: app.clone() }),
-        speaker: app.state::<AppState>().speaker.clone(),
+        speaker: {
+            let a = app.clone();
+            Arc::new(super::azure::AzureSpeaker::new(app.state::<AppState>().speaker.clone(), Arc::new(super::playback::CpalOut), Box::new(move || super::azure::conf_from(&a))))
+        },
         turns: Arc::new(VoiceTurns(app.clone())),
         conf,
         ui: Arc::new(move |u| emit_ui(&h, u)),

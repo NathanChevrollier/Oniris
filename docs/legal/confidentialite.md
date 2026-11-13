@@ -1,10 +1,10 @@
 # Confidentialité d'Oniris
 
-Version 10 — 12 novembre 2026. Ce document décrit simplement ce qu'Oniris fait de tes données. Il est mis à jour à chaque nouveauté qui touche à ta vie privée.
+Version 11 — 13 novembre 2026. Ce document décrit simplement ce qu'Oniris fait de tes données. Il est mis à jour à chaque nouveauté qui touche à ta vie privée.
 
 ## En bref
 
-Oniris range tout chez toi, sur ton PC. Il n'envoie aucune statistique d'usage, et il n'y a aucun compte à créer pour l'utiliser. Oniris ne contacte Internet que pour ce que tu as choisi d'activer : la météo (si tu as choisi une ville), les icônes de tes favoris, les sondes de tes sites, le téléchargement de la voix (sur ton clic), la recherche de mises à jour sur GitHub (activée par défaut et désactivable) et, si tu connectes tes comptes, Google (Gmail et Agenda) et Spotify. Les comptes ne sont jamais obligatoires : sans eux, rien de tout cela n'est contacté. IRIS, l'assistante, réfléchit d'abord **sur ton PC** ; elle ne passe par Claude (donc par Anthropic) que dans les cas décrits plus bas.
+Oniris range tout chez toi, sur ton PC. Il n'envoie aucune statistique d'usage, et il n'y a aucun compte à créer pour l'utiliser. Oniris ne contacte Internet que pour ce que tu as choisi d'activer : la météo (si tu as choisi une ville), les icônes de tes favoris, les sondes de tes sites, le téléchargement de la voix (sur ton clic), la recherche de mises à jour sur GitHub (activée par défaut et désactivable), la voix naturelle Azure (si tu ajoutes ta clé et l'actives) et, si tu connectes tes comptes, Google (Gmail et Agenda) et Spotify. Les comptes ne sont jamais obligatoires : sans eux, rien de tout cela n'est contacté. IRIS, l'assistante, réfléchit d'abord **sur ton PC** ; elle ne passe par Claude (donc par Anthropic) que dans les cas décrits plus bas.
 
 ## Où sont tes données
 
@@ -179,13 +179,24 @@ Claude ne reçoit aucun outil propre : il n'agit que par les outils d'Oniris, av
 
 ## IRIS : la voix
 
-La voix est facultative et se passe entièrement **sur ton PC**.
+La voix est facultative et se passe **sur ton PC**, sauf si tu choisis la voix naturelle Azure (voir plus bas).
 
-- **Micro** : il n'est ouvert que pendant que tu maintiens Alt+Espace, et se referme au relâchement (au plus 30 secondes d'affilée). Oniris n'écoute jamais en continu et n'a pas de mot d'activation. Le son reste **en mémoire** : il n'est écrit ni sur le disque, ni dans la base, ni dans les journaux, et n'est envoyé nulle part.
+- **Micro** : il n'est ouvert que pendant que tu maintiens le raccourci (au plus 30 secondes d'affilée), ou après un clic sur le micro ou la sphère d'IRIS ; il se referme alors à la fin de ta phrase (15 secondes au plus). Avec « Conversation continue » (activée par défaut, désactivable), il se rouvre quelques secondes après une réponse dite, puis se referme si tu ne parles pas. En dehors du mot d'activation (voir plus bas), Oniris n'écoute jamais en continu. Le son reste **en mémoire** : il n'est écrit ni sur le disque, ni dans la base, ni dans les journaux, et n'est envoyé nulle part.
 - **Transcription** : [Whisper](https://github.com/ggml-org/whisper.cpp) tourne sur ton processeur, en local (`127.0.0.1`). Le programme se lance au premier usage et s'arrête après quelques minutes d'inactivité ; il s'arrête aussi dès l'entrée en plein écran (jeu, vidéo), et juste après chaque transcription faite en plein écran.
 - **Synthèse** : [Piper](https://github.com/rhasspy/piper) lit les réponses d'IRIS à voix haute, en local, avec une voix française. Tu peux le désactiver (réponses écrites seulement) et régler le volume. Les textes lus ne sont gardés nulle part et n'apparaissent pas dans les journaux.
 - **Ce que tu dis à IRIS** est transcrit en texte, puis suit **exactement le même chemin qu'une demande écrite** (voir « IRIS : le cerveau local » et « IRIS : Claude ») : local par défaut, et Claude seulement dans les cas décrits plus haut. Le texte transcrit s'ajoute à la conversation, dans `oniris.db`, comme un message écrit.
 - **Pause** : « Mettre la voix en pause » dans le menu de l'icône d'Oniris coupe l'écoute.
+
+## IRIS : la voix naturelle (Azure)
+
+Facultative et **désactivée par défaut**. Si tu ajoutes ta propre clé Azure AI Speech et coches « Utiliser la voix Azure » (Paramètres → Voix), les réponses d'IRIS sont lues par une voix neurale de Microsoft au lieu de Piper.
+
+- **Ce qui est envoyé** : le **texte de chaque réponse dite à voix haute** (300 caractères au plus), le nom de la voix choisie et ta clé, à `<région>.tts.speech.microsoft.com` (la région que tu indiques, `francecentral` par défaut), en HTTPS. Microsoft voit aussi ton adresse IP. **Ta voix et ce que tu dis à IRIS ne sont jamais envoyés** : seule la réponse à lire part.
+- **Chez Microsoft** : le service Azure AI Speech traite ce texte selon les conditions de ton abonnement Azure ; d'après Microsoft, le texte de synthèse n'est pas conservé. C'est ton compte, ton contrat et ta facturation (la formule gratuite F0 suffit pour un usage normal).
+- **Ta clé** est rangée dans le Gestionnaire d'identification de Windows, jamais dans `oniris.db` ni dans les journaux. « Retirer » la supprime.
+- **Le bouton « Écouter »** envoie une phrase d'essai fixe, rien de personnel.
+- **Repli** : sans clé, hors ligne, avec une clé refusée ou un quota atteint, Piper lit la réponse en local. Le journal n'en garde qu'une ligne (nature de l'erreur, longueur et durée), jamais le texte.
+- **Arrêter** : décoche « Utiliser la voix Azure » ou retire la clé ; plus rien n'est envoyé.
 
 ## IRIS : le téléchargement de la voix
 

@@ -85,6 +85,9 @@ export type Settings = {
   voice_wake: boolean;
   voice_wake_learning: boolean;
   voice_follow_up: boolean;
+  voice_azure: boolean;
+  voice_azure_region: string;
+  voice_azure_voice: string;
 };
 
 const RESUME_NORMAL = "Reprends là où tu en étais sur ce projet. Appuie-toi sur le plan de développement et l'historique git. Commence par me dire où on en est.";
@@ -134,6 +137,9 @@ export const DEFAULT_SETTINGS: Settings = {
   voice_wake: false,
   voice_wake_learning: false,
   voice_follow_up: true,
+  voice_azure: false,
+  voice_azure_region: "francecentral",
+  voice_azure_voice: "fr-FR-VivienneMultilingualNeural",
 };
 
 /** Paramètres courants : chargés au montage, puis suivis via `oniris://settings`. */

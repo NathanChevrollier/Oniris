@@ -47,6 +47,10 @@ impl SpeakHandle {
         self.cancel.send_replace(true);
     }
 
+    pub fn cancel_rx(&self) -> watch::Receiver<bool> {
+        self.cancel.subscribe()
+    }
+
     #[cfg(test)]
     pub fn stopped(&self) -> bool {
         *self.cancel.borrow()

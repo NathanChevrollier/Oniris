@@ -112,6 +112,7 @@ pub fn run() {
             modules::iris::iris_draft_reply,
             modules::iris::iris_draft_reply_local,
             modules::iris::iris_pull_model,
+            modules::iris::iris_install_ollama,
             modules::iris::iris_history,
             modules::iris::iris_history_clear,
             modules::iris::iris_memories,

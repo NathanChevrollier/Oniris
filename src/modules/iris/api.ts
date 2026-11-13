@@ -31,7 +31,11 @@ export const irisBriefingIpc = {
 
 export type Brain = "fast" | "local" | "claude";
 /** Miroir de `modules::iris::IrisStatus` (`local` en snake_case, `claude` étiqueté par `kind`). */
-export type IrisStatus = { local: "down" | "no_model" | "ready"; model: string; claude: { kind: "found"; path: string } | { kind: "missing" } };
+export type IrisStatus = {
+  local: "down" | "no_model" | "ready"; model: string; claude: { kind: "found"; path: string } | { kind: "missing" };
+  /** Modèle conseillé pour la VRAM détectée (`vram_mb`, absente si inconnue). */
+  recommended: string; vram_mb: number | null; ollama_installed: boolean;
+};
 export type IrisErrorKind = "claude_unavailable" | "claude_missing" | "local_unavailable" | "claude_offer" | "failed";
 /** Miroir de `IrisEvent` / `IrisEventKind` (étiquette `type`) sur `oniris://iris`. */
 export type IrisEvent = { turn: number } & (
@@ -58,6 +62,8 @@ export const irisIpc = {
   draftReply: (account: number, id: string): Promise<string> => invoke("iris_draft_reply", { account, id }),
   draftReplyLocal: (account: number, id: string): Promise<string> => invoke("iris_draft_reply_local", { account, id }),
   pullModel: (): Promise<void> => invoke("iris_pull_model"),
+  /** winget, sans fenêtre ; rejet : proposer la page de téléchargement. */
+  installOllama: (): Promise<void> => invoke("iris_install_ollama"),
 };
 
 export const onIris = (cb: (e: IrisEvent) => void): Promise<UnlistenFn> => listen<IrisEvent>("oniris://iris", (e) => cb(e.payload));

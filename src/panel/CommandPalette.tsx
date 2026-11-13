@@ -10,6 +10,9 @@ import { agendaIpc } from "../modules/agenda/api";
 import { ask, cancel, useIris } from "../modules/iris/store";
 import { CommandBar } from "./CommandBar";
 import { usePanelStore } from "./store";
+
+/** Premiers essais : des demandes qu'IRIS sait traiter (agenda, mails, rappels, minuteur, notes, météo). */
+export const SUGGESTIONS = ["Qu'est-ce que j'ai aujourd'hui ?", "Résume mes mails importants", "Rappelle-moi de boire de l'eau dans 1 h", "Minuteur 25 minutes", "Note idées pour le week-end", "Quel temps fera-t-il demain ?"];
 import "./palette.css";
 
 export type ItemKind = "file" | "dir" | "app" | "project" | "favorite" | "note" | "command";
@@ -162,6 +165,7 @@ export function CommandPalette() {
   const open = usePanelStore((s) => s.open);
   const input = useRef<HTMLInputElement>(null);
   const [text, setText] = useState("");
+  const exchanging = useIris((s) => s.user !== "");
   const [hits, setHits] = useState<Hit[]>([]);
   const [sel, setSel] = useState(0);
   const [indexing, setIndexing] = useState(false);
@@ -334,6 +338,12 @@ export function CommandPalette() {
         aria-autocomplete="list" aria-activedescendant={hits.length ? `pal-opt-${sel}` : undefined}
         onChange={(e) => edit(e.target.value)} onKeyDown={onKeyDown}
         onMouseDown={() => { if (!text && !hits.length) search(""); }} />
+      {!text && !exchanging && (
+        <div className="pal-try" role="group" aria-label="Exemples de demandes à IRIS">
+          <span>Essaie :</span>
+          {SUGGESTIONS.map((t) => <button key={t} type="button" className="iris-chip" onClick={() => ask(t, false)}>{t}</button>)}
+        </div>
+      )}
     </div>
   );
 }

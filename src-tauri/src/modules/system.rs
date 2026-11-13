@@ -238,6 +238,9 @@ mod procs {
     }
 }
 
+/// VRAM dédiée de la carte la mieux dotée (conseil de modèle d'IRIS).
+pub(crate) fn vram_total_mb() -> Option<u64> { gpu::vram_total_mb() }
+
 mod gpu {
     use super::*;
     use windows::core::{w, PCWSTR};

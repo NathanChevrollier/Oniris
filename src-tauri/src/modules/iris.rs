@@ -357,7 +357,8 @@ async fn run_turn(app: &AppHandle, turn: u32, text: String, force_claude: bool, 
 }
 
 #[derive(Serialize)]
-pub struct IrisStatus { local: LocalStatus, model: String, claude: ClaudeStatus }
+/// `recommended` : modèle conseillé pour la VRAM de la carte graphique (`vram_mb`).
+pub struct IrisStatus { local: LocalStatus, model: String, claude: ClaudeStatus, recommended: &'static str, vram_mb: Option<u64>, ollama_installed: bool }
 
 #[derive(Serialize, Clone)]
 struct PullEvent { done: Option<u64>, total: Option<u64>, error: Option<String> }
@@ -380,7 +381,8 @@ pub async fn iris_status(app: AppHandle) -> IrisStatus {
     let (model, keep) = model(&app);
     let setting = app.state::<AppState>().settings.read().claude_path.clone();
     let claude = claude_exe(&setting).map_or(ClaudeStatus::Missing, |p| ClaudeStatus::Found { path: p.to_string_lossy().into_owned() });
-    IrisStatus { local: Ollama::new(&model, keep).status(&model).await, model, claude }
+    let vram_mb = crate::modules::system::vram_total_mb();
+    IrisStatus { local: Ollama::new(&model, keep).status(&model).await, model, claude, recommended: oniris_core::iris::ollama::recommended_model(vram_mb), vram_mb, ollama_installed: ollama_exe().is_some() }
 }
 
 /// Octets du mail transmis au modèle pour un brouillon, au plus.
@@ -466,6 +468,27 @@ pub async fn iris_conversation_new(state: tauri::State<'_, AppState>) -> Result<
     let id = memory::new_conversation(&state.db.lock(), now_ms()).map_err(|e| e.to_string())?;
     state.events.changed(Topic::Iris);
     Ok(id)
+}
+
+/// Installe Ollama pour l'utilisateur avec winget (sans fenêtre, sans droits administrateur), puis le démarre.
+/// `Err` : winget absent ou en échec ; l'interface propose alors la page de téléchargement.
+#[tauri::command]
+pub async fn iris_install_ollama() -> Result<(), String> {
+    if ollama_exe().is_none() {
+        let mut cmd = Command::new("winget");
+        cmd.args(["install", "-e", "--id", "Ollama.Ollama", "--scope", "user", "--silent", "--accept-package-agreements", "--accept-source-agreements", "--disable-interactivity"])
+            .stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).kill_on_drop(true)
+            .creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+        let status = tokio::time::timeout(Duration::from_secs(600), cmd.status()).await
+            .map_err(|_| "installation trop longue".to_string())?
+            .map_err(|e| format!("winget introuvable : {e}"))?;
+        if !status.success() || ollama_exe().is_none() {
+            tracing::warn!("iris : installation d'Ollama par winget en échec ({status})");
+            return Err("installation impossible".into());
+        }
+        tracing::info!("iris : Ollama installé par winget");
+    }
+    if ensure_ollama().await { Ok(()) } else { Err("Ollama installé mais ne répond pas".into()) }
 }
 
 /// Télécharge le modèle configuré ; progression sur `oniris://iris-pull`, puis `{done: total}` ou `{error}`.

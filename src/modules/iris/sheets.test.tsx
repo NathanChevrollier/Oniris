@@ -15,7 +15,7 @@ let pullCb: (e: PullEvent) => void = () => {};
 vi.mock("./api", async (orig) => ({ ...(await orig<typeof import("./api")>()), onIrisPull: (cb: (e: PullEvent) => void) => { pullCb = cb; return Promise.resolve(() => {}); } }));
 vi.mock("../../lib/settings", async (orig) => ({ ...(await orig<typeof import("../../lib/settings")>()), useSettings: () => (globalThis as { __s?: typeof DEFAULT_SETTINGS }).__s ?? DEFAULT_SETTINGS }));
 
-const status = (local: IrisStatus["local"]): IrisStatus => ({ local, model: "qwen3:8b", claude: { kind: "missing" } });
+const status = (local: IrisStatus["local"]): IrisStatus => ({ local, model: "qwen3:8b", claude: { kind: "missing" }, recommended: "qwen3:8b", vram_mb: 8192, ollama_installed: true });
 beforeEach(() => {
   usePanelStore.setState({ open: true });
   vi.spyOn(irisIpc, "status").mockResolvedValue(status("ready"));
@@ -38,12 +38,25 @@ it("modèle absent : téléchargement, puis la progression s'affiche", async () 
   expect(await screen.findByText(/Prêt/)).toBeTruthy();
 });
 
-it("Ollama absent : « Installer Ollama » ouvre le guide", async () => {
-  vi.mocked(irisIpc.status).mockResolvedValue(status("down"));
+it("Ollama absent : installation par winget, et en cas d'échec le lien de téléchargement", async () => {
+  vi.mocked(irisIpc.status).mockResolvedValue({ ...status("down"), ollama_installed: false });
+  const install = vi.spyOn(irisIpc, "installOllama").mockRejectedValue("installation impossible");
   const open = vi.spyOn(accountsIpc, "openGuide").mockResolvedValue();
   render(<IrisSheet open onClose={() => {}} />);
-  await userEvent.click(await screen.findByRole("button", { name: /Installer Ollama/ }));
+  await userEvent.click(await screen.findByRole("button", { name: "Installer Ollama" }));
+  expect(install).toHaveBeenCalled();
+  await userEvent.click(await screen.findByRole("button", { name: /Télécharger Ollama/ }));
   expect(open).toHaveBeenCalledWith("https://ollama.com/download");
+});
+
+it("modèle plus adapté à la carte graphique : « Utiliser » l'enregistre", async () => {
+  vi.mocked(irisIpc.status).mockResolvedValue({ ...status("ready"), recommended: "qwen3:14b", vram_mb: 16_384 });
+  vi.spyOn(ipc, "getSettings").mockResolvedValue(DEFAULT_SETTINGS);
+  const save = vi.spyOn(ipc, "saveSettings").mockResolvedValue();
+  render(<IrisSheet open onClose={() => {}} />);
+  expect(await screen.findByText(/\(16 Go\)/)).toBeTruthy();
+  await userEvent.click(screen.getByRole("button", { name: "Utiliser" }));
+  expect(save).toHaveBeenCalledWith(expect.objectContaining({ iris_local_model: "qwen3:14b" }));
 });
 
 it("la liste blanche est enregistrée sur des réglages relus, et l'erreur de Rust s'affiche", async () => {

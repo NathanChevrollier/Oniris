@@ -122,7 +122,7 @@ it("outils en puces ; le briefing revient sur « × » et après 2 minutes", asy
 });
 
 it("la sphère passe en thinking pendant un tour et le statut le dit", () => {
-  useIris.setState({ status: { local: "ready", model: "m", claude: { kind: "missing" } } });
+  useIris.setState({ status: { local: "ready", model: "m", recommended: "m", vram_mb: null, ollama_installed: true, claude: { kind: "missing" } } });
   const { container } = render(<><IrisOrb size={30} /><IrisStatusLine /></>);
   const orb = container.querySelector(".orb")!;
   expect(orb).toHaveAttribute("data-state", "idle");
@@ -136,7 +136,7 @@ it("la sphère passe en thinking pendant un tour et le statut le dit", () => {
 });
 
 it("local indisponible", () => {
-  useIris.setState({ status: { local: "down", model: "m", claude: { kind: "missing" } } });
+  useIris.setState({ status: { local: "down", model: "m", recommended: "m", vram_mb: null, ollama_installed: true, claude: { kind: "missing" } } });
   render(<IrisStatusLine />);
   expect(screen.getByRole("status")).toHaveTextContent("Local indisponible");
 });

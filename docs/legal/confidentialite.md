@@ -155,7 +155,7 @@ Le tri de tes mails, le briefing du matin et les brouillons « en local » utili
 
 ## IRIS : le téléchargement du modèle
 
-Oniris n'installe pas Ollama et ne télécharge rien tout seul. Si le modèle manque, un bouton « Télécharger le modèle » dans les réglages d'IRIS demande à ton Ollama local de le récupérer : **c'est Ollama qui contacte ses propres serveurs**, et seulement après ton clic. Ils voient, comme tout site web, l'adresse IP de ta connexion et le nom du modèle demandé.
+Oniris ne télécharge rien tout seul. Si Ollama n'est pas installé, le bouton « Installer Ollama » des réglages d'IRIS l'installe pour ton compte avec **winget**, le gestionnaire de paquets de Windows, et seulement après ton clic : winget contacte ses sources (Microsoft) et télécharge l'installeur officiel d'Ollama (hébergé sur GitHub), qui voient, comme tout site web, l'adresse IP de ta connexion et le nom du paquet demandé. Si Ollama est installé mais éteint, Oniris le démarre sur ton PC ; cela ne contacte personne. Si le modèle manque, un bouton « Télécharger le modèle » dans les réglages d'IRIS demande à ton Ollama local de le récupérer : **c'est Ollama qui contacte ses propres serveurs**, et seulement après ton clic. Ils voient, comme tout site web, l'adresse IP de ta connexion et le nom du modèle demandé.
 
 ## IRIS : Claude
 

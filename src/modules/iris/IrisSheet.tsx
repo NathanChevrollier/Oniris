@@ -31,6 +31,14 @@ function Brains({ status, reload }: { status: IrisStatus | null; reload: () => v
     irisIpc.pullModel().catch((e) => setPullError(errorText(e, "Téléchargement impossible."))).finally(() => { setPull(null); reload(); });
   };
   const guide = () => accountsIpc.openGuide("https://ollama.com/download").catch((e) => setPullError(errorText(e, "Ouverture impossible.")));
+  const [installing, setInstalling] = useState(false);
+  const [installFailed, setInstallFailed] = useState(false);
+  const install = () => {
+    setInstalling(true); setInstallFailed(false); setPullError(null);
+    irisIpc.installOllama().catch(() => setInstallFailed(true)).finally(() => { setInstalling(false); reload(); });
+  };
+  const useRecommended = () => { if (status) void save({ iris_local_model: status.recommended }).then(reload); };
+  const gb = status?.vram_mb ? Math.round(status.vram_mb / 1024) : null;
   const pct = pull && pull.total > 0 ? Math.round((pull.done / pull.total) * 100) : null;
   return (
     <>
@@ -38,11 +46,18 @@ function Brains({ status, reload }: { status: IrisStatus | null; reload: () => v
       <div className="iris-row">
         <b>Ollama (local)</b>
         {status?.local === "ready" && <span className="acc-state">Prêt · {status.model}</span>}
-        {status?.local === "down" && <><span className="acc-state warn">Ollama introuvable</span>
-          <button type="button" className="acc-btn primary" onClick={() => void guide()}><ExternalLink size={13} />Installer Ollama</button></>}
+        {status?.local === "down" && !status.ollama_installed && <><span className="acc-state warn">Ollama n'est pas installé</span>
+          <button type="button" className="acc-btn primary" disabled={installing} onClick={install}>{installing ? "Installation… (1 à 2 min)" : "Installer Ollama"}</button></>}
+        {status?.local === "down" && status.ollama_installed && <><span className="acc-state warn">Ollama ne répond pas</span>
+          <button type="button" className="acc-btn primary" onClick={reload}>Relancer</button></>}
         {status?.local === "no_model" && <><span className="acc-state warn">Modèle absent</span>
           <button type="button" className="acc-btn primary" disabled={pull !== null} onClick={download}>Télécharger le modèle</button></>}
       </div>
+      {installFailed && <p className="err" role="alert">L'installation automatique n'a pas marché. <button type="button" className="acc-btn" onClick={() => void guide()}><ExternalLink size={13} />Télécharger Ollama</button></p>}
+      {status && status.local !== "down" && status.model !== status.recommended && (
+        <div className="iris-row"><small>Conseillé pour ta carte graphique{gb ? ` (${gb} Go)` : ""} : <b>{status.recommended}</b></small>
+          <button type="button" className="acc-btn" onClick={useRecommended}>Utiliser</button></div>
+      )}
       {pull && <progress className="iris-progress" aria-label="Téléchargement du modèle" max={pull.total || undefined} value={pull.total ? pull.done : undefined} />}
       {pull && <span role="status" className="acc-wait">Téléchargement{pct !== null ? ` : ${pct} %` : "…"}</span>}
       {pullError && <p className="err" role="alert">{pullError}</p>}

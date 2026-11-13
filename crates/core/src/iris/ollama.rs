@@ -8,6 +8,16 @@ use serde_json::{json, Value};
 use std::time::Duration;
 
 pub const DEFAULT_BASE: &str = "http://127.0.0.1:11434";
+
+/// Plus gros modèle Qwen3 qui tient en entier dans la VRAM (poids et contexte) ; inconnue : le plus prudent.
+pub fn recommended_model(vram_mb: Option<u64>) -> &'static str {
+    match vram_mb.unwrap_or(0) {
+        12_000.. => "qwen3:14b",
+        7_000.. => "qwen3:8b",
+        4_000.. => "qwen3:4b",
+        _ => "qwen3:1.7b",
+    }
+}
 const TOTAL: Duration = Duration::from_secs(60);
 const IDLE: Duration = Duration::from_secs(10);
 /// Un téléchargement peut marquer des pauses (vérification des empreintes) : plus large qu'un flux de chat.
@@ -209,6 +219,14 @@ impl LocalBrain for Ollama {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn modele_selon_la_vram() {
+        assert_eq!(recommended_model(Some(16_368)), "qwen3:14b");
+        assert_eq!(recommended_model(Some(8_192)), "qwen3:8b");
+        assert_eq!(recommended_model(Some(6_144)), "qwen3:4b");
+        assert_eq!(recommended_model(None), "qwen3:1.7b");
+    }
     use tokio::io::AsyncWriteExt;
     use wiremock::matchers::{body_partial_json, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};

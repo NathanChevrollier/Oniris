@@ -26,7 +26,7 @@ beforeEach(() => {
   vi.spyOn(voiceIpc, "status").mockResolvedValue(missing);
   vi.spyOn(voiceIpc, "wakeState").mockResolvedValue("désactivé");
   vi.spyOn(voiceIpc, "devices").mockResolvedValue(["Micro USB"]);
-  vi.spyOn(irisIpc, "status").mockResolvedValue({ local: "ready", model: "m", claude: { kind: "missing" } });
+  vi.spyOn(irisIpc, "status").mockResolvedValue({ local: "ready", model: "m", recommended: "m", vram_mb: null, ollama_installed: true, claude: { kind: "missing" } });
   vi.spyOn(irisIpc, "memories").mockResolvedValue([]);
   vi.spyOn(irisIpc, "history").mockResolvedValue([]);
 });

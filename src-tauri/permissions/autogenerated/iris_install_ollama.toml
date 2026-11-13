@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-iris-install-ollama"
+description = "Enables the iris_install_ollama command without any pre-configured scope."
+commands.allow = ["iris_install_ollama"]
+
+[[permission]]
+identifier = "deny-iris-install-ollama"
+description = "Denies the iris_install_ollama command without any pre-configured scope."
+commands.deny = ["iris_install_ollama"]

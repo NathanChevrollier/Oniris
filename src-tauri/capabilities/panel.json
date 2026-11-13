@@ -105,6 +105,14 @@
     "allow-music-queue",
     "allow-music-transfer",
     "allow-perf-frame",
-    "allow-perf-open-cycles"
+    "allow-perf-open-cycles",
+    "allow-iris-install-ollama",
+    "allow-voice-tap",
+    "allow-voice-wake-state",
+    "allow-voice-learn-count",
+    "allow-voice-learn-clear",
+    "allow-update-status",
+    "allow-update-check-now",
+    "allow-update-restart"
   ]
 }

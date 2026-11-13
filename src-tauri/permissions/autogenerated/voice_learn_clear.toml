@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-voice-learn-clear"
+description = "Enables the voice_learn_clear command without any pre-configured scope."
+commands.allow = ["voice_learn_clear"]
+
+[[permission]]
+identifier = "deny-voice-learn-clear"
+description = "Denies the voice_learn_clear command without any pre-configured scope."
+commands.deny = ["voice_learn_clear"]

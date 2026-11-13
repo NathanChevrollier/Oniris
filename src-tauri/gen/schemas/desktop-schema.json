@@ -393,6 +393,12 @@
           "markdownDescription": "Enables the iris_history_clear command without any pre-configured scope."
         },
         {
+          "description": "Enables the iris_install_ollama command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-iris-install-ollama",
+          "markdownDescription": "Enables the iris_install_ollama command without any pre-configured scope."
+        },
+        {
           "description": "Enables the iris_memories command without any pre-configured scope.",
           "type": "string",
           "const": "allow-iris-memories",
@@ -759,10 +765,40 @@
           "markdownDescription": "Enables the tool_undo command without any pre-configured scope."
         },
         {
+          "description": "Enables the update_check_now command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-update-check-now",
+          "markdownDescription": "Enables the update_check_now command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the update_restart command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-update-restart",
+          "markdownDescription": "Enables the update_restart command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the update_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-update-status",
+          "markdownDescription": "Enables the update_status command without any pre-configured scope."
+        },
+        {
           "description": "Enables the voice_devices command without any pre-configured scope.",
           "type": "string",
           "const": "allow-voice-devices",
           "markdownDescription": "Enables the voice_devices command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the voice_expect_wake command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-voice-expect-wake",
+          "markdownDescription": "Enables the voice_expect_wake command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the voice_false_wake command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-voice-false-wake",
+          "markdownDescription": "Enables the voice_false_wake command without any pre-configured scope."
         },
         {
           "description": "Enables the voice_install command without any pre-configured scope.",
@@ -771,10 +807,34 @@
           "markdownDescription": "Enables the voice_install command without any pre-configured scope."
         },
         {
+          "description": "Enables the voice_learn_clear command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-voice-learn-clear",
+          "markdownDescription": "Enables the voice_learn_clear command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the voice_learn_count command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-voice-learn-count",
+          "markdownDescription": "Enables the voice_learn_count command without any pre-configured scope."
+        },
+        {
           "description": "Enables the voice_status command without any pre-configured scope.",
           "type": "string",
           "const": "allow-voice-status",
           "markdownDescription": "Enables the voice_status command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the voice_tap command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-voice-tap",
+          "markdownDescription": "Enables the voice_tap command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the voice_wake_state command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-voice-wake-state",
+          "markdownDescription": "Enables the voice_wake_state command without any pre-configured scope."
         },
         {
           "description": "Enables the vps_status command without any pre-configured scope.",
@@ -1003,6 +1063,12 @@
           "type": "string",
           "const": "deny-iris-history-clear",
           "markdownDescription": "Denies the iris_history_clear command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the iris_install_ollama command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-iris-install-ollama",
+          "markdownDescription": "Denies the iris_install_ollama command without any pre-configured scope."
         },
         {
           "description": "Denies the iris_memories command without any pre-configured scope.",
@@ -1371,10 +1437,40 @@
           "markdownDescription": "Denies the tool_undo command without any pre-configured scope."
         },
         {
+          "description": "Denies the update_check_now command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-update-check-now",
+          "markdownDescription": "Denies the update_check_now command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the update_restart command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-update-restart",
+          "markdownDescription": "Denies the update_restart command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the update_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-update-status",
+          "markdownDescription": "Denies the update_status command without any pre-configured scope."
+        },
+        {
           "description": "Denies the voice_devices command without any pre-configured scope.",
           "type": "string",
           "const": "deny-voice-devices",
           "markdownDescription": "Denies the voice_devices command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the voice_expect_wake command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-voice-expect-wake",
+          "markdownDescription": "Denies the voice_expect_wake command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the voice_false_wake command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-voice-false-wake",
+          "markdownDescription": "Denies the voice_false_wake command without any pre-configured scope."
         },
         {
           "description": "Denies the voice_install command without any pre-configured scope.",
@@ -1383,10 +1479,34 @@
           "markdownDescription": "Denies the voice_install command without any pre-configured scope."
         },
         {
+          "description": "Denies the voice_learn_clear command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-voice-learn-clear",
+          "markdownDescription": "Denies the voice_learn_clear command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the voice_learn_count command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-voice-learn-count",
+          "markdownDescription": "Denies the voice_learn_count command without any pre-configured scope."
+        },
+        {
           "description": "Denies the voice_status command without any pre-configured scope.",
           "type": "string",
           "const": "deny-voice-status",
           "markdownDescription": "Denies the voice_status command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the voice_tap command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-voice-tap",
+          "markdownDescription": "Denies the voice_tap command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the voice_wake_state command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-voice-wake-state",
+          "markdownDescription": "Denies the voice_wake_state command without any pre-configured scope."
         },
         {
           "description": "Denies the vps_status command without any pre-configured scope.",

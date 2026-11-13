@@ -337,3 +337,26 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+mod acl_tests {
+    /// Avec un manifeste ACL, Tauri refuse en silence toute commande qui n'y est pas déclarée et autorisée.
+    #[test]
+    fn chaque_commande_enregistree_est_declaree_et_autorisee() {
+        let lib = include_str!("lib.rs");
+        let handler = &lib[lib.find("generate_handler![").unwrap()..];
+        let handler = &handler[..handler.find(']').unwrap()];
+        let build = include_str!("../build.rs");
+        let caps = [include_str!("../capabilities/panel.json"), include_str!("../capabilities/pill.json")].concat();
+        let names = handler.lines().skip(1).map(str::trim).filter(|l| !l.is_empty() && !l.starts_with('#'))
+            .map(|l| l.trim_end_matches(',').rsplit("::").next().unwrap());
+        let mut missing = Vec::new();
+        for n in names {
+            let allow = format!("\"allow-{}\"", n.replace('_', "-"));
+            if !build.contains(&format!("\"{n}\",")) || !caps.contains(&allow) {
+                missing.push(n);
+            }
+        }
+        assert!(missing.is_empty(), "commandes refusées par l'ACL : {missing:?}");
+    }
+}

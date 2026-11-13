@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-voice-false-wake"
+description = "Enables the voice_false_wake command without any pre-configured scope."
+commands.allow = ["voice_false_wake"]
+
+[[permission]]
+identifier = "deny-voice-false-wake"
+description = "Denies the voice_false_wake command without any pre-configured scope."
+commands.deny = ["voice_false_wake"]

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-voice-learn-count"
+description = "Enables the voice_learn_count command without any pre-configured scope."
+commands.allow = ["voice_learn_count"]
+
+[[permission]]
+identifier = "deny-voice-learn-count"
+description = "Denies the voice_learn_count command without any pre-configured scope."
+commands.deny = ["voice_learn_count"]

@@ -11,6 +11,10 @@
     "allow-panel-toggle",
     "allow-pill-resize",
     "allow-settings-get",
-    "allow-timers-list"
+    "allow-timers-list",
+    "allow-voice-expect-wake",
+    "allow-voice-false-wake",
+    "allow-update-status",
+    "allow-update-restart"
   ]
 }

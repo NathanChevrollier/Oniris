@@ -61,16 +61,22 @@ export function Folders({ label, value, onChange }: { label: string; value: stri
 function UpdateInfo() {
   const [st, setSt] = useState<UpdateStatus | null>(null);
   const [busy, setBusy] = useState(false);
+  const [checked, setChecked] = useState(false);
   useEffect(() => { void updateIpc.status().then(setSt).catch(() => {}); }, []);
   const check = async () => {
     setBusy(true);
-    try { setSt(await updateIpc.checkNow()); } catch { /* l'échec est journalisé côté Rust */ } finally { setBusy(false); }
+    try { setSt(await updateIpc.checkNow()); setChecked(true); } catch { /* l'échec est journalisé côté Rust */ } finally { setBusy(false); }
   };
   return (
     <div className="iris-field set-wide">
       {st && <span>Version {st.current}</span>}
-      <button type="button" className="acc-btn" disabled={busy} onClick={() => void check()}>Vérifier maintenant</button>
-      {st?.pending && <><span>Version {st.pending[0]} prête</span>{st.pending[1] && <p className="voice-note">{st.pending[1]}</p>}</>}
+      <button type="button" className="acc-btn" disabled={busy} onClick={() => void check()}>{busy ? "Recherche et téléchargement…" : "Vérifier maintenant"}</button>
+      {st?.pending ? <>
+        <span>Version {st.pending[0]} prête</span>
+        <button type="button" className="acc-btn" onClick={() => void updateIpc.restart().catch(() => {})}>Redémarrer pour l'installer</button>
+        {st.pending[1] && <p className="voice-note">{st.pending[1]}</p>}
+      </> : st?.last_error ? <span role="alert">Vérification impossible : {st.last_error}</span>
+        : checked && !busy && <span role="status">Oniris est à jour.</span>}
     </div>
   );
 }

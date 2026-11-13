@@ -131,4 +131,16 @@ it("réglages : version installée et vérification manuelle", async () => {
   expect(check).toHaveBeenCalled();
   expect(await screen.findByText("Version 1.2.1 prête")).toBeTruthy();
   expect(screen.getByText("Corrections diverses")).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Redémarrer pour l'installer" })).toBeTruthy();
+});
+
+it("réglages : vérification sans nouveauté ou en échec, le résultat s'affiche", async () => {
+  vi.spyOn(ipc, "getSettings").mockResolvedValue(DEFAULT_SETTINGS);
+  const check = vi.spyOn(updateIpc, "checkNow").mockResolvedValue({ current: "1.2.1", pending: null, checking: false, last_error: null });
+  setup();
+  await userEvent.click(await screen.findByRole("button", { name: "Vérifier maintenant" }));
+  expect(await screen.findByText("Oniris est à jour.")).toBeTruthy();
+  check.mockResolvedValue({ current: "1.2.1", pending: null, checking: false, last_error: "hors ligne" });
+  await userEvent.click(screen.getByRole("button", { name: "Vérifier maintenant" }));
+  expect((await screen.findByRole("alert")).textContent).toContain("hors ligne");
 });

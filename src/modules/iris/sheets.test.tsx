@@ -2,7 +2,7 @@ import { render, screen, cleanup, act, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { it, expect, vi, afterEach, beforeEach } from "vitest";
 import { useCallback, useState } from "react";
-import { IrisSheet } from "./IrisSheet";
+import { SettingsSheet, type SettingsCat } from "../settings/SettingsSheet";
 import { JournalSheet } from "./JournalSheet";
 import { irisIpc, type IrisStatus, type PullEvent } from "./api";
 import { Header, focusHeaderButton } from "../../panel/Header";
@@ -23,12 +23,13 @@ beforeEach(() => {
   vi.spyOn(irisIpc, "history").mockResolvedValue([]);
 });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+const Sheet = ({ at = "iris" }: { at?: SettingsCat }) => <SettingsSheet open section={at} onClose={() => {}} onAccounts={() => {}} />;
 
 it("modèle absent : téléchargement, puis la progression s'affiche", async () => {
   vi.mocked(irisIpc.status).mockResolvedValue(status("no_model"));
   let finish = () => {};
   const pull = vi.spyOn(irisIpc, "pullModel").mockReturnValue(new Promise<void>((r) => { finish = r; }));
-  render(<IrisSheet open onClose={() => {}} />);
+  render(<Sheet />);
   await userEvent.click(await screen.findByRole("button", { name: "Télécharger le modèle" }));
   expect(pull).toHaveBeenCalled();
   act(() => pullCb({ done: 50, total: 200, error: null }));
@@ -42,7 +43,7 @@ it("Ollama absent : installation par winget, et en cas d'échec le lien de tél�
   vi.mocked(irisIpc.status).mockResolvedValue({ ...status("down"), ollama_installed: false });
   const install = vi.spyOn(irisIpc, "installOllama").mockRejectedValue("installation impossible");
   const open = vi.spyOn(accountsIpc, "openGuide").mockResolvedValue();
-  render(<IrisSheet open onClose={() => {}} />);
+  render(<Sheet />);
   await userEvent.click(await screen.findByRole("button", { name: "Installer Ollama" }));
   expect(install).toHaveBeenCalled();
   await userEvent.click(await screen.findByRole("button", { name: /Télécharger Ollama/ }));
@@ -53,39 +54,40 @@ it("modèle plus adapté à la carte graphique : « Utiliser » l'enregistre", a
   vi.mocked(irisIpc.status).mockResolvedValue({ ...status("ready"), recommended: "qwen3:14b", vram_mb: 16_384 });
   vi.spyOn(ipc, "getSettings").mockResolvedValue(DEFAULT_SETTINGS);
   const save = vi.spyOn(ipc, "saveSettings").mockResolvedValue();
-  render(<IrisSheet open onClose={() => {}} />);
+  render(<Sheet />);
   expect(await screen.findByText(/\(16 Go\)/)).toBeTruthy();
   await userEvent.click(screen.getByRole("button", { name: "Utiliser" }));
-  expect(save).toHaveBeenCalledWith(expect.objectContaining({ iris_local_model: "qwen3:14b" }));
+  await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ iris_local_model: "qwen3:14b" })));
 });
 
-it("la liste blanche est enregistrée sur des réglages relus, et l'erreur de Rust s'affiche", async () => {
+it("la liste blanche est enregistrée à la perte du focus, sur des réglages relus, et l'erreur de Rust s'affiche", async () => {
   const fresh = { ...DEFAULT_SETTINGS, user_name: "Frais" };
   vi.spyOn(ipc, "getSettings").mockResolvedValue(fresh);
   const save = vi.spyOn(ipc, "saveSettings").mockResolvedValueOnce(undefined).mockRejectedValueOnce("Commande trop longue.");
-  render(<IrisSheet open onClose={() => {}} />);
+  render(<Sheet />);
   const box = screen.getByLabelText(/Commandes autorisées/);
   await userEvent.clear(box);
   await userEvent.type(box, "git log{Enter}Get-Date");
-  await userEvent.click(screen.getByRole("button", { name: "Enregistrer la sécurité" }));
-  await waitFor(() => expect(save).toHaveBeenCalledWith({ ...fresh, iris_shell_allowlist: ["git log", "Get-Date"], iris_work_dirs: [] }));
-  await userEvent.click(screen.getByRole("button", { name: "Enregistrer la sécurité" }));
+  expect(save).not.toHaveBeenCalled();
+  await userEvent.tab();
+  await waitFor(() => expect(save).toHaveBeenCalledWith({ ...fresh, iris_shell_allowlist: ["git log", "Get-Date"] }));
+  await userEvent.type(box, "{Enter}x");
+  await userEvent.tab();
   expect((await screen.findByRole("alert")).textContent).toBe("Commande trop longue.");
 });
 
 it("Claude sur demande par défaut ; cocher l'appel automatique l'enregistre", async () => {
   vi.spyOn(ipc, "getSettings").mockResolvedValue(DEFAULT_SETTINGS);
   const save = vi.spyOn(ipc, "saveSettings").mockResolvedValue(undefined);
-  render(<IrisSheet open onClose={() => {}} />);
+  render(<Sheet />);
   const box = screen.getByRole("checkbox", { name: /IRIS peut appeler Claude d'elle-même/ });
   expect(box).not.toBeChecked();
   await userEvent.click(box);
-  await userEvent.click(screen.getByRole("button", { name: "Enregistrer les cerveaux" }));
   await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ iris_claude_auto: true })));
 });
 
 it("« Rétablir » remet la personnalité par défaut", async () => {
-  render(<IrisSheet open onClose={() => {}} />);
+  render(<Sheet />);
   const area = screen.getByLabelText("Personnalité d'IRIS") as HTMLTextAreaElement;
   await userEvent.clear(area);
   await userEvent.type(area, "x");
@@ -96,14 +98,14 @@ it("« Rétablir » remet la personnalité par défaut", async () => {
 it("supprime une mémoire", async () => {
   vi.mocked(irisIpc.memories).mockResolvedValue([{ id: 7, text: "aime le thé", created_ms: 0 }]);
   const del = vi.spyOn(irisIpc, "memoryDelete").mockResolvedValue(null);
-  render(<IrisSheet open onClose={() => {}} />);
+  render(<Sheet at="memory" />);
   await userEvent.click(await screen.findByRole("button", { name: "Oublier : aime le thé" }));
   expect(del).toHaveBeenCalledWith(7);
 });
 
 it("« Tout effacer » demande confirmation et garde les préférences", async () => {
   const clear = vi.spyOn(irisIpc, "historyClear").mockResolvedValue();
-  render(<IrisSheet open onClose={() => {}} />);
+  render(<Sheet at="memory" />);
   await userEvent.click(screen.getByRole("button", { name: "Tout effacer" }));
   expect(clear).not.toHaveBeenCalled();
   expect(screen.getByText(/préférences retenues/)).toBeTruthy();
@@ -153,7 +155,7 @@ it("échecs : chargement et suppression affichent une erreur", async () => {
   vi.mocked(irisIpc.history).mockRejectedValue("x");
   vi.mocked(irisIpc.memories).mockResolvedValue([{ id: 7, text: "aime le thé", created_ms: 0 }]);
   vi.spyOn(irisIpc, "memoryDelete").mockRejectedValue("Suppression refusée.");
-  render(<IrisSheet open onClose={() => {}} />);
+  render(<Sheet at="memory" />);
   expect(await screen.findByText("Impossible de charger l'historique.")).toBeTruthy();
   await userEvent.click(await screen.findByRole("button", { name: "Oublier : aime le thé" }));
   expect(await screen.findByText("Suppression refusée.")).toBeTruthy();
@@ -161,17 +163,32 @@ it("échecs : chargement et suppression affichent une erreur", async () => {
 
 afterEach(() => { delete (globalThis as { __s?: unknown }).__s; });
 
-it("enregistrer la personnalité ne réinitialise pas le texte non enregistré de la sécurité", async () => {
+it("un réglage modifié ailleurs ne réinitialise pas le texte non enregistré de la personnalité", async () => {
   vi.spyOn(ipc, "getSettings").mockResolvedValue(DEFAULT_SETTINGS);
-  vi.spyOn(ipc, "saveSettings").mockResolvedValue(undefined);
-  const { rerender } = render(<IrisSheet open onClose={() => {}} />);
-  const box = screen.getByLabelText(/Commandes autorisées/) as HTMLTextAreaElement;
-  await userEvent.type(box, "{Enter}brouillon");
-  const area = screen.getByLabelText("Personnalité d'IRIS");
+  const { rerender } = render(<Sheet />);
+  const area = screen.getByLabelText("Personnalité d'IRIS") as HTMLTextAreaElement;
   await userEvent.clear(area);
-  await userEvent.type(area, "nouvelle");
-  await userEvent.click(screen.getByRole("button", { name: "Enregistrer la personnalité" }));
-  (globalThis as { __s?: unknown }).__s = { ...DEFAULT_SETTINGS, iris_personality: "nouvelle" };
-  rerender(<IrisSheet open onClose={() => {}} />);
-  expect(box.value).toContain("brouillon");
+  await userEvent.type(area, "brouillon");
+  (globalThis as { __s?: unknown }).__s = { ...DEFAULT_SETTINGS, iris_shell_allowlist: ["git log"] };
+  rerender(<Sheet />);
+  expect(area.value).toBe("brouillon");
+  expect((screen.getByLabelText(/Commandes autorisées/) as HTMLTextAreaElement).value).toBe("git log");
+});
+
+it("le bouton d'en-tête « IRIS » ouvre les réglages sur IRIS, le focus y revient à la fermeture", async () => {
+  function Harness() {
+    const [at, setAt] = useState<SettingsCat | null>(null);
+    const close = useCallback(() => { setAt(null); focusHeaderButton("iris"); }, []);
+    return <><div inert={at !== null}><Header name="N" onIris={() => setAt("iris")} onSettings={() => setAt("general")} /></div>
+      <SettingsSheet open={at !== null} section={at ?? "general"} onClose={close} onAccounts={() => {}} /></>;
+  }
+  render(<Harness />);
+  const btn = screen.getByRole("button", { name: "IRIS" });
+  await userEvent.click(btn);
+  expect(screen.getByRole("dialog", { name: "Réglages" })).toBeTruthy();
+  expect(screen.getByRole("tab", { name: "IRIS" })).toHaveAttribute("aria-selected", "true");
+  await userEvent.keyboard("{Escape}");
+  await waitFor(() => expect(document.activeElement).toBe(btn));
+  await userEvent.click(screen.getByRole("button", { name: "Réglages" }));
+  expect(screen.getByRole("tab", { name: "Général" })).toHaveAttribute("aria-selected", "true");
 });

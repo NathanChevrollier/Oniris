@@ -1,5 +1,2 @@
 .pill-toast{max-width:320px;padding:0 6px;font-size:12.5px;color:var(--txt);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pill-toast:empty{display:none}
-.voice-note{font-size:12px;color:var(--txt3);margin:8px 0}
-.voice-check{flex-direction:row!important;align-items:center;gap:8px!important}
-.iris-grid select{font:13px var(--font);color:var(--txt);background:rgba(255,255,255,.06);border:1px solid var(--line);border-radius:10px;padding:6px 10px}

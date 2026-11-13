@@ -12,7 +12,7 @@ import "./onboarding.css";
 const LAST = 5;
 
 /** Premier lancement : écrans plein panneau, reprise à la dernière étape. Seul l'écran 2 ne se saute pas. */
-export function Welcome({ covered, onActive, onGo }: { covered?: boolean; onActive?: (on: boolean) => void; onGo: (sheet: "accounts" | "iris") => void }) {
+export function Welcome({ covered, onActive, onGo }: { covered?: boolean; onActive?: (on: boolean) => void; onGo: (sheet: "accounts" | "iris" | "voice") => void }) {
   const [ob, setOb] = useState<Onboarding | null>(null);
   const [suggested, setSuggested] = useState<string | null>(null);
   const [err, setErr] = useState("");
@@ -73,7 +73,7 @@ export function Welcome({ covered, onActive, onGo }: { covered?: boolean; onActi
           <div className="wl-actions">
             <button type="button" className="acc-btn" onClick={() => onGo("accounts")}>Comptes (mail, agenda, Spotify)</button>
             <button type="button" className="acc-btn" onClick={() => onGo("iris")}>IRIS (Ollama)</button>
-            <button type="button" className="acc-btn" onClick={() => onGo("iris")}>Voix</button>
+            <button type="button" className="acc-btn" onClick={() => onGo("voice")}>Voix</button>
           </div>
           <div className="wl-actions"><button type="button" className="acc-btn primary" onClick={() => void next()}>Continuer</button></div>
         </>}

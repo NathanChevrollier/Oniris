@@ -2,7 +2,7 @@ import { render, screen, cleanup, act, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { it, expect, vi, afterEach, beforeEach } from "vitest";
 import { IrisOrb } from "../iris/IrisReply";
-import { IrisSheet } from "../iris/IrisSheet";
+import { SettingsSheet } from "../settings/SettingsSheet";
 import { irisIpc } from "../iris/api";
 import { ipc } from "../../lib/ipc";
 import { DEFAULT_SETTINGS } from "../../lib/settings";
@@ -68,7 +68,7 @@ it("le toast s'affiche en texte puis disparaît au bout de 3 s ; un nouveau remp
 it("installation : taille, progression par fichier, puis « Installée »", async () => {
   let finish = () => {};
   const install = vi.spyOn(voiceIpc, "install").mockReturnValue(new Promise<void>((r) => { finish = r; }));
-  render(<IrisSheet open onClose={() => {}} />);
+  render(<SettingsSheet open section="voice" onClose={() => {}} onAccounts={() => {}} />);
   expect(await screen.findByText("À installer · 276 Mo")).toBeTruthy();
   await userEvent.click(screen.getByRole("button", { name: "Installer la voix" }));
   expect(install).toHaveBeenCalled();
@@ -81,23 +81,23 @@ it("installation : taille, progression par fichier, puis « Installée »", asyn
 
 it("une erreur d'installation (hash) est affichée", async () => {
   vi.spyOn(voiceIpc, "install").mockRejectedValue("Fichier corrompu : empreinte invalide.");
-  render(<IrisSheet open onClose={() => {}} />);
+  render(<SettingsSheet open section="voice" onClose={() => {}} onAccounts={() => {}} />);
   await userEvent.click(await screen.findByRole("button", { name: "Installer la voix" }));
   expect((await screen.findByRole("alert")).textContent).toBe("Fichier corrompu : empreinte invalide.");
   act(() => installCb({ error: "Empreinte invalide." }));
   expect((await screen.findByRole("alert")).textContent).toBe("Empreinte invalide.");
 });
 
-it("les réglages de la voix sont enregistrés sur des réglages relus", async () => {
+it("les réglages de la voix s'enregistrent au choix, chacun sur des réglages relus", async () => {
   const fresh = { ...DEFAULT_SETTINGS, user_name: "Frais" };
   vi.spyOn(ipc, "getSettings").mockResolvedValue(fresh);
   const save = vi.spyOn(ipc, "saveSettings").mockResolvedValue(undefined);
-  render(<IrisSheet open onClose={() => {}} />);
+  render(<SettingsSheet open section="voice" onClose={() => {}} onAccounts={() => {}} />);
   expect(screen.getByText("Ta voix reste sur ton PC : rien n'est enregistré ni envoyé.")).toBeTruthy();
-  await userEvent.selectOptions(screen.getByLabelText("Transcription"), "turbo");
-  await userEvent.selectOptions(screen.getByLabelText("Micro"), "Micro USB");
-  await userEvent.click(screen.getByRole("button", { name: "Enregistrer la voix" }));
-  await waitFor(() => expect(save).toHaveBeenCalledWith({ ...fresh, voice_stt_model: "turbo", voice_input_device: "Micro USB" }));
+  await userEvent.click(screen.getByRole("radio", { name: /Précis/ }));
+  await waitFor(() => expect(save).toHaveBeenCalledWith({ ...fresh, voice_stt_model: "turbo" }));
+  await userEvent.selectOptions(await screen.findByLabelText("Micro"), "Micro USB");
+  await waitFor(() => expect(save).toHaveBeenCalledWith({ ...fresh, voice_input_device: "Micro USB" }));
 });
 
 const WAKE = /Mot d'activation « Dis Iris »/;
@@ -107,18 +107,17 @@ it("le mot d'activation est décoché par défaut et s'enregistre", async () => 
   const fresh = { ...DEFAULT_SETTINGS };
   vi.spyOn(ipc, "getSettings").mockResolvedValue(fresh);
   const save = vi.spyOn(ipc, "saveSettings").mockResolvedValue(undefined);
-  render(<IrisSheet open onClose={() => {}} />);
+  render(<SettingsSheet open section="voice" onClose={() => {}} onAccounts={() => {}} />);
   const box = (await screen.findByLabelText(WAKE)) as HTMLInputElement;
   expect(box.checked).toBe(false);
   expect(screen.getByText(/Oniris écoute en continu et réagit quand tu dis « Dis Iris » ou « Hé Iris »\. Avant ça, rien n'est transcrit, enregistré ni envoyé\. Windows affiche l'icône du micro tant que l'écoute est active\./)).toBeTruthy();
   await waitFor(() => expect(box.disabled).toBe(false));
   await userEvent.click(box);
-  await userEvent.click(screen.getByRole("button", { name: "Enregistrer la voix" }));
   await waitFor(() => expect(save).toHaveBeenCalledWith({ ...fresh, voice_wake: true }));
 });
 
 it("grisé tant que la voix n'est pas installée", async () => {
-  render(<IrisSheet open onClose={() => {}} />);
+  render(<SettingsSheet open section="voice" onClose={() => {}} onAccounts={() => {}} />);
   await screen.findByText("À installer · 276 Mo");
   expect((screen.getByLabelText(WAKE) as HTMLInputElement).disabled).toBe(true);
 });
@@ -126,7 +125,7 @@ it("grisé tant que la voix n'est pas installée", async () => {
 it("affiche l'état de l'écoute", async () => {
   vi.mocked(voiceIpc.status).mockResolvedValue(ready);
   vi.mocked(voiceIpc.wakeState).mockResolvedValue("à l'écoute");
-  render(<IrisSheet open onClose={() => {}} />);
+  render(<SettingsSheet open section="voice" onClose={() => {}} onAccounts={() => {}} />);
   expect(await screen.findByText("à l'écoute")).toBeTruthy();
 });
 
@@ -136,7 +135,7 @@ it("la case apprentissage est grisée tant que le mot d'activation est désactiv
   vi.mocked(voiceIpc.status).mockResolvedValue(ready);
   vi.spyOn(voiceIpc, "learnCount").mockResolvedValue([0, 0]);
   vi.spyOn(ipc, "getSettings").mockResolvedValue({ ...DEFAULT_SETTINGS, voice_wake: false });
-  render(<IrisSheet open onClose={() => {}} />);
+  render(<SettingsSheet open section="voice" onClose={() => {}} onAccounts={() => {}} />);
   const box = (await screen.findByLabelText(LEARN)) as HTMLInputElement;
   expect(box.disabled).toBe(true);
 });
@@ -146,7 +145,7 @@ it("affiche le compte des extraits et les supprime", async () => {
   const count = vi.spyOn(voiceIpc, "learnCount").mockResolvedValue([12, 3]);
   const clear = vi.spyOn(voiceIpc, "learnClear").mockResolvedValue(15);
   vi.spyOn(ipc, "getSettings").mockResolvedValue({ ...DEFAULT_SETTINGS, voice_wake: true, voice_wake_learning: true });
-  render(<IrisSheet open onClose={() => {}} />);
+  render(<SettingsSheet open section="voice" onClose={() => {}} onAccounts={() => {}} />);
   expect(await screen.findByText("12 positifs, 3 négatifs")).toBeTruthy();
   count.mockResolvedValue([0, 0]);
   await userEvent.click(screen.getByRole("button", { name: "Supprimer les extraits" }));
@@ -160,7 +159,7 @@ it("voix Azure : clé rangée, essai, puis réglage enregistré", async () => {
   const save = vi.spyOn(ipc, "saveSettings").mockResolvedValue(undefined);
   const setKey = vi.spyOn(voiceIpc, "azureKeySet").mockResolvedValue();
   const test = vi.spyOn(voiceIpc, "azureTest").mockRejectedValue("clé Azure refusée");
-  render(<IrisSheet open onClose={() => {}} />);
+  render(<SettingsSheet open section="voice" onClose={() => {}} onAccounts={() => {}} />);
   expect(await screen.findByText("Aucune")).toBeTruthy();
   vi.mocked(voiceIpc.azureKeyStatus).mockResolvedValue(true);
   await userEvent.type(screen.getByLabelText("Clé Azure"), "abc123{Enter}");
@@ -170,6 +169,5 @@ it("voix Azure : clé rangée, essai, puis réglage enregistré", async () => {
   expect(test).toHaveBeenCalledWith("francecentral", "fr-FR-VivienneMultilingualNeural");
   expect((await screen.findByRole("alert")).textContent).toBe("clé Azure refusée");
   await userEvent.click(screen.getByRole("checkbox", { name: "Utiliser la voix Azure" }));
-  await userEvent.click(screen.getByRole("button", { name: "Enregistrer la voix naturelle" }));
   await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ voice_azure: true, voice_azure_region: "francecentral" })));
 });

@@ -6,6 +6,7 @@ pub mod tools;
 pub use filter::{should_record, truncate_text, ClipFlags, MAX_TEXT_BYTES};
 
 use crate::CoreError;
+use rusqlite::functions::FunctionFlags;
 use rusqlite::{params, Connection, Row};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -78,12 +79,33 @@ pub fn purge(c: &Connection, now: i64, retention_days: u16, max_items: u16) -> R
     Ok(old + over)
 }
 
+/// Minuscules sans accents (« Été » -> « ete ») ; couvre le latin courant, pas toute la table Unicode.
+fn fold(s: &str) -> String {
+    s.to_lowercase().chars().fold(String::with_capacity(s.len()), |mut o, ch| {
+        match ch {
+            'à' | 'á' | 'â' | 'ã' | 'ä' | 'å' => o.push('a'),
+            'ç' => o.push('c'),
+            'è' | 'é' | 'ê' | 'ë' => o.push('e'),
+            'ì' | 'í' | 'î' | 'ï' => o.push('i'),
+            'ñ' => o.push('n'),
+            'ò' | 'ó' | 'ô' | 'õ' | 'ö' => o.push('o'),
+            'ù' | 'ú' | 'û' | 'ü' => o.push('u'),
+            'ý' | 'ÿ' => o.push('y'),
+            'œ' => o.push_str("oe"),
+            'æ' => o.push_str("ae"),
+            _ => o.push(ch),
+        }
+        o
+    })
+}
+
 /// Requête vide : entrées récentes (textes et images) ; sinon textes contenant la requête. Épinglées d'abord.
 pub fn search(c: &Connection, query: &str, limit: usize) -> Result<Vec<ClipEntry>, CoreError> {
     let q = query.trim();
-    // shortcut: LIKE ne replie la casse que pour l'ASCII (É ≠ é) ; passer à une fonction SQL si gênant.
-    let pattern = format!("%{}%", q.replace('!', "!!").replace('%', "!%").replace('_', "!_"));
-    let filter = if q.is_empty() { "" } else { "WHERE kind = 'text' AND text LIKE ?2 ESCAPE '!'" };
+    // LIKE ne replie que la casse ASCII : on compare des textes repliés (casse + accents) via une fonction SQL.
+    c.create_scalar_function("fold", 1, FunctionFlags::SQLITE_UTF8 | FunctionFlags::SQLITE_DETERMINISTIC, |ctx| Ok(ctx.get::<Option<String>>(0)?.map(|t| fold(&t))))?; // images : texte NULL
+    let pattern = fold(q);
+    let filter = if q.is_empty() { "" } else { "WHERE kind = 'text' AND instr(fold(text), ?2) > 0" };
     let mut st = c.prepare(&format!(
         "SELECT id, kind, text, truncated, thumb, pinned, created_ms FROM clipboard {filter}
          ORDER BY pinned DESC, created_ms DESC, id DESC LIMIT ?1"
@@ -174,6 +196,13 @@ mod tests {
         assert!(search(&c, "_", 50).unwrap().is_empty());
         assert_eq!(search(&c, "", 50).unwrap().len(), 4);
         assert_eq!(search(&c, "", 50).unwrap()[0].kind, "image");
+    }
+
+    #[test]
+    fn recherche_insensible_aux_accents_et_a_la_casse_unicode() {
+        let c = db();
+        for (i, t) in ["été", "ÉTÉ", "Ete", "hiver"].iter().enumerate() { record_text(&c, t, i as i64).unwrap(); }
+        for q in ["ete", "Été", "ÉTÉ"] { assert_eq!(texts(&c, q).len(), 3, "{q}"); }
     }
 
     #[test]

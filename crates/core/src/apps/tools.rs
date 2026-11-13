@@ -94,7 +94,12 @@ impl Tool for AppsLaunch {
         if !self.inventory.contains_key(&key) {
             return Err(bad("application inconnue"));
         }
-        self.opener.open_path(std::path::Path::new(&key)); // le .lnk lance sa cible
+        if key.starts_with(super::APPS_FOLDER) {
+            // Application du Store : l'AppID vient de l'inventaire (vérifié ci-dessus), passé en argument séparé.
+            self.opener.spawn_detached("explorer.exe", std::slice::from_ref(&key), None).map_err(|e| ToolError::Failed(format!("lancement impossible : {e}")))?;
+        } else {
+            self.opener.open_path(std::path::Path::new(&key)); // le .lnk lance sa cible
+        }
         Ok(ToolResult { output: json!({"launched": true}), undo: None })
     }
 }

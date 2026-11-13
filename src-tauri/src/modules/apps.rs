@@ -31,6 +31,24 @@ fn start_menu_dirs() -> Vec<PathBuf> {
         .collect()
 }
 
+/// Applications du menu Démarrer vues par Windows (Store compris), en JSON ; vide si PowerShell échoue.
+fn start_apps_json() -> String {
+    use std::os::windows::process::CommandExt;
+    let out = std::process::Command::new("powershell.exe")
+        .args(["-NoProfile", "-NonInteractive", "-Command", "[Console]::OutputEncoding=[Text.Encoding]::UTF8; Get-StartApps | Select-Object Name,AppID | ConvertTo-Json -Compress"])
+        .creation_flags(0x0800_0000) // CREATE_NO_WINDOW
+        .stdin(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .output();
+    match out {
+        Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout).into_owned(),
+        _ => {
+            tracing::warn!("applications : Get-StartApps indisponible");
+            String::new()
+        }
+    }
+}
+
 /// Lance un balayage sur un fil dédié ; ignoré si un autre est en cours.
 pub fn refresh(app: &AppHandle) {
     if SCANNING.swap(true, Ordering::SeqCst) {
@@ -39,7 +57,7 @@ pub fn refresh(app: &AppHandle) {
     let app = app.clone();
     let spawned = std::thread::Builder::new().name("oniris-apps".into()).spawn(move || {
         let _guard = ScanGuard;
-        let items = apps::scan(&start_menu_dirs());
+        let items = apps::merge_start_apps(apps::scan(&start_menu_dirs()), &start_apps_json());
         tracing::info!("applications : {} entrées", items.len());
         app.state::<AppState>().apps.set(items, now_ms());
     });

@@ -15,6 +15,8 @@ const HALF_LIFE_MS: f64 = 7.0 * 86_400_000.0;
 const NAME_WEIGHT: u32 = 2;
 /// Bonus quand le nom commence par la requête (insensible à la casse).
 const PREFIX_BONUS: u32 = 100;
+/// Comme Windows : une application dont le nom correspond passe devant les fichiers et dossiers homonymes.
+const APP_BONUS: u32 = 150;
 /// Score d'une note trouvée par son corps seul (tous les mots présents) : sous un titre bien noté.
 const NOTE_BODY_SCORE: u32 = 50;
 /// Sous ce nombre d'entrées par fil, le parallélisme ne rapporte rien.
@@ -172,7 +174,8 @@ pub fn query_at(index: &FileIndex, sources: &[&[Item]], usage: &UsageMap, q: &st
                 continue;
             }
         }
-        let total = t.map_or(0, |t| t * NAME_WEIGHT + prefix(&it.title)) + s.unwrap_or(0) + extra_bonus(it.kind, &it.key);
+        let app = if it.kind == ItemKind::App && t.is_some() { APP_BONUS } else { 0 };
+        let total = t.map_or(0, |t| t * NAME_WEIGHT + prefix(&it.title)) + s.unwrap_or(0) + app + extra_bonus(it.kind, &it.key);
         push(&mut heap, limit, total, base + j);
     }
     let mut best: Vec<_> = heap.into_iter().map(|Reverse((s, Reverse(i)))| (s, i)).collect();
@@ -333,6 +336,16 @@ mod tests {
         let h = query_at(&i, &[&extra], &u, "  ", 10, NOW);
         assert_eq!(keys(&h), ["app1", "C:\\a\\recent", "C:\\a\\vieux"]);
         assert_eq!(query_at(&i, &[&extra], &u, "", 2, NOW).len(), 2);
+    }
+
+    #[test]
+    fn application_devant_les_fichiers_homonymes() {
+        let i = idx(&[(r"C:\Users\n\AppData\Discord", true), (r"C:\jeux\discord.exe", false)]);
+        let apps = vec![Item { kind: ItemKind::App, key: r"shell:AppsFolder\com.squirrel.Discord.Discord".into(), title: "Discord".into(), subtitle: "Application".into() }];
+        let h = query_at(&i, &[&apps], &UsageMap::new(), "disc", 10, NOW);
+        assert_eq!(h[0].item.kind, ItemKind::App);
+        let calc = vec![Item { kind: ItemKind::App, key: "c".into(), title: "Calculatrice".into(), subtitle: "Application".into() }];
+        assert_eq!(query_at(&FileIndex::new(), &[&calc], &UsageMap::new(), "calc", 5, NOW).len(), 1);
     }
 
     #[test]

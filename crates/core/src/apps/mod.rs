@@ -1,5 +1,5 @@
-//! Inventaire des applications du menu Démarrer (raccourcis `.lnk`).
-// shortcut: pas d'apps UWP, à ajouter via shell:AppsFolder si l'utilisateur le demande.
+//! Inventaire des applications du menu Démarrer : raccourcis `.lnk`, puis applications du Store et de Windows
+//! (`Get-StartApps`, comme la recherche de Windows), lancées par `shell:AppsFolder\<AppID>`.
 pub mod tools;
 
 use crate::search::{Item, ItemKind};
@@ -52,6 +52,40 @@ pub fn scan(dirs: &[PathBuf]) -> Vec<Item> {
                 .then(|| Item { kind: ItemKind::App, key: p.to_string_lossy().into_owned(), title, subtitle: "Application".into() })
         })
         .collect();
+    items.sort_by_key(|i| i.title.to_lowercase());
+    items
+}
+
+/// Préfixe des clés d'applications lancées par leur AppID.
+pub const APPS_FOLDER: &str = r"shell:AppsFolder\";
+
+/// Ajoute à `items` les applications de `Get-StartApps | ConvertTo-Json` absentes des raccourcis (même titre) ; triées par titre.
+pub fn merge_start_apps(mut items: Vec<Item>, json: &str) -> Vec<Item> {
+    #[derive(serde::Deserialize)]
+    #[serde(untagged)]
+    enum OneOrMany { Many(Vec<StartApp>), One(StartApp) }
+    #[derive(serde::Deserialize)]
+    struct StartApp {
+        #[serde(rename = "Name")]
+        name: String,
+        #[serde(rename = "AppID")]
+        app_id: String,
+    }
+    let apps = match serde_json::from_str::<OneOrMany>(json.trim_start_matches('\u{feff}')) {
+        Ok(OneOrMany::Many(v)) => v,
+        Ok(OneOrMany::One(a)) => vec![a],
+        Err(_) => return items,
+    };
+    let mut seen: HashSet<String> = items.iter().map(|i| i.title.to_lowercase()).collect();
+    for a in apps {
+        let (title, id) = (a.name.trim().to_string(), a.app_id.trim());
+        // L'AppID (parfois steam://…) passe en argument séparé à explorer.exe via shell:AppsFolder : ni guillemet ni contrôle.
+        let id_ok = !id.is_empty() && id.len() <= 512 && !id.contains('"') && !id.chars().any(char::is_control);
+        if title.is_empty() || !id_ok || excluded(&title) || !seen.insert(title.to_lowercase()) {
+            continue;
+        }
+        items.push(Item { kind: ItemKind::App, key: format!("{APPS_FOLDER}{id}"), title, subtitle: "Application".into() });
+    }
     items.sort_by_key(|i| i.title.to_lowercase());
     items
 }
@@ -118,6 +152,20 @@ mod tests {
         let items = scan(&[user.clone(), common]);
         assert_eq!(items.len(), 1);
         assert!(items[0].key.starts_with(&*user.to_string_lossy()));
+    }
+
+    #[test]
+    fn applications_du_store_ajoutees_sans_doublon() {
+        let lnk = vec![Item { kind: ItemKind::App, key: r"C:\m\Firefox.lnk".into(), title: "Firefox".into(), subtitle: "Application".into() }];
+        let json = r#"[{"Name":"Calculatrice","AppID":"Microsoft.WindowsCalculator_8wekyb3d8bbwe!App"},
+            {"Name":"firefox","AppID":"308046B0AF4A39CB"},{"Name":"Désinstaller X","AppID":"a!b"},
+            {"Name":"Piège","AppID":"x\" & calc"},{"Name":"","AppID":"vide"}]"#;
+        let items = merge_start_apps(lnk.clone(), json);
+        let t: Vec<_> = items.iter().map(|i| (i.title.as_str(), i.key.as_str())).collect();
+        assert_eq!(t, [("Calculatrice", r"shell:AppsFolder\Microsoft.WindowsCalculator_8wekyb3d8bbwe!App"), ("Firefox", r"C:\m\Firefox.lnk")]);
+        let one = merge_start_apps(vec![], r#"{"Name":"Photos","AppID":"Microsoft.Windows.Photos_8wekyb3d8bbwe!App"}"#);
+        assert_eq!(one.len(), 1);
+        assert_eq!(merge_start_apps(lnk.clone(), "pas du json"), lnk);
     }
 
     #[test]

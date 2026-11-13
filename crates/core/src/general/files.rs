@@ -75,11 +75,55 @@ pub fn lexical(p: &Path) -> Result<PathBuf, String> {
     Ok(PathBuf::from(s))
 }
 
+/// Une cible de lien (telle que `read_link` la rend) qui mène hors des lecteurs locaux : `\\srv\…`, `\\?\UNC\…`,
+/// `\\?\GLOBALROOT\…`, volume `\\?\Volume{…}` (que `resolve` refuserait de toute façon).
+fn remote_target(t: &Path) -> bool {
+    let s = t.to_string_lossy().replace('/', "\\");
+    match s.strip_prefix(r"\\?\").or_else(|| s.strip_prefix(r"\??\")) {
+        // Forme verbatim : seul un lecteur `X:\…` est local.
+        Some(r) => !(r.len() >= 3 && r.as_bytes()[0].is_ascii_alphabetic() && &r.as_bytes()[1..3] == b":\\"),
+        None => s.starts_with(r"\\"),
+    }
+}
+
+/// Refuse si un composant de `p` est (même par rebonds) une jonction ou un lien vers un chemin réseau. Chaque
+/// composant est lu par `symlink_metadata` (point d'analyse non suivi) avant d'être traversé ; un lien n'est que lu
+/// (`read_link`), jamais ouvert : la cible distante n'est pas contactée (pas d'envoi d'identifiants NTLM).
+fn no_remote_link(p: &Path, hops: u32) -> Result<(), String> {
+    let mut cur = PathBuf::new();
+    let mut comps = p.components();
+    while let Some(k) = comps.next() {
+        cur.push(k);
+        if !matches!(k, std::path::Component::Normal(_)) {
+            continue;
+        }
+        let m = match std::fs::symlink_metadata(&cur) {
+            Ok(m) => m,
+            Err(e) if e.kind() == ErrorKind::NotFound => return Ok(()), // la suite n'existe pas encore
+            Err(_) => return Err("chemin inaccessible".into()),
+        };
+        if !m.file_type().is_symlink() {
+            continue; // `is_symlink` couvre liens symboliques et jonctions
+        }
+        let t = std::fs::read_link(&cur).map_err(|_| "lien illisible")?;
+        if remote_target(&t) {
+            return Err("lien vers un chemin réseau refusé".into());
+        }
+        if hops >= 32 {
+            return Err("trop de liens imbriqués".into());
+        }
+        // Cible relative ou `\x` : par rapport au dossier du lien (`join` garde une cible absolue telle quelle).
+        let next = cur.parent().unwrap_or(Path::new("")).join(t).join(comps.as_path());
+        return no_remote_link(&next, hops + 1);
+    }
+    Ok(())
+}
+
 /// Canonique (jonctions, liens et noms 8.3 résolus) de l'ancêtre existant le plus profond, suivi du reste.
 /// Seule l'absence fait remonter ; toute autre erreur (accès refusé…) refuse. À n'appeler qu'après `lexical`.
-// shortcut: une jonction locale déjà existante vers un partage UNC est ouverte ici (identifiants NTLM envoyés) avant
-// le refus « réseau » ; aucun outil d'IRIS ne crée de lien. À durcir en lisant les points d'analyse à la main.
+/// Les liens vers le réseau sont refusés avant `canonicalize`, qui les suivrait.
 fn resolve(p: &Path) -> Result<PathBuf, String> {
+    no_remote_link(p, 0)?;
     let mut tail = vec![];
     let mut cur = p;
     loop {
@@ -140,6 +184,7 @@ pub fn writable(p: &Path, protected: &[PathBuf]) -> Result<PathBuf, String> {
     let (Some(parent), Some(name)) = (p.parent(), p.file_name()) else {
         return Err("racine d'un lecteur refusée".into());
     };
+    no_remote_link(&p, 0)?; // `p` lui-même peut être un lien : `canonicalize(&p)` ci-dessous le suivrait
     let c = resolve(parent)?.join(name);
     let prot = canonical_dirs(protected);
     let target = match std::fs::canonicalize(&p) {
@@ -199,14 +244,12 @@ impl Files {
         after.map_or(Ok(()), |t| self.recycler.restore(p, t).map_err(failed))
     }
     /// Déplace `from` vers `to` (cible existante à la Corbeille si `overwrite`) ; undo = mouvement inverse.
-    // shortcut: contrôle d'existence puis `rename` (qui remplace un fichier) : petite fenêtre de course ; à passer à
-    // `MoveFileExW` sans `MOVEFILE_REPLACE_EXISTING` si elle gêne.
     fn mv(&self, from: &Path, to: &Path, overwrite: bool) -> Result<ToolResult, ToolError> {
         if std::fs::symlink_metadata(from).is_err() {
             return Err(failed("source introuvable"));
         }
         let after = self.clear(to, overwrite)?;
-        if let Err(e) = std::fs::rename(from, to) {
+        if let Err(e) = move_new(from, to) {
             let _ = self.restore_opt(to, after); // on remet la cible écartée
             return Err(failed(e));
         }
@@ -218,9 +261,28 @@ impl Files {
         if std::fs::symlink_metadata(&to).is_ok() {
             return Err(failed("l'emplacement d'origine est occupé"));
         }
-        std::fs::rename(&from, &to).map_err(failed)?;
+        move_new(&from, &to).map_err(failed)?;
         self.restore_opt(&from, u.restore_after_ms)
     }
+}
+
+#[link(name = "kernel32")]
+extern "system" {
+    fn MoveFileExW(existing: *const u16, new: *const u16, flags: u32) -> i32;
+}
+
+/// Renommage qui échoue si `to` existe (`MoveFileExW` sans `MOVEFILE_REPLACE_EXISTING`) : le contrôle est fait
+/// par le système de fichiers dans la même opération, sans fenêtre de course (`std::fs::rename` remplacerait).
+fn move_new(from: &Path, to: &Path) -> std::io::Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+    // `\\?\` devant un `X:\…` déjà validé par `writable` (sans `.`, `..` ni `/`) : chemins longs, comme `std`.
+    let w = |p: &Path| std::ffi::OsStr::new(r"\\?\").encode_wide().chain(p.as_os_str().encode_wide()).chain([0]).collect::<Vec<u16>>();
+    let (f, t) = (w(from), w(to));
+    // SAFETY : deux chaînes UTF-16 terminées par 0, vivantes pendant l'appel.
+    if unsafe { MoveFileExW(f.as_ptr(), t.as_ptr(), 0) } == 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    Ok(())
 }
 
 #[derive(Deserialize)]
@@ -630,6 +692,49 @@ mod tests {
         assert!(writable(&link.join("sous").join("x"), &list).is_err());
         assert!(writable(&link, &list).is_err(), "la jonction elle-même pointe dans le protégé");
         assert!(writable(&t.path().join("ailleurs"), &list).is_ok());
+    }
+
+    #[test]
+    fn lien_vers_un_partage_reseau_refuse_sans_le_suivre() {
+        for t in [r"\\127.0.0.1\nope$", r"\\?\UNC\127.0.0.1\nope$", r"\\?\GLOBALROOT\Device\Mup\x", "//srv/x", r"\\?\Volume{0}\x"] {
+            assert!(remote_target(Path::new(t)), "{t}");
+        }
+        for t in [r"\\?\C:\x", r"C:\x", r"..\x", r"\x", "x"] {
+            assert!(!remote_target(Path::new(t)), "{t}");
+        }
+        // Lien symbolique de dossier vers un partage fictif : sa création ne contacte pas la cible (elle demande le
+        // mode développeur ou l'administrateur ; sans ce droit, seule la détection ci-dessus est vérifiée).
+        let t = tempfile::tempdir().unwrap();
+        let link = t.path().join("partage");
+        if std::os::windows::fs::symlink_dir(r"\\127.0.0.1\nope$", &link).is_err() {
+            return;
+        }
+        let err = writable(&link.join("x"), &[]).unwrap_err();
+        assert_eq!(err, "lien vers un chemin réseau refusé");
+        assert!(writable(&link, &[]).is_err(), "le lien lui-même");
+        assert!(copy_source(&s(&link.join("a.txt"))).is_err());
+        // Par rebond : une jonction locale vers un dossier qui contient le lien.
+        let j = t.path().join("rebond");
+        use std::os::windows::process::CommandExt;
+        let ok = std::process::Command::new("cmd").creation_flags(0x0800_0000).args(["/c", "mklink", "/J"]).arg(&j).arg(t.path()).stdout(std::process::Stdio::null()).status().unwrap().success();
+        assert!(ok);
+        assert_eq!(writable(&j.join("partage").join("x"), &[]).unwrap_err(), "lien vers un chemin réseau refusé");
+        assert!(writable(&j.join("autre"), &[]).is_ok());
+    }
+
+    #[test]
+    fn move_new_n_ecrase_jamais() {
+        let t = tempfile::tempdir().unwrap();
+        let (a, b, d) = (t.path().join("a"), t.path().join("b"), t.path().join("d"));
+        std::fs::write(&a, "a").unwrap();
+        std::fs::write(&b, "b").unwrap();
+        std::fs::create_dir(&d).unwrap();
+        assert!(move_new(&a, &b).is_err());
+        assert!(move_new(&d, &b).is_err(), "un dossier sur un fichier non plus");
+        assert_eq!((std::fs::read_to_string(&a).unwrap(), std::fs::read_to_string(&b).unwrap()), ("a".into(), "b".into()));
+        let c = t.path().join("c");
+        move_new(&a, &c).unwrap();
+        assert!(!a.exists() && std::fs::read_to_string(&c).unwrap() == "a");
     }
 
     /// Fausse Corbeille : un dossier temporaire au format `$I`/`$R` ; `restore` passe par `restore_from`.

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Folders } from "../settings/SettingsSheet";
-import { useSettings } from "../../lib/settings";
+import { hotkeyText, useSettings } from "../../lib/settings";
 import { useSave } from "../../lib/useSave";
 import { errorText } from "../accounts/api";
 import { onboardingIpc, type Onboarding } from "./api";
@@ -78,7 +78,7 @@ export function Welcome({ covered, onActive, onGo }: { covered?: boolean; onActi
           <div className="wl-actions"><button type="button" className="acc-btn primary" onClick={() => void next()}>Continuer</button></div>
         </>}
         {step === 5 && <>
-          <p>C'est prêt ! Appuie sur <kbd>Alt</kbd> + <kbd>Espace</kbd> pour ouvrir Oniris à tout moment.</p>
+          <p>C'est prêt ! Appuie sur <kbd>{hotkeyText(settings.hotkey)}</kbd> pour ouvrir Oniris à tout moment, maintiens-le pour parler à IRIS.</p>
           <div className="wl-actions"><button type="button" className="acc-btn primary" onClick={() => void finish()}>Terminer</button></div>
         </>}
         {err && <p className="err" role="alert">{err}</p>}

@@ -35,7 +35,7 @@ it("parcours complet : prénom, consentement, dossiers, suite, fin", async () =>
   await screen.findByText(/Pour aller plus loin/);
   await click("Continuer");
   await screen.findByText(/C'est prêt/);
-  expect(screen.getByText("Espace")).toBeTruthy();
+  expect(screen.getByText("Alt + Espace")).toBeTruthy(); // raccourci réglé, pas un texte figé
   await click("Terminer");
   expect(set).toHaveBeenLastCalledWith({ step: 5, done: true, autostart_consent: true });
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());

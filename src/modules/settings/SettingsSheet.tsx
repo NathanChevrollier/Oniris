@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { X } from "lucide-react";
-import { useSettings, type HotkeySetting, type Settings } from "../../lib/settings";
+import { hotkeyText, useSettings, type HotkeySetting, type Settings } from "../../lib/settings";
 import { useSave } from "../../lib/useSave";
 import { projectsIpc } from "../projects/api";
 import { HiddenProjects } from "../projects/HiddenProjects";
@@ -43,7 +43,6 @@ export function hotkeyFromEvent(e: { code: string; altKey: boolean; ctrlKey: boo
   const key = e.code === "Space" ? "Space" : /^Key[A-Z]$/.test(e.code) ? e.code.slice(3) : /^F([1-9]|1[0-2])$/.test(e.code) ? e.code : null;
   return key ? { alt: e.altKey, ctrl: e.ctrlKey, shift: e.shiftKey, win: e.metaKey, key } : null;
 }
-const hotkeyText = (h: HotkeySetting) => [h.ctrl && "Ctrl", h.alt && "Alt", h.shift && "Maj", h.win && "Win", h.key].filter(Boolean).join(" + ");
 
 export function Folders({ label, value, onChange }: { label: string; value: string[]; onChange: (v: string[]) => void }) {
   const add = async () => { const p = await projectsIpc.browse().catch(() => null); if (p && !value.includes(p)) onChange([...value, p]); };

@@ -11,6 +11,9 @@ export type HotkeySetting = {
   key: string;
 };
 
+/** « Alt + Z » : texte d'un raccourci, tel que l'utilisateur le tape. */
+export const hotkeyText = (h: HotkeySetting) => [h.ctrl && "Ctrl", h.alt && "Alt", h.shift && "Maj", h.win && "Win", h.key === "Space" ? "Espace" : h.key].filter(Boolean).join(" + ");
+
 /** Miroir de `oniris_core::Site` : `url` en http(s) (300), `name` de 1 à 40 caractères, `slow_ms` 300..=10000. */
 export type Site = { name: string; url: string; slow_ms: number };
 

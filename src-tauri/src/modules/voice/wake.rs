@@ -430,7 +430,7 @@ mod tests {
                         e2.lock().push(s.clone());
                     }
                     Input::Start => i2.lock().push("start".into()),
-                    Input::End | Input::Escape | Input::ExpectWake | Input::FalseWake | Input::ClearLearn => {}
+                    Input::End | Input::Tap | Input::Escape | Input::ExpectWake | Input::FalseWake | Input::ClearLearn => {}
                 }
                 p.handle(i).await;
             }

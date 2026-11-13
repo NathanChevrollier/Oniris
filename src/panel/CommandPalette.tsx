@@ -330,7 +330,7 @@ export function CommandPalette() {
           </div>
         </div>
       )}
-      <CommandBar inputRef={input} value={text} onClaude={() => askIris(text, true)} role="combobox" aria-expanded={hits.length > 0} aria-controls={hits.length ? "pal-list" : undefined}
+      <CommandBar inputRef={input} value={text} onIris={() => askIris(text, false)} onClaude={() => askIris(text, true)} role="combobox" aria-expanded={hits.length > 0} aria-controls={hits.length ? "pal-list" : undefined}
         aria-autocomplete="list" aria-activedescendant={hits.length ? `pal-opt-${sel}` : undefined}
         onChange={(e) => edit(e.target.value)} onKeyDown={onKeyDown}
         onMouseDown={() => { if (!text && !hits.length) search(""); }} />

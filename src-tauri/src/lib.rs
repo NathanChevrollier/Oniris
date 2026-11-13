@@ -125,6 +125,7 @@ pub fn run() {
             modules::voice::pipeline::voice_wake_state,
             modules::voice::pipeline::voice_expect_wake,
             modules::voice::pipeline::voice_false_wake,
+            modules::voice::pipeline::voice_tap,
             modules::voice::pipeline::voice_learn_count,
             modules::voice::pipeline::voice_learn_clear,
             modules::onboarding::onboarding_get,

@@ -13,6 +13,7 @@ use oniris_core::voice::assets::{self, AssetKind};
 use oniris_core::voice::speech::{speakable, TO_PANEL};
 use oniris_core::voice::stt::{self, SttError};
 use oniris_core::voice::audio;
+use oniris_core::voice::endpoint::{Endpoint, Endpointer};
 use parking_lot::Mutex;
 use serde::Serialize;
 use std::path::PathBuf;
@@ -109,6 +110,8 @@ fn toast_text(shown: &[Segment]) -> String {
 pub enum Input {
     Start,
     End,
+    /// Clic sur le micro ou la sphère : ouvre l'écoute (fin à la fin de la parole), ou la ferme si elle est ouverte.
+    Tap,
     Escape,
     /// Mot d'activation détecté : la réponse porte le numéro d'appui, ou `None` si le pipeline refuse.
     Wake(tokio::sync::oneshot::Sender<Option<u64>>),
@@ -172,6 +175,14 @@ impl Pipeline {
                     tokio::spawn(self.clone().process(rec));
                 }
             }
+            Input::Tap => {
+                let open = self.state.lock().rec.is_some();
+                if !open {
+                    self.start_with(true).await;
+                } else if let Some(rec) = self.end().await {
+                    tokio::spawn(self.clone().process(rec));
+                }
+            }
             Input::Escape => self.speaker.stop(),
             Input::Wake(reply) => {
                 let _ = reply.send(self.wake_begin());
@@ -218,6 +229,11 @@ impl Pipeline {
 
     /// Début d'appui : coupe IRIS si elle parle, puis ouvre le micro et préchauffe Whisper.
     pub async fn start(self: &Arc<Self>) {
+        self.start_with(false).await
+    }
+
+    /// `auto` (clic) : le micro se ferme seul à la fin de la parole, ou après 4 s sans rien entendre.
+    async fn start_with(self: &Arc<Self>, auto: bool) {
         let press = {
             let mut s = self.state.lock();
             s.press += 1;
@@ -239,8 +255,24 @@ impl Pipeline {
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
         let (mic, ui) = (self.mic.clone(), self.ui.clone());
+        let (weak, rt) = (Arc::downgrade(self), tokio::runtime::Handle::current());
+        let ep = Mutex::new(auto.then(Endpointer::new));
+        let on_level = move |l: f32| {
+            ui(Ui::Phase(VoicePhase::Listening, Some(l)));
+            let mut ep = ep.lock();
+            if ep.as_mut().is_some_and(|e| e.push_rms(l) != Endpoint::Continue) {
+                *ep = None; // une seule fermeture
+                if let Some(p) = weak.upgrade() {
+                    rt.spawn(async move {
+                        if let Some(rec) = p.take(Some(press)).await {
+                            p.process(rec).await;
+                        }
+                    });
+                }
+            }
+        };
         // `Mic::start` bloque le temps d'ouvrir le périphérique.
-        let opened = tokio::task::spawn_blocking(move || mic.start(&conf.device, Box::new(move |l| ui(Ui::Phase(VoicePhase::Listening, Some(l)))))).await;
+        let opened = tokio::task::spawn_blocking(move || mic.start(&conf.device, Box::new(on_level))).await;
         match opened {
             Ok(Ok(rec)) => {
                 self.state.lock().rec = Some(rec);
@@ -422,6 +454,10 @@ pub fn voice_expect_wake() { send(Input::ExpectWake) }
 #[tauri::command]
 pub fn voice_false_wake() { send(Input::FalseWake) }
 
+/// Micro de la barre de commande et sphère d'IRIS : clic pour parler.
+#[tauri::command]
+pub fn voice_tap() { send(Input::Tap) }
+
 /// (positifs, négatifs) gardés par le mode apprentissage.
 #[tauri::command(async)]
 pub async fn voice_learn_count() -> (u32, u32) {
@@ -590,16 +626,25 @@ pub(super) mod tests {
 
     pub(crate) type Log = Arc<Mutex<Vec<String>>>;
 
-    struct FakeMic { log: Log, secs: f32, fail: bool }
+    struct FakeMic { log: Log, secs: f32, fail: bool, levels: bool }
     struct FakeRec(Vec<f32>);
     impl Recording for FakeRec {
         fn stop(self: Box<Self>) -> Vec<f32> { self.0 }
     }
     impl Mic for FakeMic {
-        fn start(&self, _: &str, _: Box<dyn Fn(f32) + Send>) -> Result<Box<dyn Recording>, MicError> {
+        fn start(&self, _: &str, on_level: Box<dyn Fn(f32) + Send>) -> Result<Box<dyn Recording>, MicError> {
             self.log.lock().push("mic".into());
             if self.fail {
                 return Err(MicError::NoDevice);
+            }
+            if self.levels {
+                // Comme le flux audio : niveaux sur un autre thread, 0,6 s de silence, 0,6 s de parole, puis silence.
+                std::thread::spawn(move || {
+                    for i in 0..150 {
+                        on_level(if (20..40).contains(&i) { 0.2 } else { 0.002 });
+                        std::thread::sleep(Duration::from_millis(2));
+                    }
+                });
             }
             Ok(Box::new(FakeRec(vec![0.5; (16_000.0 * self.secs) as usize])))
         }
@@ -684,12 +729,12 @@ pub(super) mod tests {
         }
     }
 
-    struct Opts { conf: Conf, secs: f32, mic_fails: bool, heard: &'static str, long_speech: bool, turns: Option<Arc<dyn Turns>>, max_hold: Duration }
+    struct Opts { conf: Conf, secs: f32, mic_fails: bool, levels: bool, heard: &'static str, long_speech: bool, turns: Option<Arc<dyn Turns>>, max_hold: Duration }
 
     impl Default for Opts {
         fn default() -> Self {
             let conf = Conf { installed: true, tts: true, volume: 80, user_name: "Nathan".into(), ..Conf::default() };
-            Self { conf, secs: 1.0, mic_fails: false, heard: "Quel temps fait-il ?", long_speech: false, turns: None, max_hold: Duration::from_secs(30) }
+            Self { conf, secs: 1.0, mic_fails: false, levels: false, heard: "Quel temps fait-il ?", long_speech: false, turns: None, max_hold: Duration::from_secs(30) }
         }
     }
 
@@ -700,7 +745,7 @@ pub(super) mod tests {
         let speaking: &'static AtomicBool = Box::leak(Box::new(AtomicBool::new(false)));
         let turns = o.turns.unwrap_or_else(|| Arc::new(FakeTurns { log: log.clone(), reply: "Il fait beau.", pending: false }));
         let p = Arc::new(Pipeline {
-            mic: Arc::new(FakeMic { log: log.clone(), secs: o.secs, fail: o.mic_fails }),
+            mic: Arc::new(FakeMic { log: log.clone(), secs: o.secs, fail: o.mic_fails, levels: o.levels }),
             stt: Arc::new(FakeStt { log: log.clone(), text: o.heard.into() }),
             speaker: Arc::new(FakeSpeaker { log: log.clone(), long: o.long_speech, playing: Mutex::default() }),
             turns,
@@ -856,6 +901,34 @@ pub(super) mod tests {
         }
         assert!(f.has("stt") && f.has("speak"), "traité comme relâché : {:?}", f.log.lock());
         assert!(f.p.end().await.is_none(), "un PttEnd tardif ne trouve plus de micro ouvert");
+    }
+
+    #[tokio::test]
+    async fn clic_ferme_le_micro_a_la_fin_de_la_parole() {
+        let f = simple(Opts { levels: true, ..Opts::default() });
+        f.p.handle(Input::Tap).await;
+        for _ in 0..200 {
+            if f.has("speak") {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert!(f.has("stt") && f.has("speak"), "fin de parole non détectée : {:?}", f.log.lock());
+    }
+
+    #[tokio::test]
+    async fn second_clic_ferme_le_micro() {
+        let f = simple(Opts::default());
+        f.p.handle(Input::Tap).await;
+        assert!(f.p.state.lock().rec.is_some());
+        f.p.handle(Input::Tap).await;
+        for _ in 0..200 {
+            if f.has("speak") {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert!(f.has("stt") && f.has("speak"), "{:?}", f.log.lock());
     }
 
     #[tokio::test]

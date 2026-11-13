@@ -21,6 +21,8 @@ export const voiceIpc = {
   /** (positifs, négatifs) */
   learnCount: (): Promise<[number, number]> => invoke("voice_learn_count"),
   learnClear: (): Promise<number> => invoke("voice_learn_clear"),
+  /** Clic pour parler : ouvre l'écoute (fermée à la fin de la parole) ou la ferme. */
+  tap: (): Promise<void> => invoke("voice_tap"),
 };
 
 export const onVoice = (cb: (e: VoiceEvent) => void): Promise<UnlistenFn> => listen<VoiceEvent>("oniris://voice", (e) => cb(e.payload));

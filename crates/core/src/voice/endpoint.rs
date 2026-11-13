@@ -72,6 +72,15 @@ impl Endpointer {
         self.done
     }
 
+    /// Comme `push`, à partir d'un niveau RMS déjà calculé, compté comme une trame de 30 ms
+    /// (le niveau du micro arrive environ 30 fois par seconde).
+    pub fn push_rms(&mut self, rms: f32) -> Endpoint {
+        if self.done == Endpoint::Continue {
+            self.done = self.frame(rms);
+        }
+        self.done
+    }
+
     /// Instant (ms d'audio, à la trame près) du premier événement.
     pub fn event_ms(&self) -> Option<u64> {
         self.event_ms
@@ -157,6 +166,17 @@ mod tests {
             }
         }
         (Endpoint::Continue, sig.len() as f32 / 16000.0)
+    }
+
+    #[test]
+    fn niveaux_parole_puis_silence() {
+        let mut e = Endpointer::new();
+        let levels = std::iter::repeat_n(0.002, 20).chain(std::iter::repeat_n(0.2, 20)).chain(std::iter::repeat_n(0.002, 40));
+        let out: Vec<Endpoint> = levels.map(|l| e.push_rms(l)).collect();
+        assert_eq!(*out.last().unwrap(), Endpoint::End);
+        assert!(out[..40].iter().all(|x| *x == Endpoint::Continue));
+        let mut quiet = Endpointer::new();
+        assert_eq!((0..200).map(|_| quiet.push_rms(0.002)).last(), Some(Endpoint::NoSpeech));
     }
 
     #[test]

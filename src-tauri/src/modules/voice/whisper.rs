@@ -144,8 +144,7 @@ mod tests {
 
     /// Copie le faux serveur (compilé par `cargo test`) en `whisper/whisper-server.exe`, avec un faux modèle.
     fn setup() -> (tempfile::TempDir, std::path::PathBuf, std::path::PathBuf) {
-        let src = std::env::current_exe().unwrap().parent().unwrap().parent().unwrap().join("examples").join("fake_whisper.exe");
-        assert!(src.is_file(), "faux whisper absent : lancer `cargo test` (qui compile les exemples), pas `--lib` seul");
+        let src = crate::test_support::example_exe("fake_whisper");
         let d = tempfile::tempdir().unwrap();
         std::fs::create_dir(d.path().join("whisper")).unwrap();
         let exe = d.path().join("whisper").join("whisper-server.exe");

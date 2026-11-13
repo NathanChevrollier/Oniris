@@ -416,10 +416,7 @@ mod tests {
 
     /// `examples/fake_zenytt.rs`, compilé par `cargo test` à côté du binaire de test.
     fn fake() -> PathBuf {
-        let deps = std::env::current_exe().unwrap();
-        let p = deps.parent().unwrap().parent().unwrap().join("examples").join("fake_zenytt.exe");
-        assert!(p.is_file(), "faux serveur absent : lancer `cargo test` (qui compile les exemples), pas `--lib` seul");
-        p
+        crate::test_support::example_exe("fake_zenytt")
     }
 
     #[test]

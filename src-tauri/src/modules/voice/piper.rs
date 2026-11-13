@@ -224,8 +224,7 @@ mod tests {
     }
 
     fn setup_with(out: FakeOut) -> (tempfile::TempDir, PiperSpeaker, Arc<FakeOut>, PathBuf) {
-        let src = std::env::current_exe().unwrap().parent().unwrap().parent().unwrap().join("examples").join("fake_piper.exe");
-        assert!(src.is_file(), "faux piper absent : lancer `cargo test` (qui compile les exemples), pas `--lib` seul");
+        let src = crate::test_support::example_exe("fake_piper");
         let d = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(d.path().join("piper")).unwrap();
         std::fs::create_dir_all(d.path().join("models")).unwrap();

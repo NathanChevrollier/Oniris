@@ -506,9 +506,7 @@ mod tests {
 
     /// `examples/fake_claude.rs`, compilé par `cargo test` à côté du binaire de test.
     fn fake(dir: &Path, timeout_ms: u64) -> RealClaude {
-        let deps = std::env::current_exe().unwrap();
-        let p = deps.parent().unwrap().parent().unwrap().join("examples").join("fake_claude.exe");
-        assert!(p.is_file(), "faux claude absent : lancer `cargo test` (qui compile les exemples), pas `--lib` seul");
+        let p = crate::test_support::example_exe("fake_claude");
         RealClaude { timeout: Duration::from_millis(timeout_ms), ..RealClaude::new(p, dir.join("cwd"), String::new()) }
     }
 

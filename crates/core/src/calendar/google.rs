@@ -184,7 +184,11 @@ impl Client {
                     out.cancelled.push(id); // heure illisible : on retire l'ancienne ligne plutôt que de la garder périmée
                 }
             }
-            out.next_sync_token = l.next_sync_token;
+            // Un jeton issu d'une requête bornée (timeMin/timeMax) est inutilisable : Google exige les mêmes
+            // paramètres que la requête initiale et ces bornes sont incompatibles avec syncToken (410 à chaque relève).
+            if matches!(query, Query::Sync(_)) {
+                out.next_sync_token = l.next_sync_token;
+            }
             match l.next_page_token {
                 Some(p) => page = Some(p),
                 None => return Ok(out),

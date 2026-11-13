@@ -262,25 +262,34 @@ mod tests {
         assert_eq!(rows[1], ("moi@gmail.com".into(), "e2".into(), d(2026, 11, 14), d(2026, 11, 16), true), "journée entière : minuit local, fin exclue");
         assert_eq!(rows[2], ("moi@gmail.com".into(), "e3".into(), ny, ny + 3_600_000, false), "fuseau de l'événement");
         assert_eq!(rows[3].1, "t1");
-        assert_eq!((e.token("moi@gmail.com").as_deref(), e.token("team@group.calendar.google.com").as_deref()), (Some("S1"), Some("T1")));
+        // Régression : la fenêtre bornée renvoie un nextSyncToken (S1, T1) mais il est inutilisable, donc non gardé.
+        assert_eq!((e.token("moi@gmail.com"), e.token("team@group.calendar.google.com")), (None, None));
 
-        // Incrémentale : e1 déplacé, e3 annulé, rien pour l'équipe.
-        Mock::given(method("GET")).and(path(EVENTS)).and(query_param("syncToken", "S1")).respond_with(body(fixture!("events_primary_sync.json"))).up_to_n_times(1).expect(1).mount(&server).await;
-        Mock::given(method("GET")).and(path(TEAM)).and(query_param("syncToken", "T1")).respond_with(body(fixture!("events_empty_sync.json"))).up_to_n_times(1).expect(1).mount(&server).await;
-        assert!(e.run().await.unwrap());
-        let rows = e.rows();
-        assert_eq!(rows.iter().map(|r| r.1.as_str()).collect::<Vec<_>>(), ["e1", "e2", "t1"]);
-        assert_eq!(rows[0].2, paris(15));
-        assert_eq!(e.token("moi@gmail.com").as_deref(), Some("S2"));
-        assert_eq!(e.token("team@group.calendar.google.com").as_deref(), Some("T2"));
-
-        // 410 : resynchronisation complète de cet agenda, sans doublon ; l'ancien contenu disparaît.
-        Mock::given(method("GET")).and(path(EVENTS)).and(query_param("syncToken", "S2")).respond_with(ResponseTemplate::new(410)).up_to_n_times(1).expect(1).mount(&server).await;
+        // Relève suivante : toujours la fenêtre (jamais de syncToken, sinon 410 chez Google) ; l'ancien contenu disparaît.
         Mock::given(method("GET")).and(path(EVENTS)).and(query_param_is_missing("syncToken")).respond_with(body(fixture!("events_primary_resync.json"))).up_to_n_times(1).expect(1).mount(&server).await;
-        Mock::given(method("GET")).and(path(TEAM)).and(query_param("syncToken", "T2")).respond_with(body(fixture!("events_empty_sync.json"))).mount(&server).await;
+        Mock::given(method("GET")).and(path(TEAM)).and(query_param_is_missing("syncToken")).respond_with(body(fixture!("events_empty_sync.json"))).mount(&server).await;
         assert!(e.run().await.unwrap());
-        assert_eq!(e.rows().iter().map(|r| r.1.as_str()).collect::<Vec<_>>(), ["n1", "t1"]);
-        assert_eq!(e.token("moi@gmail.com").as_deref(), Some("S3"));
+        assert_eq!(e.rows().iter().map(|r| r.1.as_str()).collect::<Vec<_>>(), ["n1"]);
+        assert_eq!(e.token("moi@gmail.com"), None);
+        assert!(server.received_requests().await.unwrap().iter().all(|r| !r.url.query().unwrap_or("").contains("syncToken")));
+    }
+
+    #[tokio::test]
+    async fn jeton_herite_incremental_puis_410_resynchronise_sans_le_garder() {
+        let server = MockServer::start().await;
+        calendars(&server).await;
+        Mock::given(method("GET")).and(path(EVENTS)).and(query_param("syncToken", "S1")).respond_with(ResponseTemplate::new(410)).up_to_n_times(1).expect(1).mount(&server).await;
+        Mock::given(method("GET")).and(path(EVENTS)).and(query_param_is_missing("syncToken")).respond_with(body(fixture!("events_primary_resync.json"))).up_to_n_times(1).expect(1).mount(&server).await;
+        Mock::given(method("GET")).and(path(TEAM)).respond_with(body(fixture!("events_empty_sync.json"))).mount(&server).await;
+        let e = env(&server, true);
+        {
+            let c = e.db.lock();
+            kv::set(&c, &sync_key(e.id, "moi@gmail.com"), "S1", NOW).unwrap(); // jeton laissé par une ancienne version
+            kv::set(&c, &full_key(e.id, "moi@gmail.com"), "1", NOW).unwrap();
+        }
+        assert!(e.run().await.unwrap());
+        assert_eq!(e.rows().iter().map(|r| r.1.as_str()).collect::<Vec<_>>(), ["n1"]);
+        assert_eq!(e.token("moi@gmail.com"), None, "le jeton périmé est supprimé");
     }
 
     #[tokio::test]
@@ -330,25 +339,7 @@ mod tests {
         }
         assert!(e.run().await.unwrap());
         assert_eq!(e.rows().iter().map(|r| r.1.as_str()).collect::<Vec<_>>(), ["n1"]);
-        assert_eq!(e.token("moi@gmail.com").as_deref(), Some("S3"));
-    }
-
-    #[tokio::test]
-    async fn la_fenetre_est_relue_apres_24_h_malgre_les_releves_incrementales() {
-        let server = MockServer::start().await;
-        Mock::given(method("GET")).and(path("/calendar/v3/users/me/calendarList")).respond_with(body(r#"{"items":[{"id":"moi@gmail.com","selected":true}]}"#)).mount(&server).await;
-        // Pas de syncToken : lecture complète ; avec S1 : incrémentale. Les deux renvoient le même jeton S1.
-        Mock::given(method("GET")).and(path(EVENTS)).and(query_param_is_missing("syncToken")).respond_with(body(fixture!("events_primary_p2.json"))).mount(&server).await;
-        Mock::given(method("GET")).and(path(EVENTS)).and(query_param("syncToken", "S1")).respond_with(body(fixture!("events_primary_p2.json"))).mount(&server).await;
-        let e = env(&server, true);
-        let h = 9 * 3_600_000;
-        let mut seen = vec![];
-        for i in 0..4 {
-            e.run_at(NOW + i * h).await.unwrap(); // 0, 9, 18, 27 h : la fenêtre est relue à 27 h seulement
-            let reqs = server.received_requests().await.unwrap();
-            seen.push(reqs.iter().filter(|r| r.url.path() == EVENTS && r.url.query().unwrap_or("").contains("timeMin")).count());
-        }
-        assert_eq!(seen, [1, 1, 1, 2], "une lecture complète au départ, puis une seule quand 24 h sont dépassées");
+        assert_eq!(e.token("moi@gmail.com"), None);
     }
 
     #[tokio::test]

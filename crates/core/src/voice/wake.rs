@@ -128,7 +128,7 @@ impl WakeDetector {
     }
 
     fn step(&mut self) -> f32 {
-        self.raw.extend(self.pending.drain(..));
+        self.raw.append(&mut self.pending);
         self.raw.drain(..self.raw.len() - MEL_INPUT);
         let spec = run(&self.mel_model, &[1, MEL_INPUT], &self.raw);
         self.mel.extend(spec.iter().map(|v| v / 10.0 + 2.0));
@@ -164,7 +164,7 @@ mod tests {
         let from = fx["compare_from"].as_u64().unwrap() as usize;
         let wav = std::fs::read(dir.join("sequence.wav")).unwrap();
         assert_eq!(&wav[36..40], b"data", "en-tête WAV canonique attendu");
-        let samples: Vec<f32> = wav[44..].chunks_exact(2).map(|b| i16::from_le_bytes([b[0], b[1]]) as f32 / 32768.0).collect();
+        let samples: Vec<f32> = wav[44..].as_chunks::<2>().0.iter().map(|b| i16::from_le_bytes(*b) as f32 / 32768.0).collect();
 
         let mut d = detector();
         let rust: Vec<f32> = samples.chunks(1000).flat_map(|c| d.push(c)).collect();

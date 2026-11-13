@@ -39,11 +39,14 @@ impl From<cpal::Error> for MicError {
     }
 }
 
+/// Reçoit l'audio 16 kHz mono du micro, par blocs.
+pub type Sink = Box<dyn FnMut(&[f32]) + Send>;
+
 pub trait Mic: Send + Sync {
     /// Ouvre le micro `device` (vide ou introuvable : celui par défaut) ; `on_level` reçoit le niveau RMS, 30 fois/s au plus.
     fn start(&self, device: &str, on_level: Box<dyn Fn(f32) + Send>) -> Result<Box<dyn Recording>, MicError>;
     /// Flux continu : `sink` reçoit du mono 16 kHz, par morceaux quelconques, sur le thread audio (ne pas bloquer).
-    fn listen(&self, device: &str, sink: Box<dyn FnMut(&[f32]) + Send>) -> Result<Box<dyn Listening>, MicError>;
+    fn listen(&self, device: &str, sink: Sink) -> Result<Box<dyn Listening>, MicError>;
 }
 
 pub trait Listening: Send {
@@ -135,7 +138,7 @@ fn log_stream_error(k: cpal::ErrorKind) {
     }
 }
 
-fn build_listen<T>(device: &cpal::Device, config: cpal::StreamConfig, mut rs: Resampler16k, mut sink: Box<dyn FnMut(&[f32]) + Send>, failed: Arc<AtomicBool>) -> Result<cpal::Stream, MicError>
+fn build_listen<T>(device: &cpal::Device, config: cpal::StreamConfig, mut rs: Resampler16k, mut sink: Sink, failed: Arc<AtomicBool>) -> Result<cpal::Stream, MicError>
 where
     T: SizedSample,
     f32: FromSample<T>,
@@ -161,7 +164,7 @@ where
     Ok(stream)
 }
 
-fn open_listen(device: &str, sink: Box<dyn FnMut(&[f32]) + Send>, failed: Arc<AtomicBool>) -> Result<cpal::Stream, MicError> {
+fn open_listen(device: &str, sink: Sink, failed: Arc<AtomicBool>) -> Result<cpal::Stream, MicError> {
     let host = cpal::default_host();
     let dev = find_device(&host, device)?;
     let supported = dev.default_input_config()?;
@@ -238,7 +241,7 @@ impl Mic for CpalMic {
         }
     }
 
-    fn listen(&self, device: &str, sink: Box<dyn FnMut(&[f32]) + Send>) -> Result<Box<dyn Listening>, MicError> {
+    fn listen(&self, device: &str, sink: Sink) -> Result<Box<dyn Listening>, MicError> {
         let device = device.to_string();
         let failed = Arc::new(AtomicBool::new(false));
         let f = failed.clone();
@@ -288,7 +291,7 @@ mod tests {
     struct NoMic;
     impl Mic for NoMic {
         fn start(&self, _: &str, _: Box<dyn Fn(f32) + Send>) -> Result<Box<dyn Recording>, MicError> { Err(MicError::NoDevice) }
-        fn listen(&self, _: &str, _: Box<dyn FnMut(&[f32]) + Send>) -> Result<Box<dyn Listening>, MicError> { Err(MicError::NoDevice) }
+        fn listen(&self, _: &str, _: Sink) -> Result<Box<dyn Listening>, MicError> { Err(MicError::NoDevice) }
     }
 
     #[test]

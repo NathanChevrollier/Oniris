@@ -135,7 +135,7 @@ async fn get(start: &Url, content_type: &str, budget: &AtomicU32) -> Option<(Url
             }
             _ => return None,
         }
-        if budget.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1)).is_err() {
+        if budget.try_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1)).is_err() {
             return None;
         }
         tokio::time::sleep(Duration::from_secs(1)).await;

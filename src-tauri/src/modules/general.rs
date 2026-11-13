@@ -15,8 +15,10 @@ use tokio::process::Command;
 const PRELUDE: &str = "[Console]::OutputEncoding=[Text.Encoding]::UTF8;$ProgressPreference='SilentlyContinue';";
 
 /// Enveloppe : sortie texte, puis code de sortie natif (`$LASTEXITCODE`) ou 1 si la dernière commande a échoué.
+/// Les erreurs sont converties en texte ici : la mise en forme par défaut de PowerShell 5.1 lit la taille de la
+/// console et ne rend rien sans console (machines de CI, processus sans fenêtre).
 const WRAP_HEAD: &str = "$global:LASTEXITCODE=0;& { ";
-const WRAP_TAIL: &str = "$global:oniris_ok = $?\n} 2>&1 | Out-String -Width 4096; if ($global:LASTEXITCODE) { exit $global:LASTEXITCODE }; if (-not $global:oniris_ok) { exit 1 }";
+const WRAP_TAIL: &str = "$global:oniris_ok = $?\n} 2>&1 | ForEach-Object { if ($_ -is [Management.Automation.ErrorRecord]) { $_.ToString() } else { $_ } } | Out-String -Width 4096; if ($global:LASTEXITCODE) { exit $global:LASTEXITCODE }; if (-not $global:oniris_ok) { exit 1 }";
 
 pub struct RealShell;
 
@@ -259,10 +261,6 @@ mod tests {
 
     #[tokio::test]
     async fn erreur_en_texte_brut() {
-        // shortcut: le PowerShell des machines GitHub ne rend pas ce flux d'erreur ; test vérifié sur le PC seulement.
-        if std::env::var_os("GITHUB_ACTIONS").is_some() {
-            return;
-        }
         let o = run(r"Get-Item C:\nope_zz", 30).await;
         assert!(!o.output.contains("CLIXML") && o.output.contains("nope_zz"), "{}", o.output);
     }

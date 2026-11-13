@@ -1,0 +1,5 @@
+# Même compilateur en local et en CI : un « stable » flottant a déjà changé la disposition de target/.
+[toolchain]
+channel = "1.100.0"
+profile = "minimal"
+components = ["clippy", "rustfmt"]

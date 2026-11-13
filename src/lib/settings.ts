@@ -84,6 +84,7 @@ export type Settings = {
   voice_input_device: string;
   voice_wake: boolean;
   voice_wake_learning: boolean;
+  voice_follow_up: boolean;
 };
 
 const RESUME_NORMAL = "Reprends là où tu en étais sur ce projet. Appuie-toi sur le plan de développement et l'historique git. Commence par me dire où on en est.";
@@ -132,6 +133,7 @@ export const DEFAULT_SETTINGS: Settings = {
   voice_input_device: "",
   voice_wake: false,
   voice_wake_learning: false,
+  voice_follow_up: true,
 };
 
 /** Paramètres courants : chargés au montage, puis suivis via `oniris://settings`. */

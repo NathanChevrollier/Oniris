@@ -45,13 +45,35 @@ fn strip_markup(s: &str) -> String {
             if w.starts_with("http://") || w.starts_with("https://") {
                 continue;
             }
-            let w: String = w.chars().filter(|c| !matches!(c, '*' | '_' | '`' | '~' | '#')).collect();
+            let w = match w {
+                "→" | "->" | "=>" | "–" | "—" | "-" => ",".to_string(),
+                "&" => "et".to_string(),
+                _ => {
+                    let w: String = w.chars().filter(|c| !matches!(c, '*' | '_' | '`' | '~' | '#' | '•' | '|') && !pictograph(*c)).collect();
+                    clock(&w).unwrap_or(w)
+                }
+            };
             if !w.is_empty() {
                 words.push(w);
             }
         }
     }
-    words.join(" ")
+    words.join(" ").replace(" ,", ",").trim_start_matches([',', ' ']).to_string()
+}
+
+/// Émojis, pictogrammes et leurs liants : Piper les lirait (« visage souriant »).
+fn pictograph(c: char) -> bool {
+    matches!(c as u32,
+        0x1F000..=0x1FAFF | 0x2600..=0x27BF | 0x2B00..=0x2BFF | 0x2300..=0x23FF | 0x2190..=0x21FF
+        | 0xFE00..=0xFE0F | 0x200D | 0x20E3 | 0xE0000..=0xE007F)
+}
+
+/// « 14:30 » se dit « 14 h 30 » (sinon : « quatorze deux-points trente »).
+fn clock(w: &str) -> Option<String> {
+    let (core, tail) = w.split_at(w.trim_end_matches(|c: char| !c.is_ascii_digit()).len());
+    let (h, m) = core.split_once(':')?;
+    let ok = (1..=2).contains(&h.len()) && m.len() == 2 && h.chars().chain(m.chars()).all(|c| c.is_ascii_digit());
+    ok.then(|| if m == "00" { format!("{h} h{tail}") } else { format!("{h} h {m}{tail}") })
 }
 
 /// `[libellé](url)` devient `libellé`.
@@ -107,6 +129,16 @@ fn push(out: &mut Vec<String>, part: &[char]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn emojis_symboles_et_heures_pour_l_oral() {
+        let say = |t: &str| strip_markup(t);
+        assert_eq!(say("Bonjour 👋😊 ! Tout va bien ✅"), "Bonjour ! Tout va bien");
+        assert_eq!(say("❤️ Rendez-vous à 14:30, puis 9:00."), "Rendez-vous à 14 h 30, puis 9 h.");
+        assert_eq!(say("- Lait
+- Pain → boulangerie"), "Lait, Pain, boulangerie");
+        assert_eq!(say("Tom & Léa 👨‍👩‍👧"), "Tom et Léa");
+    }
 
     fn t(s: &str) -> Vec<Segment> {
         vec![Segment::Text { text: s.into() }]

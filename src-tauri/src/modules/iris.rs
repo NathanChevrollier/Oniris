@@ -251,7 +251,7 @@ fn start_turn(app: AppHandle, text: String, force_claude: bool, local_only: bool
         old.abort();
     }
     let task = tauri::async_runtime::spawn(async move {
-        let r = run_turn(&app, turn, text, force_claude, local_only).await;
+        let r = run_turn(&app, turn, text, force_claude, local_only, voice).await;
         if let Err(e) = &r {
             tracing::warn!("oniris: tour d'IRIS interrompu ({e})");
             let kind = IrisEventKind::Error { kind: "failed", message: "IRIS n'a pas pu traiter ce message.".into(), offer_local: false, offer_claude: false };
@@ -306,7 +306,7 @@ impl<F: FnOnce()> Drop for OnAbort<F> {
 }
 
 /// Cerveaux construits d'après les réglages du moment ; exécuteur sur le coffre de la conversation.
-async fn run_turn(app: &AppHandle, turn: u32, text: String, force_claude: bool, local_only: bool) -> Result<TurnResult, String> {
+async fn run_turn(app: &AppHandle, turn: u32, text: String, force_claude: bool, local_only: bool, voice: bool) -> Result<TurnResult, String> {
     ensure_ollama().await;
     let st = app.state::<AppState>();
     let s = st.settings.read().clone();
@@ -334,8 +334,9 @@ async fn run_turn(app: &AppHandle, turn: u32, text: String, force_claude: bool, 
         })),
     });
     let at = chrono::Local::now();
-    let system = prompt::system(&s.iris_personality, &s.user_name, at, &memories, Brain::Local);
-    let claude_system = prompt::system(&s.iris_personality, &s.user_name, at, &memories, Brain::Claude);
+    let oral = if voice { prompt::ORAL } else { "" };
+    let system = prompt::system(&s.iris_personality, &s.user_name, at, &memories, Brain::Local) + oral;
+    let claude_system = prompt::system(&s.iris_personality, &s.user_name, at, &memories, Brain::Claude) + oral;
     let agent = Agent { local, claude, model: s.iris_local_model.clone(), keep_alive_min: s.iris_unload_minutes, claude_auto: s.iris_claude_auto };
     let emitter = app.clone();
     let emit = move |kind: IrisEventKind| {

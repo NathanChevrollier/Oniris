@@ -21,6 +21,11 @@ const JOURS: [&str; 7] = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "sa
 const MOIS: [&str; 12] = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
 
 /// `brain` n'a pas encore d'effet : les règles sont les mêmes pour les deux cerveaux.
+/// Ajouté au système quand la réponse sera lue à voix haute.
+pub const ORAL: &str = "
+
+Cette réponse sera lue à voix haute : parle comme à l'oral, en phrases courtes et naturelles. Jamais d'émojis, de listes, de titres, de Markdown ni de symboles. Écris les heures et les nombres comme on les dit (« quatorze heures trente », « vingt pour cent »).";
+
 pub fn system(personality: &str, user_name: &str, now: DateTime<Local>, memories: &[String], _brain: Brain) -> String {
     let mut s = personality.replace("{prénom}", user_name);
     s.push_str(&format!(

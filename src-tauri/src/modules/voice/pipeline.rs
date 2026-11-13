@@ -41,7 +41,7 @@ pub enum Ui { Phase(VoicePhase, Option<f32>), WakeListening, Toast(String), Open
 
 /// Réglages et état relus à chaque appui.
 #[derive(Debug, Clone, Default)]
-pub struct Conf { pub paused: bool, pub installed: bool, pub fullscreen: bool, pub device: String, pub tts: bool, pub volume: u8, pub user_name: String, pub wake: bool, pub learning: bool }
+pub struct Conf { pub paused: bool, pub installed: bool, pub fullscreen: bool, pub device: String, pub tts: bool, pub volume: u8, pub user_name: String, pub wake: bool, pub learning: bool, pub follow_up: bool }
 
 #[async_trait]
 pub trait Stt: Send + Sync {
@@ -265,7 +265,7 @@ impl Pipeline {
                 if let Some(p) = weak.upgrade() {
                     rt.spawn(async move {
                         if let Some(rec) = p.take(Some(press)).await {
-                            p.process(rec).await;
+                            Pipeline::process_boxed(p, rec).await;
                         }
                     });
                 }
@@ -283,7 +283,7 @@ impl Pipeline {
                     tokio::time::sleep(p.max_hold).await;
                     if let Some(rec) = p.take(Some(press)).await {
                         tracing::warn!("voix : maintien trop long, micro fermé");
-                        p.process(rec).await;
+                        Pipeline::process_boxed(p, rec).await;
                     }
                 });
             }
@@ -337,6 +337,11 @@ impl Pipeline {
     }
 
     /// Transcription, tour d'IRIS, puis toast et voix (ou panneau).
+    /// Type effacé : `process` rouvre l'écoute (`start_with`), qui relance `process` à la fin de la parole.
+    fn process_boxed(self: Arc<Self>, rec: Recorded) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
+        Box::pin(self.process(rec))
+    }
+
     pub async fn process(self: Arc<Self>, (press, samples): Recorded) {
         let _turn = TurnGuard(self.clone(), press);
         let t0 = Instant::now();
@@ -392,6 +397,11 @@ impl Pipeline {
                 self.phase(press, VoicePhase::Speaking);
                 h.done().await;
                 self.phase(press, VoicePhase::Idle);
+                // Conversation : le micro se rouvre pour une suite ou une réponse ; un silence le referme.
+                if conf.follow_up && self.current(press) && !conf.fullscreen {
+                    drop(_turn);
+                    self.start_with(true).await;
+                }
             }
             Err(e) => self.toast(format!("IRIS ne peut pas parler : {e}.")),
         }
@@ -585,6 +595,7 @@ pub fn start(app: &AppHandle) {
             user_name: s.user_name,
             wake: s.voice_wake,
             learning: s.voice_wake_learning,
+            follow_up: s.voice_follow_up,
         }
     });
     let h = app.clone();
@@ -841,6 +852,15 @@ pub(super) mod tests {
         assert_eq!(phases, [VoicePhase::Listening, VoicePhase::Transcribing, VoicePhase::Idle, VoicePhase::Speaking, VoicePhase::Idle]);
         assert!(f.ui.lock().iter().any(|u| matches!(u, Ui::Timing(_))));
         assert!(!f.ui.lock().contains(&Ui::OpenPanel));
+    }
+
+    #[tokio::test]
+    async fn conversation_continue_rouvre_le_micro_apres_la_voix() {
+        let f = simple(Opts { conf: Conf { follow_up: true, ..Opts::default().conf }, ..Opts::default() });
+        f.press().await;
+        assert_eq!(f.log.lock().iter().filter(|l| *l == "mic").count(), 2, "{:?}", f.log.lock());
+        assert!(f.p.state.lock().rec.is_some());
+        assert_eq!(f.last_phase(), Some(VoicePhase::Listening));
     }
 
     #[tokio::test]

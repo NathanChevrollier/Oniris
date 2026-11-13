@@ -166,6 +166,8 @@ pub struct Settings {
     pub voice_wake: bool,
     /// Mode apprentissage du mot : extraits étiquetés écrits sur le disque, désactivé par défaut.
     pub voice_wake_learning: bool,
+    /// Conversation continue : après une réponse dite, le micro se rouvre pour une suite.
+    pub voice_follow_up: bool,
 }
 
 /// Commandes en lecture seule (aucun de leurs arguments sûrs n'écrit).
@@ -216,6 +218,7 @@ impl Default for Settings {
             voice_input_device: String::new(),
             voice_wake: false,
             voice_wake_learning: false,
+            voice_follow_up: true,
         }
     }
 }

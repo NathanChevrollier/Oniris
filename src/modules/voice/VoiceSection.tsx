@@ -38,6 +38,7 @@ export function VoiceSection() {
   const [device, setDevice] = useState(s.voice_input_device);
   const [wake, setWake] = useState(s.voice_wake);
   const [learning, setLearning] = useState(s.voice_wake_learning);
+  const [followUp, setFollowUp] = useState(s.voice_follow_up);
   const [wakeState, setWakeState] = useState("");
   const [devices, setDevices] = useState<string[]>([]);
   const [status, setStatus] = useState<VoiceStatus | null>(null);
@@ -47,8 +48,8 @@ export function VoiceSection() {
   const reloadTimer = useRef<number | undefined>(undefined);
   useEffect(() => () => window.clearTimeout(reloadTimer.current), []);
   const [save, note] = useSave();
-  useEffect(() => { setStt(s.voice_stt_model); setTts(s.voice_tts); setVolume(s.voice_volume); setMinutes(String(s.voice_unload_minutes)); setDevice(s.voice_input_device); setWake(s.voice_wake); setLearning(s.voice_wake_learning); },
-    [s.voice_stt_model, s.voice_tts, s.voice_volume, s.voice_unload_minutes, s.voice_input_device, s.voice_wake, s.voice_wake_learning]);
+  useEffect(() => { setStt(s.voice_stt_model); setTts(s.voice_tts); setVolume(s.voice_volume); setMinutes(String(s.voice_unload_minutes)); setDevice(s.voice_input_device); setWake(s.voice_wake); setLearning(s.voice_wake_learning); setFollowUp(s.voice_follow_up); },
+    [s.voice_stt_model, s.voice_tts, s.voice_volume, s.voice_unload_minutes, s.voice_input_device, s.voice_wake, s.voice_wake_learning, s.voice_follow_up]);
   const reload = useCallback(() => { voiceIpc.status().then(setStatus, () => {}); voiceIpc.wakeState().then(setWakeState, () => {}); }, []);
   useEffect(() => { reload(); voiceIpc.devices().then(setDevices, () => {}); }, [reload]);
   useEffect(() => {
@@ -64,7 +65,7 @@ export function VoiceSection() {
       .finally(() => { setInstalling(false); setFile(null); reload(); });
   };
   const pct = file && file.total > 0 ? Math.round((file.done / file.total) * 100) : null;
-  const patch: Partial<Settings> = { voice_stt_model: stt, voice_tts: tts, voice_volume: volume, voice_unload_minutes: Number(minutes), voice_input_device: device, voice_wake: wake, voice_wake_learning: learning };
+  const patch: Partial<Settings> = { voice_stt_model: stt, voice_tts: tts, voice_volume: volume, voice_unload_minutes: Number(minutes), voice_input_device: device, voice_wake: wake, voice_wake_learning: learning, voice_follow_up: followUp };
   return (
     <>
       <h3>Voix</h3>
@@ -96,6 +97,7 @@ export function VoiceSection() {
         {wakeState && <span className="acc-state">{wakeState}</span>}
         <p className="voice-note">Oniris écoute en continu et réagit quand tu dis « Dis Iris » ou « Hé Iris ». Avant ça, rien n'est transcrit, enregistré ni envoyé. Windows affiche l'icône du micro tant que l'écoute est active.</p>
         <label className="voice-check"><input type="checkbox" checked={learning} disabled={!wake} onChange={(e) => setLearning(e.target.checked)} />Mode apprentissage</label>
+        <label className="voice-check"><input type="checkbox" checked={followUp} onChange={(e) => setFollowUp(e.target.checked)} />Conversation continue : après sa réponse, IRIS t'écoute encore quelques secondes</label>
         <p className="voice-note">Garde sur ton PC de courts extraits autour des réveils pour réentraîner « Dis Iris ». Rien n'est envoyé. Les boutons de la pilule permettent de corriger IRIS.</p>
         <p className="voice-note">Désactiver le mode n'efface rien : les extraits restent jusqu'à ce que tu les supprimes.</p>
         <LearnClips />

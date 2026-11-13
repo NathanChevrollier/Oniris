@@ -115,10 +115,24 @@ where
                 on_level(audio::rms(&tmp));
             }
         },
-        |e| tracing::warn!("erreur du flux micro : {}", e.kind()),
+        |e| log_stream_error(e.kind()),
         None,
     )?;
     Ok(stream)
+}
+
+/// Le flux continue après un débordement de tampon (fréquent avec un casque sans fil), un changement de route
+/// audio ou un refus de priorité temps réel : seules les autres erreurs ferment le micro.
+fn fatal(k: cpal::ErrorKind) -> bool {
+    !matches!(k, cpal::ErrorKind::Xrun | cpal::ErrorKind::DeviceChanged | cpal::ErrorKind::RealtimeDenied)
+}
+
+fn log_stream_error(k: cpal::ErrorKind) {
+    if fatal(k) {
+        tracing::warn!("erreur du flux micro : {k}");
+    } else {
+        tracing::debug!("flux micro : {k}");
+    }
 }
 
 fn build_listen<T>(device: &cpal::Device, config: cpal::StreamConfig, mut rs: Resampler16k, mut sink: Box<dyn FnMut(&[f32]) + Send>, failed: Arc<AtomicBool>) -> Result<cpal::Stream, MicError>
@@ -137,8 +151,10 @@ where
             sink(&out);
         },
         move |e| {
-            failed.store(true, Ordering::Relaxed);
-            tracing::warn!("erreur du flux micro : {}", e.kind());
+            if fatal(e.kind()) {
+                failed.store(true, Ordering::Relaxed);
+            }
+            log_stream_error(e.kind());
         },
         None,
     )?;
@@ -262,6 +278,12 @@ pub async fn voice_devices() -> Result<Vec<String>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn debordement_de_tampon_non_fatal() {
+        assert!(!fatal(cpal::ErrorKind::Xrun) && !fatal(cpal::ErrorKind::DeviceChanged));
+        assert!(fatal(cpal::ErrorKind::DeviceNotAvailable) && fatal(cpal::ErrorKind::StreamInvalidated));
+    }
 
     struct NoMic;
     impl Mic for NoMic {

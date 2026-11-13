@@ -173,6 +173,46 @@ pub struct TurnResult { pub shown: Vec<Segment>, pub pending: bool, pub first_to
 #[derive(Debug, PartialEq)]
 pub enum TurnError { Failed, Aborted }
 
+/// `ollama.exe` : installation par défaut (pour l'utilisateur), sinon le PATH.
+fn ollama_exe() -> Option<PathBuf> {
+    let default = std::env::var_os("LOCALAPPDATA").map(|d| PathBuf::from(d).join(r"Programs\Ollama\ollama.exe"));
+    let path = std::env::var_os("PATH").into_iter().flat_map(|p| std::env::split_paths(&p).collect::<Vec<_>>()).map(|d| d.join("ollama.exe"));
+    default.into_iter().chain(path).find(|p| p.is_file())
+}
+
+/// Ollama installé mais éteint : on le lance (caché, il survit à Oniris comme un service) et on attend qu'il réponde.
+/// Vrai si Ollama répond. Les appels simultanés attendent le premier lancement au lieu d'en ouvrir un autre.
+pub async fn ensure_ollama() -> bool {
+    static STARTING: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+    let up = || async { Ollama::new("", 0).status("").await != LocalStatus::Down };
+    if up().await {
+        return true;
+    }
+    let _guard = STARTING.lock().await;
+    if up().await {
+        return true;
+    }
+    let Some(exe) = ollama_exe() else { return false };
+    let mut cmd = std::process::Command::new(&exe);
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    }
+    if let Err(e) = cmd.arg("serve").stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn() {
+        tracing::warn!("iris : lancement d'Ollama impossible : {e}");
+        return false;
+    }
+    tracing::info!("iris : Ollama était éteint, lancé");
+    for _ in 0..40 {
+        tokio::time::sleep(Duration::from_millis(250)).await;
+        if up().await {
+            return true;
+        }
+    }
+    tracing::warn!("iris : Ollama lancé mais muet après 10 s");
+    false
+}
+
 /// Lance un tour et rend son numéro ; le tour précédent, s'il court encore, est abandonné.
 #[tauri::command]
 pub async fn iris_ask(app: AppHandle, text: String, force_claude: bool, local_only: bool) -> Result<u32, String> {
@@ -267,6 +307,7 @@ impl<F: FnOnce()> Drop for OnAbort<F> {
 
 /// Cerveaux construits d'après les réglages du moment ; exécuteur sur le coffre de la conversation.
 async fn run_turn(app: &AppHandle, turn: u32, text: String, force_claude: bool, local_only: bool) -> Result<TurnResult, String> {
+    ensure_ollama().await;
     let st = app.state::<AppState>();
     let s = st.settings.read().clone();
     let now = now_ms();
@@ -335,6 +376,7 @@ impl Drop for PullGuard { fn drop(&mut self) { PULLING.store(false, Ordering::Se
 
 #[tauri::command]
 pub async fn iris_status(app: AppHandle) -> IrisStatus {
+    ensure_ollama().await;
     let (model, keep) = model(&app);
     let setting = app.state::<AppState>().settings.read().claude_path.clone();
     let claude = claude_exe(&setting).map_or(ClaudeStatus::Missing, |p| ClaudeStatus::Found { path: p.to_string_lossy().into_owned() });

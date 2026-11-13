@@ -1,5 +1,6 @@
 import { BookText, Settings, Sparkles, UserRound } from "lucide-react";
 import { IrisOrb, IrisStatusLine } from "../modules/iris/IrisReply";
+import { useVoice, voiceIpc } from "../modules/voice/api";
 import { formatLongDate, greeting, hhmm, ss, useNow } from "../lib/time";
 import { usePanelStore } from "./store";
 import { WeatherBadge } from "../modules/weather/WeatherBadge";
@@ -18,6 +19,7 @@ export const focusHeaderButton = (sheet: string) => setTimeout(() => document.qu
 
 export function Header({ name, onAccounts, onIris, onJournal, onSettings }: { name: string; onAccounts?: () => void; onIris?: () => void; onJournal?: () => void; onSettings?: () => void }) {
   const open = usePanelStore((s) => s.open);
+  const talk = useVoice().phase === "listening" ? "Arrêter l'écoute" : "Parler à IRIS";
   const now = useNow(60_000, open);
   return (
     <header className="hdr">
@@ -32,8 +34,8 @@ export function Header({ name, onAccounts, onIris, onJournal, onSettings }: { na
         </nav>
       </div>
       <div className="orb-wrap">
-        <IrisOrb size={58} />
-        <IrisStatusLine />
+        <button type="button" className="orb-btn" aria-label={talk} title={talk} onClick={() => void voiceIpc.tap().catch(() => {})}><IrisOrb size={58} /></button>
+        <IrisStatusLine onFix={onIris} />
       </div>
       <div className="clock">
         <Clock />

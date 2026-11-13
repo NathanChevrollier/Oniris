@@ -192,6 +192,7 @@ pub fn run() {
             modules::timers::start(app.handle());
             modules::clipboard::start(app.handle());
             modules::weather::load(app.handle());
+            tauri::async_runtime::spawn(modules::iris::ensure_ollama()); // tri des mails et briefing en ont besoin
             modules::iris_briefing::load(app.handle());
             modules::mail::start(app.handle());
             modules::sites::start(app.handle());

@@ -21,7 +21,7 @@ export function IrisOrb({ size }: { size: number }) {
 }
 
 /** « Prêt · local », « Réfléchit · Claude » ou « Local indisponible » ; l'état de Rust est relu à l'ouverture seulement. */
-export function IrisStatusLine() {
+export function IrisStatusLine({ onFix }: { onFix?: () => void }) {
   const open = usePanelStore((s) => s.open);
   const thinking = useIris((s) => s.state === "thinking");
   const brain = useIris((s) => s.brain);
@@ -29,6 +29,7 @@ export function IrisStatusLine() {
   useEffect(() => { if (open) void loadStatus(); }, [open]);
   const down = !thinking && local != null && local !== "ready";
   const text = thinking ? `Réfléchit · ${brain ? BRAIN[brain] : "local"}` : down ? "Local indisponible" : local ? "Prêt · local" : "Prêt";
+  if (down && onFix) return <button type="button" className="orb-status off" onClick={onFix} title="Ouvrir IRIS pour réparer"><i />{text} · Réparer</button>;
   return <div className={down ? "orb-status off" : "orb-status"} role="status"><i />{text}</div>;
 }
 

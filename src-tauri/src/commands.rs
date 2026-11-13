@@ -23,8 +23,8 @@ pub fn panel_toggle(app: AppHandle) -> tauri::Result<()> {
 }
 
 #[tauri::command]
-pub fn pill_resize(app: AppHandle, width: f64) -> tauri::Result<()> {
-    windows::place_pill(&app, width)
+pub fn pill_resize(app: AppHandle, width: f64, asleep: Option<bool>) -> tauri::Result<()> {
+    windows::place_pill(&app, width, asleep.unwrap_or(false))
 }
 
 #[tauri::command(async)]

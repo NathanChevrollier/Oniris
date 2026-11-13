@@ -43,13 +43,13 @@ fn apply(win: &WebviewWindow, r: Rect) -> tauri::Result<()> {
     win.set_position(PhysicalPosition::new(r.x, r.y))
 }
 
-pub fn place_pill(app: &AppHandle, width_logical: f64) -> tauri::Result<()> {
+pub fn place_pill(app: &AppHandle, width_logical: f64, asleep: bool) -> tauri::Result<()> {
     let (m, scale) = primary(app)?;
-    apply(&window(app, "pill")?, pill_rect(m, scale, width_logical))
+    apply(&window(app, "pill")?, pill_rect(m, scale, width_logical, asleep))
 }
 
 pub fn show_pill(app: &AppHandle) -> tauri::Result<()> {
-    place_pill(app, 420.0)?;
+    place_pill(app, 420.0, false)?;
     window(app, "pill")?.show()
 }
 

@@ -88,12 +88,13 @@ export function SettingsSheet({ open, onClose, onGo }: { open: boolean; onClose:
       <div className="acc-body">
         <p className="set-links">Cerveaux, voix et mémoire d'IRIS : <button type="button" className="acc-btn" onClick={() => onGo("iris")}>Ouvrir IRIS</button>
           Comptes : <button type="button" className="acc-btn" onClick={() => onGo("accounts")}>Ouvrir Comptes</button></p>
-        <Section title="Général" keys={["user_name", "autostart", "reduce_motion", "hide_pill_in_fullscreen"]}>
+        <Section title="Général" keys={["user_name", "autostart", "reduce_motion", "hide_pill_in_fullscreen", "pill_sleep"]}>
           {(d, set) => <>
             <label>Prénom<input value={d.user_name} onChange={(e) => set({ user_name: e.target.value })} /></label>
             {check("Lancer Oniris au démarrage de Windows", d.autostart, (v) => set({ autostart: v }))}
             {check("Réduire les animations", d.reduce_motion, (v) => set({ reduce_motion: v }))}
             {check("Masquer la pilule en plein écran", d.hide_pill_in_fullscreen, (v) => set({ hide_pill_in_fullscreen: v }))}
+            {check("Pilule en veille : cachée, elle réapparaît quand le curseur touche le haut de l'écran, au milieu", d.pill_sleep, (v) => set({ pill_sleep: v }))}
           </>}
         </Section>
         <Section title="Raccourci" keys={["hotkey", "hold_threshold_ms", "hover_open", "hover_delay_ms"]}>

@@ -13,7 +13,7 @@ vi.mock("../lib/ipc", async (orig) => ({
   ...(await orig<typeof import("../lib/ipc")>()),
   onPanelState: (cb: (p: PanelState) => void) => { panelState = cb; return Promise.resolve(() => {}); },
   listen: (name: string, cb: (e: { payload: unknown }) => void) => {
-    if (name === "oniris://voice") voiceCb = (payload) => cb({ payload });
+    if (name === "oniris://voice") { const prev = voiceCb; voiceCb = (payload) => { prev(payload); cb({ payload }); }; }
     if (name === "oniris://update") updateCb = (payload) => cb({ payload });
     return Promise.resolve(() => {});
   },
@@ -33,6 +33,7 @@ const fire = (w: number) =>
 const spies = { pillResize: vi.fn(), panelOpen: vi.fn(), panelToggle: vi.fn() };
 
 beforeEach(() => {
+  voiceCb = () => {};
   vi.useFakeTimers();
   vi.spyOn(timersIpc, "list").mockResolvedValue([]); // la pilule charge ses minuteurs (données factices hors Tauri)
   vi.stubGlobal("ResizeObserver", class {
@@ -53,7 +54,7 @@ it("la pilule demande sa taille au Rust", () => {
   fire(211.6);
   act(() => { vi.advanceTimersByTime(200); });
   expect(spies.pillResize).toHaveBeenCalledOnce();
-  expect(spies.pillResize).toHaveBeenCalledWith(212);
+  expect(spies.pillResize).toHaveBeenCalledWith(212, false);
   fire(211.8); // même largeur arrondie : pas de nouvel appel
   act(() => { vi.advanceTimersByTime(200); });
   expect(spies.pillResize).toHaveBeenCalledOnce();
@@ -192,4 +193,25 @@ it("la pilule relit une mise à jour déjà prête au démarrage", async () => {
   render(<Pill />);
   await act(async () => {});
   expect(screen.getByText("Mise à jour 1.2.1 prête")).toBeTruthy();
+});
+
+it("veille : bande fine, réveil au contact du curseur ou de la voix, puis rendormie", async () => {
+  vi.spyOn(ipc, "getSettings").mockResolvedValue({ ...DEFAULT_SETTINGS, pill_sleep: true });
+  const { container } = render(<Pill />);
+  await act(async () => {});
+  const root = container.querySelector(".pill-root")!;
+  expect(root).toHaveClass("asleep");
+  act(() => { vi.advanceTimersByTime(300); });
+  expect(spies.pillResize).toHaveBeenLastCalledWith(420, true);
+  fireEvent.mouseEnter(root);
+  expect(root).not.toHaveClass("asleep");
+  expect(spies.pillResize).toHaveBeenLastCalledWith(420, false);
+  fireEvent.mouseLeave(root);
+  act(() => { vi.advanceTimersByTime(800); });
+  expect(root).toHaveClass("asleep");
+  act(() => voiceCb({ phase: "listening" } as VoiceEvent));
+  expect(root).not.toHaveClass("asleep");
+  act(() => voiceCb({ phase: "idle" } as VoiceEvent));
+  act(() => panelState({ open: true, at_ms: 0 }));
+  expect(root).not.toHaveClass("asleep");
 });

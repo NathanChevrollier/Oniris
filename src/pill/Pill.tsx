@@ -22,6 +22,21 @@ export function VoiceOrb({ thinking }: { thinking: boolean }) {
   return <Orb state={orbFor(voice.phase, thinking)} size={24} level={voice.level} />;
 }
 
+/** Veille : délai avant de se cacher quand le curseur s'en va, puis le temps que l'îlot remonte avant de réduire la fenêtre. */
+const SLEEP_AFTER_MS = 800;
+const SLEEP_SHRINK_MS = 300;
+
+/** Le micro écoute ou IRIS parle. Abonné seulement en veille : la pilule ne se redessine pas au rythme du niveau. */
+function useVoiceBusy(enabled: boolean) {
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (!enabled) return setBusy(false);
+    const un = onVoice((e) => setBusy(e.phase !== "idle"));
+    return () => { void un.then((f) => f()); };
+  }, [enabled]);
+  return busy;
+}
+
 const ARMED_MS = 5000;
 const FALSE_WAKE_MS = 10_000;
 
@@ -86,6 +101,12 @@ export function Pill() {
   const hover = useRef<ReturnType<typeof setTimeout>>(undefined);
   const closedAt = useRef(-Infinity);
   const cancelHover = () => clearTimeout(hover.current);
+  const voiceBusy = useVoiceBusy(settings.pill_sleep);
+  const [near, setNear] = useState(false);
+  const leave = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const width = useRef(0);
+  const shrunk = useRef(false);
+  const asleep = settings.pill_sleep && !near && !panelOpen && !voiceBusy;
 
   useEffect(() => {
     const un = onIris((e) => { if (e.type === "state") setThinking(e.state === "thinking"); });
@@ -107,14 +128,26 @@ export function Pill() {
     const ro = new ResizeObserver(([e]) => {
       const w = Math.ceil(e.borderBoxSize[0].inlineSize);
       clearTimeout(t);
-      t = setTimeout(() => { if (w !== last) { last = w; ipc.pillResize(w); } }, 100);
+      t = setTimeout(() => { if (w !== last) { last = width.current = w; ipc.pillResize(w, shrunk.current); } }, 100);
     });
     ro.observe(root.current!);
-    return () => { ro.disconnect(); clearTimeout(t); };
+    return () => { ro.disconnect(); clearTimeout(t); clearTimeout(leave.current); };
   }, []);
 
+  // Veille : la fenêtre devient une bande de 2 px en haut de l'écran ; le curseur qui la touche la réveille.
+  useEffect(() => {
+    if (asleep === shrunk.current) return;
+    shrunk.current = asleep;
+    const send = () => void ipc.pillResize(width.current || 420, asleep);
+    if (!asleep) { send(); return; }
+    const t = setTimeout(send, SLEEP_SHRINK_MS);
+    return () => clearTimeout(t);
+  }, [asleep]);
+
   return (
-    <div ref={root} className={panelOpen ? "pill-root open" : "pill-root"}>
+    <div ref={root} className={`pill-root${panelOpen ? " open" : ""}${asleep ? " asleep" : ""}`}
+      onMouseEnter={() => { clearTimeout(leave.current); setNear(true); }}
+      onMouseLeave={() => { clearTimeout(leave.current); leave.current = setTimeout(() => setNear(false), SLEEP_AFTER_MS); }}>
       <button type="button" className="island" aria-label="Ouvrir le panneau Oniris"
         onClick={() => { cancelHover(); ipc.panelToggle(); }}
         onMouseEnter={() => {

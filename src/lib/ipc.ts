@@ -17,7 +17,7 @@ export const ipc = {
   panelOpen: () => invoke<void>("panel_open"),
   panelClose: () => invoke<void>("panel_close"),
   panelToggle: () => invoke<void>("panel_toggle"),
-  pillResize: (width: number) => invoke<void>("pill_resize", { width }),
+  pillResize: (width: number, asleep = false) => invoke<void>("pill_resize", { width, asleep }),
   getSettings: () => invoke<Settings>("settings_get"),
   saveSettings: (settings: Settings) => invoke<void>("settings_save", { settings }),
 };

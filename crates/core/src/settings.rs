@@ -106,6 +106,8 @@ pub struct Settings {
     /// Vérification et téléchargement automatiques des mises à jour.
     pub auto_update: bool,
     pub hide_pill_in_fullscreen: bool,
+    /// Veille : la pilule se cache et réapparaît quand le curseur touche le haut de l'écran, au milieu.
+    pub pill_sleep: bool,
     pub timeline_start_hour: u8,
     pub timeline_end_hour: u8,
     pub reduce_motion: bool,
@@ -180,6 +182,7 @@ impl Default for Settings {
             autostart: true,
             auto_update: true,
             hide_pill_in_fullscreen: true,
+            pill_sleep: false,
             timeline_start_hour: 8,
             timeline_end_hour: 23,
             reduce_motion: false,

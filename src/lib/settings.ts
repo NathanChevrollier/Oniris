@@ -27,6 +27,7 @@ export type Settings = {
   /** Vérification et téléchargement automatiques des mises à jour. */
   auto_update: boolean;
   hide_pill_in_fullscreen: boolean;
+  pill_sleep: boolean;
   timeline_start_hour: number;
   timeline_end_hour: number;
   reduce_motion: boolean;
@@ -97,6 +98,7 @@ export const DEFAULT_SETTINGS: Settings = {
   autostart: true,
   auto_update: true,
   hide_pill_in_fullscreen: true,
+  pill_sleep: false,
   timeline_start_hour: 8,
   timeline_end_hour: 23,
   reduce_motion: false,

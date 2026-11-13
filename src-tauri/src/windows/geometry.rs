@@ -7,9 +7,10 @@ pub struct Rect {
     pub h: u32,
 }
 
-pub fn pill_rect(monitor: Rect, scale: f64, content_width_logical: f64) -> Rect {
+/// Pilule en veille : une bande de 2 px en haut de l'écran, que le curseur touche pour la réveiller.
+pub fn pill_rect(monitor: Rect, scale: f64, content_width_logical: f64, asleep: bool) -> Rect {
     let w = (content_width_logical.clamp(160.0, 640.0) * scale).round() as u32;
-    let h = (48.0 * scale).round() as u32;
+    let h = ((if asleep { 2.0 } else { 48.0 }) * scale).round().max(1.0) as u32;
     Rect { x: monitor.x + (monitor.w as i32 - w as i32) / 2, y: monitor.y, w, h }
 }
 
@@ -24,18 +25,23 @@ mod tests {
     #[test]
     fn pill_centree_en_haut_a_100_pourcent() {
         let m = Rect { x: 0, y: 0, w: 2560, h: 1440 };
-        assert_eq!(pill_rect(m, 1.0, 400.0), Rect { x: 1080, y: 0, w: 400, h: 48 });
+        assert_eq!(pill_rect(m, 1.0, 400.0, false), Rect { x: 1080, y: 0, w: 400, h: 48 });
     }
     #[test]
     fn pill_a_150_pourcent_sur_ecran_decale() {
         let m = Rect { x: -1920, y: 0, w: 1920, h: 1080 };
-        assert_eq!(pill_rect(m, 1.5, 400.0), Rect { x: -1920 + 660, y: 0, w: 600, h: 72 });
+        assert_eq!(pill_rect(m, 1.5, 400.0, false), Rect { x: -1920 + 660, y: 0, w: 600, h: 72 });
     }
     #[test]
     fn pill_largeur_bornee() {
         let m = Rect { x: 0, y: 0, w: 2560, h: 1440 };
-        assert_eq!(pill_rect(m, 1.0, 5000.0).w, 640);
-        assert_eq!(pill_rect(m, 1.0, 10.0).w, 160);
+        assert_eq!(pill_rect(m, 1.0, 5000.0, false).w, 640);
+        assert_eq!(pill_rect(m, 1.0, 10.0, false).w, 160);
+    }
+    #[test]
+    fn pill_en_veille_bande_fine_en_haut() {
+        let m = Rect { x: 0, y: 0, w: 2560, h: 1440 };
+        assert_eq!(pill_rect(m, 1.5, 400.0, true), Rect { x: 980, y: 0, w: 600, h: 3 });
     }
     #[test]
     fn panel_couvre_l_ecran() {

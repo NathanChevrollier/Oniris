@@ -52,3 +52,16 @@ pub async fn music_queue(app: AppHandle, query: String) -> ToolOutcome {
 pub async fn music_transfer(app: AppHandle, device_id: String) -> ToolOutcome {
     crate::commands::dispatch_as_user(&app, "music.transfer", json!({ "device_id": device_id })).await
 }
+
+/// Lance l'appli Spotify du PC pour qu'elle se déclare comme appareil : version classique réduite si elle existe,
+/// sinon par son protocole (version du Microsoft Store comprise).
+pub fn spotify_launcher() -> std::sync::Arc<dyn Fn() + Send + Sync> {
+    std::sync::Arc::new(|| {
+        let classic = std::env::var_os("APPDATA").map(|d| std::path::PathBuf::from(d).join(r"Spotify\Spotify.exe"));
+        let started = match classic.filter(|p| p.is_file()) {
+            Some(exe) => crate::launch::spawn_detached(&exe.to_string_lossy(), &["--minimized".into()], None).is_ok(),
+            None => crate::launch::spawn_detached("explorer.exe", &["spotify:".into()], None).is_ok(),
+        };
+        tracing::info!(started, "musique : Spotify fermé, lancement");
+    })
+}

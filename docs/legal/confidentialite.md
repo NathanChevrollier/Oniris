@@ -130,6 +130,8 @@ Si tu as autorisé l'agenda, Oniris lit tes agendas Google **en lecture seule** 
 
 - **Lecture Windows (SMTC)** : pour afficher le titre, l'artiste et la pochette, Oniris lit ce que Windows sait des médias en cours (Spotify, navigateur, lecteur de musique), **uniquement sur ton PC et seulement quand le panneau est ouvert**. Rien n'est envoyé sur Internet pour cela. Le titre, l'artiste et la pochette restent en mémoire : ils ne sont écrits ni sur le disque ni dans les journaux. Les couleurs de la lumière ambiante sont calculées en local à partir de la pochette.
 - **Spotify (Web API)** : si tu connectes ton compte Spotify, Oniris envoie à Spotify les commandes que tu donnes (lancer une playlist, changer d'appareil, volume, saut dans le morceau) et lui demande la liste de tes appareils et de tes playlists, **seulement quand le panneau est ouvert**. Les playlists restent en mémoire une dizaine de minutes ; la base ne garde que les identifiants des playlists que tu as choisies comme favorites. Spotify voit, comme tout service, l'adresse IP de ta connexion. Aucune requête Spotify n'est faite panneau fermé.
+- **Pochettes des playlists** : les images de tes playlists favorites sont chargées depuis les serveurs d'images de Spotify (`i.scdn.co`), sans cookie ni référent, quand le panneau les affiche.
+- **Spotify fermé** : si tu lances une playlist alors qu'aucun appareil Spotify n'est ouvert sur ce PC, Oniris ouvre l'appli Spotify (réduite quand c'est possible) et attend au plus 15 secondes qu'elle apparaisse comme appareil avant de lancer la lecture. Rien d'autre n'est envoyé.
 
 ## Sondes des sites
 

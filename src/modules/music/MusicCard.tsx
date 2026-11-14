@@ -1,7 +1,6 @@
 import { memo, useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from "react";
 import { MoreHorizontal, Music, Pause, Play, SkipBack, SkipForward } from "lucide-react";
 import { Card } from "../../ui/Card";
-import { Empty } from "../../ui/Empty";
 import { useTopic } from "../../lib/data";
 import { useToolAction } from "../../lib/toolAction";
 import { usePanelStore } from "../../panel/store";
@@ -117,6 +116,12 @@ export function MusicCard({ onAccounts, onColors }: { onAccounts?: () => void; o
   const menuId = useId();
   const footRef = useRef<HTMLDivElement>(null);
   const [pinErr, setPinErr] = useState<string | null>(null);
+  // Playlist en cours de lancement : Spotify fermé, l'ouvrir prend quelques secondes.
+  const [starting, setStarting] = useState<string | null>(null);
+  const playList = async (id: string) => {
+    setStarting(id);
+    try { await run(musicIpc.playPlaylist(id)); } finally { setStarting(null); }
+  };
   // Après un déplacement réussi, la position repart de là jusqu'au prochain événement du lecteur.
   const [seeked, setSeeked] = useState<{ base: NowPlaying; ms: number; at: number } | null>(null);
   const np = useMemo(
@@ -218,7 +223,13 @@ export function MusicCard({ onAccounts, onColors }: { onAccounts?: () => void; o
             </div>
           </>
         ) : (
-          <Empty icon={Music} tint="#ff7448" role="status">Rien en lecture</Empty>
+          <div className="mu-idle" role="status">
+            <span className="mu-idle-ico"><Music size={22} /></span>
+            <div>
+              <b>Rien en lecture</b>
+              <small>{starting ? "Ouverture de Spotify…" : connected ? "Choisis une playlist : Spotify s'ouvre tout seul s'il est fermé." : "Lance ta musique dans Spotify ou un autre lecteur."}</small>
+            </div>
+          </div>
         )}
         {(error || pinErr) && <p className="mu-err" role="alert">{error ?? pinErr}</p>}
 
@@ -234,8 +245,13 @@ export function MusicCard({ onAccounts, onColors }: { onAccounts?: () => void; o
                 <ul className="mu-lists">
                   {view.favorites.map((p) => (
                     <li key={p.id}>
-                      <button type="button" className="mu-pl" onClick={() => void run(musicIpc.playPlaylist(p.id))}>
-                        <span style={{ background: gradient(p.id) }} />{p.name}
+                      <button type="button" className="mu-pl" aria-label={p.name} aria-busy={starting === p.id} disabled={starting !== null}
+                        onClick={() => void playList(p.id)}>
+                        <span className="mu-pl-cover" style={{ background: gradient(p.id) }}>
+                          {p.image?.startsWith("https://") && <img src={p.image} alt="" loading="lazy" referrerPolicy="no-referrer" />}
+                          <i className="mu-pl-play">{starting === p.id ? <span className="mu-spin" /> : <Play size={14} fill="currentColor" />}</i>
+                        </span>
+                        <span className="mu-pl-name">{p.name}</span>
                       </button>
                     </li>
                   ))}

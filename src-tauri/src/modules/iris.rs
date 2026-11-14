@@ -732,7 +732,7 @@ mod tests {
         let http = reqwest::Client::new();
         let secrets: Arc<dyn secrets::SecretStore> = Arc::new(crate::secrets_win::WinCredentials);
         let accounts = Arc::new(accounts::TokenCache::new(db.clone(), secrets, ev.clone(), http.clone(), Arc::new(|_| None)));
-        let spotify = music::tools::Web::new(db.clone(), ev.clone(), accounts.clone(), music::spotify::Client::new(http.clone()));
+        let spotify = music::tools::Web::new(db.clone(), ev.clone(), accounts.clone(), music::spotify::Client::new(http.clone()).with_launcher(crate::modules::music::spotify_launcher()));
         let tools = crate::state::tools(crate::state::ToolDeps {
             db, events: ev, opener: Arc::new(crate::launch::RealOpener), apps: Default::default(), accounts, spotify, account_http: http,
             roots: never(), projects: never(), resume_env: never(), sites: never(), vps: never(), allowlist: never(), work_dirs: never(),

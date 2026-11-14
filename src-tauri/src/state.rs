@@ -87,7 +87,7 @@ impl AppState {
         let account_http = oniris_core::accounts::client()?;
         let handle = app.clone();
         let accounts = Arc::new(TokenCache::new(db.clone(), secrets.clone(), events.clone(), account_http.clone(), Arc::new(move |p| provider_config(&handle, p))));
-        let spotify = oniris_core::music::tools::Web::new(db.clone(), events.clone(), accounts.clone(), oniris_core::music::spotify::Client::new(account_http.clone()));
+        let spotify = oniris_core::music::tools::Web::new(db.clone(), events.clone(), accounts.clone(), oniris_core::music::spotify::Client::new(account_http.clone()).with_launcher(crate::modules::music::spotify_launcher()));
         let handle = app.clone();
         let roots: oniris_core::apps::tools::Roots = Arc::new(move || {
             let st = handle.state::<AppState>();

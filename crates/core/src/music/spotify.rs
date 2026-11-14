@@ -58,13 +58,23 @@ pub struct Client {
     pub base: String,
     /// Aucun appel avant cet instant (ms Unix) après un 429.
     hold_until: Arc<Mutex<i64>>,
+    /// Ouvre l'appli Spotify du PC quand aucun appareil n'est connu (Spotify fermé).
+    launcher: Option<Arc<dyn Fn() + Send + Sync>>,
+    /// Attente maximale de l'appareil après ce lancement.
+    pub launch_wait: std::time::Duration,
 }
 
 fn s(v: &Value, k: &str) -> Option<String> { v.get(k)?.as_str().map(str::to_string) }
 
 impl Client {
     pub fn new(http: reqwest::Client) -> Self { Self::with_base(http, BASE) }
-    pub fn with_base(http: reqwest::Client, base: &str) -> Self { Self { http, base: base.into(), hold_until: Default::default() } }
+    pub fn with_base(http: reqwest::Client, base: &str) -> Self {
+        Self { http, base: base.into(), hold_until: Default::default(), launcher: None, launch_wait: std::time::Duration::from_secs(15) }
+    }
+    pub fn with_launcher(mut self, f: Arc<dyn Fn() + Send + Sync>) -> Self {
+        self.launcher = Some(f);
+        self
+    }
 
     async fn call(&self, token: &str, method: reqwest::Method, path: &str, query: &[(&str, String)], body: Option<Value>) -> Result<Value, SpotifyError> {
         let wait = *self.hold_until.lock() - now_ms();
@@ -170,7 +180,8 @@ impl Client {
 }
 
 /// Exécute `op` ; sur `NoActiveDevice`, transfère vers le premier appareil « Computer » puis réessaie, une seule fois.
-/// Sans appareil « Computer », l'erreur reste `NoActiveDevice` (« Ouvre Spotify sur ce PC »).
+/// Sans appareil « Computer » (Spotify fermé), lance l'appli si un lanceur est branché et attend qu'elle se déclare ;
+/// sinon l'erreur reste `NoActiveDevice` (« Ouvre Spotify sur ce PC »).
 pub async fn with_device<T, F, Fut>(client: &Client, token: &str, op: F) -> Result<T, SpotifyError>
 where
     F: Fn() -> Fut,
@@ -178,7 +189,16 @@ where
 {
     match op().await {
         Err(SpotifyError::NoActiveDevice) => {
-            let pc = client.devices(token).await?.into_iter().find(|d| d.kind.eq_ignore_ascii_case("computer"));
+            let computer = |ds: Vec<Device>| ds.into_iter().find(|d| d.kind.eq_ignore_ascii_case("computer"));
+            let mut pc = computer(client.devices(token).await?);
+            if let (None, Some(launch)) = (&pc, &client.launcher) {
+                launch();
+                let until = std::time::Instant::now() + client.launch_wait;
+                while pc.is_none() && std::time::Instant::now() < until {
+                    tokio::time::sleep(std::time::Duration::from_millis(600)).await;
+                    pc = computer(client.devices(token).await?);
+                }
+            }
             let Some(pc) = pc else { return Err(SpotifyError::NoActiveDevice) };
             client.transfer(token, &pc.id, false).await?;
             op().await
@@ -262,6 +282,24 @@ mod tests {
         let e = with_device(&c, "t", || c.play("t", None, PlayTarget::Tracks(vec![]))).await.unwrap_err();
         assert_eq!(e, SpotifyError::NoActiveDevice);
         assert!(e.to_string().contains("Ouvre Spotify"));
+    }
+
+    #[tokio::test]
+    async fn spotify_ferme_est_lance_puis_la_lecture_part() {
+        let server = MockServer::start().await;
+        let nope = ResponseTemplate::new(404).set_body_json(fx("err_no_device"));
+        Mock::given(method("PUT")).and(path("/me/player/play")).respond_with(nope).up_to_n_times(1).expect(1).mount(&server).await;
+        Mock::given(method("GET")).and(path("/me/player/devices")).respond_with(ok("devices_none")).up_to_n_times(2).mount(&server).await;
+        Mock::given(method("GET")).and(path("/me/player/devices")).respond_with(ok("devices")).mount(&server).await;
+        Mock::given(method("PUT")).and(path("/me/player")).respond_with(ResponseTemplate::new(204)).expect(1).mount(&server).await;
+        Mock::given(method("PUT")).and(path("/me/player/play")).respond_with(ResponseTemplate::new(204)).expect(1).mount(&server).await;
+        let launched = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let l = launched.clone();
+        let mut c = client(&server).with_launcher(Arc::new(move || { l.fetch_add(1, std::sync::atomic::Ordering::SeqCst); }));
+        c.launch_wait = std::time::Duration::from_secs(5);
+        with_device(&c, "t", || c.play("t", None, PlayTarget::Context("spotify:playlist:pl1xxxxxxxxxxxxxxxxxxx".into()))).await.unwrap();
+        assert_eq!(launched.load(std::sync::atomic::Ordering::SeqCst), 1);
+        server.verify().await;
     }
 
     #[tokio::test]

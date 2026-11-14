@@ -296,3 +296,16 @@ it("chaque barre de l'onde a une hauteur statique propre (forme conservée sans 
   const bars = [...(await screen.findByTestId("wave")).querySelectorAll<HTMLElement>("i")];
   expect(new Set(bars.map((b) => b.style.getPropertyValue("--h"))).size).toBeGreaterThan(3);
 });
+
+it("Spotify fermé : la vignette affiche le lancement en cours, les autres attendent", async () => {
+  let finish = () => {};
+  vi.spyOn(musicIpc, "playPlaylist").mockReturnValue(new Promise((r) => { finish = () => r(done); }));
+  setup(null);
+  const tile = await screen.findByRole("button", { name: "Liste p1" });
+  await userEvent.click(tile);
+  expect(tile.getAttribute("aria-busy")).toBe("true");
+  expect(screen.getByText("Ouverture de Spotify…")).toBeTruthy();
+  expect((screen.getByRole("button", { name: "Liste p2" }) as HTMLButtonElement).disabled).toBe(true);
+  await act(async () => finish());
+  expect(tile.getAttribute("aria-busy")).toBe("false");
+});

@@ -219,7 +219,7 @@ Le mot d'activation (« Dis Iris » ou « Hé Iris ») est **désactivé par dé
 
 - **Ce qui est écouté** : une fois activé, Oniris écoute le micro en continu, sur ton PC, pour repérer ce seul mot. Windows affiche l'icône du micro tant que l'écoute est active.
 - **Les 2 dernières secondes, en mémoire** : avant la détection, l'audio ne vit que dans la mémoire du détecteur, sur 2 secondes au plus, et s'efface au fur et à mesure.
-- **Aucune écriture** : rien n'est écrit sur le disque, transcrit, journalisé ni envoyé avant la détection. Après la détection, l'audio suit les mêmes règles que le raccourci Alt+Espace : 30 secondes au plus, en mémoire, vers Whisper sur ton PC seulement.
+- **Aucune écriture** : rien n'est écrit sur le disque, transcrit, journalisé ni envoyé avant la détection. Après la détection, l'audio suit les mêmes règles que le raccourci clavier : 30 secondes au plus, en mémoire, vers Whisper sur ton PC seulement.
 - **Suspensions** : l'écoute s'arrête quand la voix est en pause (zone de notification), quand une application est en plein écran, pendant qu'IRIS traite ta demande ou répond, et pendant que tu utilises le raccourci.
 - **Le modèle** : il est fourni avec l'app et tourne sur ton PC. Il a été entraîné sur des voix synthétiques et, si tu l'as fait, sur tes propres enregistrements, qui restent sur ton PC.
 - Désactiver le réglage arrête l'écoute immédiatement.

@@ -105,12 +105,6 @@ it("clic : bascule le panneau ; l'orbe est au repos", () => {
   expect(container.querySelector(".orb")).toHaveAttribute("data-state", "idle");
 });
 
-it("emplacements cachés de la musique (plan 3) et des mails (plan 4)", () => {
-  const { container } = render(<Pill />);
-  expect(container.querySelector(".slot-music")).not.toBeVisible();
-  expect(container.querySelector(".slot-mails")).not.toBeVisible();
-});
-
 it("le niveau du micro ne redessine que l'orbe, pas la pilule", () => {
   render(<Pill />);
   const orb = () => document.querySelector(".orb") as HTMLElement;

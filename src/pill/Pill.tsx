@@ -163,10 +163,7 @@ export function Pill() {
         }}
         onMouseLeave={cancelHover}>
         <span className="time">{hhmm(now)}</span>
-        {/* emplacements remplis aux plans 3 (musique) et 4 (mails) ; le minuteur s'affiche à côté de la musique */}
         <PillTimer />
-        <span className="slot-music" hidden />
-        <span className="slot-mails" hidden />
         <PillToast />
         <VoiceOrb thinking={thinking} />
       </button>

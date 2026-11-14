@@ -11,7 +11,7 @@ use tauri_plugin_notification::NotificationExt as _;
 
 pub fn build(app: &AppHandle) -> tauri::Result<()> {
     let open = MenuItemBuilder::with_id("open", "Ouvrir Oniris").build(app)?;
-    let settings = MenuItemBuilder::with_id("settings", "Paramètres").build(app)?;
+    let settings = MenuItemBuilder::with_id("settings", "Réglages").build(app)?;
     let pause = CheckMenuItemBuilder::with_id("pause", "Mettre la voix en pause").build(app)?;
     let clip_on = app.state::<AppState>().settings.read().clipboard_enabled;
     let clipboard = CheckMenuItemBuilder::with_id("clipboard", "Historique du presse-papiers").checked(clip_on).build(app)?;

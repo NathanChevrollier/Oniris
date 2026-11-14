@@ -17,7 +17,6 @@ const KNOWN: Record<string, string> = {
   "favori déjà présent": "Ce site est déjà dans tes favoris.",
   "adresse invalide": "Adresse invalide, essaie https://exemple.com.",
   "favori introuvable": "Ce favori n'existe plus.",
-  "bientôt": "Bientôt disponible.",
   "chemin hors des dossiers autorisés": "Ce fichier est hors des dossiers de recherche.",
   "application inconnue": "Cette application n'est plus installée.",
 };

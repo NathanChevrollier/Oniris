@@ -143,8 +143,8 @@ export function Segmented({ k, label, desc, options }: { k: KeysOf<string>; labe
   );
 }
 
-/** Curseur enregistré peu après le dernier mouvement. */
-export function Slider({ k, label, desc, min = 0, max = 100, unit = "" }: { k: KeysOf<number>; label: string; desc?: ReactNode; min?: number; max?: number; unit?: string }) {
+/** Curseur enregistré peu après le dernier mouvement ; `onLive` : aperçu à chaque mouvement. */
+export function Slider({ k, label, desc, min = 0, max = 100, unit = "", onLive }: { k: KeysOf<number>; label: string; desc?: ReactNode; min?: number; max?: number; unit?: string; onLive?: (v: number) => void }) {
   const { s, save } = useSet();
   const id = useId();
   const [d, setD] = useDraft(s[k]);
@@ -156,7 +156,7 @@ export function Slider({ k, label, desc, min = 0, max = 100, unit = "" }: { k: K
   return (
     <Row label={label} desc={desc} id={id}>
       <input id={id} type="range" className="set-range" min={min} max={max} value={d} aria-describedby={described(id, desc)}
-        style={{ "--v": `${((d - min) / (max - min)) * 100}%` } as CSSProperties} onChange={(e) => setD(Number(e.target.value))} />
+        style={{ "--v": `${((d - min) / (max - min)) * 100}%` } as CSSProperties} onChange={(e) => { const v = Number(e.target.value); setD(v); onLive?.(v); }} />
       <output htmlFor={id} className="set-val">{d}{unit}</output>
     </Row>
   );

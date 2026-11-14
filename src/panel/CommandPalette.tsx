@@ -253,7 +253,7 @@ export function CommandPalette() {
     if (e.nativeEvent.isComposing) return;
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       e.preventDefault();
-      if (!hits.length) { if (!text) search(""); return; } // récents, au premier geste seulement
+      if (!hits.length) { search(text); return; } // récents au premier geste, ou liste repliée par un clic ailleurs
       setSel((s) => Math.min(Math.max(s + (e.key === "ArrowDown" ? 1 : -1), 0), hits.length - 1));
     } else if (e.key === "Enter") {
       e.preventDefault();
@@ -269,8 +269,9 @@ export function CommandPalette() {
   };
 
   // Les effets ci-dessous ne dépendent que de leur déclencheur : ils lisent les gestionnaires du rendu courant ici.
-  const handlers = useRef({ reset, edit });
-  useEffect(() => { handlers.current = { reset, edit }; });
+  const collapse = () => { latest.current = 0; inflight.current = false; queued.current = null; setHits([]); setMsg(null); clear(); };
+  const handlers = useRef({ reset, edit, collapse });
+  useEffect(() => { handlers.current = { reset, edit, collapse }; });
 
   // Ouverture : focus dans la barre, sans recherche ; fermeture : on repart d'une barre vide.
   useEffect(() => { if (open) input.current?.focus(); else handlers.current.reset(); }, [open]);
@@ -296,6 +297,14 @@ export function CommandPalette() {
   const note = error ?? msg;
   const showHint = indexing && text.trim() !== "" && scope !== "command";
   const visible = hits.length > 0 || note != null || showHint;
+
+  // Clic hors de la barre (vide du panneau, carte…) : la liste se replie, le texte reste ; un clic dans la barre la rouvre.
+  useEffect(() => {
+    if (!visible) return;
+    const h = (e: PointerEvent) => { if (!(e.target as Element).closest?.(".palette")) handlers.current.collapse(); };
+    document.addEventListener("pointerdown", h);
+    return () => document.removeEventListener("pointerdown", h);
+  }, [visible]);
 
   return (
     <div className="palette">
@@ -337,7 +346,7 @@ export function CommandPalette() {
       <CommandBar inputRef={input} value={text} onIris={() => askIris(text, false)} onClaude={() => askIris(text, true)} role="combobox" aria-expanded={hits.length > 0} aria-controls={hits.length ? "pal-list" : undefined}
         aria-autocomplete="list" aria-activedescendant={hits.length ? `pal-opt-${sel}` : undefined}
         onChange={(e) => edit(e.target.value)} onKeyDown={onKeyDown}
-        onMouseDown={() => { if (!text && !hits.length) search(""); }} />
+        onMouseDown={() => { if (!hits.length) search(text); }} />
       {!text && !exchanging && (
         <div className="pal-try" role="group" aria-label="Exemples de demandes à IRIS">
           <span>Essaie :</span>

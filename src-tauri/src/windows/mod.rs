@@ -1,3 +1,4 @@
+pub mod backdrop;
 pub mod geometry;
 
 use crate::state::AppState;
@@ -19,6 +20,10 @@ const BLUR_DEBOUNCE: Duration = Duration::from_millis(150);
 /// perdre le focus au panneau arrive après sa fermeture.
 const REOPEN_GUARD_MS: u64 = 400;
 static LAST_CLOSE_MS: AtomicU64 = AtomicU64::new(0);
+/// Fermeture animée (panel.css, ~190 ms) : la fenêtre se masque ensuite. Marge pour la livraison de l'événement.
+const CLOSE_ANIM: Duration = Duration::from_millis(220);
+/// Incrémenté à chaque ouverture et fermeture : un masquage différé périmé (panneau rouvert entre-temps) s'abstient.
+static PANEL_GEN: AtomicU64 = AtomicU64::new(0);
 
 /// Écran principal (repli : premier écran disponible) : rectangle physique + échelle.
 fn primary(app: &AppHandle) -> tauri::Result<(Rect, f64)> {
@@ -74,7 +79,13 @@ pub fn open_panel(app: &AppHandle) -> tauri::Result<()> {
     if !state.panel_open.load(Ordering::SeqCst) {
         state.prev_foreground.store(foreign_foreground(), Ordering::SeqCst);
     }
-    apply(&win, panel_rect(primary(app)?.0))?;
+    PANEL_GEN.fetch_add(1, Ordering::SeqCst);
+    let m = primary(app)?.0;
+    // Fenêtre déjà visible (fermeture en cours) : la capture verrait le panneau, la valeur précédente reste.
+    if state.settings.read().glass_mode == "auto" && !win.is_visible().unwrap_or(true) {
+        backdrop::sample(app, m);
+    }
+    apply(&win, panel_rect(m))?;
     win.show()?;
     win.set_focus()?;
     set_panel_state(app, true)?;
@@ -90,10 +101,37 @@ pub fn open_panel(app: &AppHandle) -> tauri::Result<()> {
     Ok(())
 }
 
+/// Animations coupées (réglage d'Oniris ou « Afficher les animations » de Windows, qui pilote prefers-reduced-motion).
+fn motion_reduced(app: &AppHandle) -> bool {
+    use ::windows::Win32::UI::WindowsAndMessaging::{SystemParametersInfoW, SPI_GETCLIENTAREAANIMATION, SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS};
+    let mut on = ::windows::core::BOOL(1);
+    let ok = unsafe { SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION, 0, Some((&mut on as *mut ::windows::core::BOOL).cast()), SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS(0)) };
+    app.state::<AppState>().settings.read().reduce_motion || (ok.is_ok() && !on.as_bool())
+}
+
+/// État « fermé » émis tout de suite (le panneau joue sa remontée), fenêtre masquée après `CLOSE_ANIM`
+/// sauf réouverture entre-temps.
 pub fn close_panel(app: &AppHandle) -> tauri::Result<()> {
     crate::modules::system::set_sampling(app, false);
     crate::modules::smtc::set_listening(app, false);
-    window(app, "panel")?.hide()?;
+    let win = window(app, "panel")?;
+    let gen = PANEL_GEN.fetch_add(1, Ordering::SeqCst) + 1;
+    if motion_reduced(app) {
+        win.hide()?;
+    } else {
+        let a = app.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(CLOSE_ANIM);
+            // Sur le fil principal, comme `show` : une ouverture passée avant ce point incrémente PANEL_GEN.
+            let _ = a.clone().run_on_main_thread(move || {
+                if PANEL_GEN.load(Ordering::SeqCst) == gen {
+                    if let Err(e) = window(&a, "panel").and_then(|w| w.hide()) {
+                        tracing::error!("oniris: masquage du panneau : {e}");
+                    }
+                }
+            });
+        });
+    }
     LAST_CLOSE_MS.store(now_ms() as u64, Ordering::SeqCst);
     let r = set_panel_state(app, false);
     crate::modules::zenytt::on_panel_close(); // après l'état « fermé » : le compte des 10 min démarre

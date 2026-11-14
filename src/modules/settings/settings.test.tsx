@@ -13,7 +13,7 @@ const hidden = (): Project => ({ path: "C:/p/Vieux", name: "Vieux", last_activit
 const sheet = (section: SettingsCat = "general", onAccounts = () => {}) => <SettingsSheet open section={section} onClose={() => {}} onAccounts={onAccounts} />;
 const setup = (section?: SettingsCat) => {
   vi.spyOn(projectsIpc, "listHidden").mockResolvedValue([]);
-  vi.spyOn(updateIpc, "status").mockResolvedValue({ current: "1.2.0", pending: null, checking: false, last_error: null });
+  vi.spyOn(updateIpc, "status").mockResolvedValue({ current: "1.2.0", pending: null, checking: false, last_error: null, updated: null, state: "idle" });
   return render(sheet(section));
 };
 afterEach(() => { cleanup(); vi.restoreAllMocks(); delete (globalThis as { __s?: unknown }).__s; });
@@ -50,7 +50,8 @@ it("un interrupteur s'enregistre tout de suite, sur des réglages relus", async 
   await userEvent.click(box);
   expect(box).toBeChecked();
   await waitFor(() => expect(save).toHaveBeenCalledWith({ ...fresh, reduce_motion: true }));
-  expect(await screen.findByRole("status")).toHaveTextContent("Enregistré");
+  // Le curseur « Intensité du verre » (<output>) est aussi un « status » : on vise l'annonce elle-même.
+  expect(await screen.findByText("Enregistré")).toHaveAttribute("role", "status");
 });
 
 it("un interrupteur refusé par Rust revient en arrière et affiche l'erreur", async () => {
@@ -147,7 +148,7 @@ it("réglages : mises à jour automatiques activées par défaut", async () => {
 
 it("réglages : version installée et vérification manuelle", async () => {
   vi.spyOn(ipc, "getSettings").mockResolvedValue(DEFAULT_SETTINGS);
-  const check = vi.spyOn(updateIpc, "checkNow").mockResolvedValue({ current: "1.2.0", pending: ["1.2.1", "Corrections diverses"], checking: false, last_error: null });
+  const check = vi.spyOn(updateIpc, "checkNow").mockResolvedValue({ current: "1.2.0", pending: ["1.2.1", "Corrections diverses"], checking: false, last_error: null, updated: null, state: "ready", version: "1.2.1", notes: "Corrections diverses" });
   setup("updates");
   expect(await screen.findByText("Version 1.2.0")).toBeTruthy();
   await userEvent.click(screen.getByRole("button", { name: "Vérifier maintenant" }));
@@ -159,11 +160,24 @@ it("réglages : version installée et vérification manuelle", async () => {
 
 it("réglages : vérification sans nouveauté ou en échec, le résultat s'affiche", async () => {
   vi.spyOn(ipc, "getSettings").mockResolvedValue(DEFAULT_SETTINGS);
-  const check = vi.spyOn(updateIpc, "checkNow").mockResolvedValue({ current: "1.2.1", pending: null, checking: false, last_error: null });
+  const check = vi.spyOn(updateIpc, "checkNow").mockResolvedValue({ current: "1.2.1", pending: null, checking: false, last_error: null, updated: null, state: "idle" });
   setup("updates");
   await userEvent.click(await screen.findByRole("button", { name: "Vérifier maintenant" }));
   expect(await screen.findByText("Oniris est à jour.")).toBeTruthy();
-  check.mockResolvedValue({ current: "1.2.1", pending: null, checking: false, last_error: "hors ligne" });
+  check.mockResolvedValue({ current: "1.2.1", pending: null, checking: false, last_error: "hors ligne", updated: null, state: "error", message: "hors ligne", version: null });
   await userEvent.click(screen.getByRole("button", { name: "Vérifier maintenant" }));
   expect((await screen.findByRole("alert")).textContent).toContain("hors ligne");
+  expect(screen.getByRole("button", { name: "Réessayer" })).toBeTruthy();
+});
+
+it("réglages : téléchargement en cours et nouveautés de la version installée", async () => {
+  vi.spyOn(ipc, "getSettings").mockResolvedValue(DEFAULT_SETTINGS);
+  vi.spyOn(projectsIpc, "listHidden").mockResolvedValue([]);
+  vi.spyOn(updateIpc, "status").mockResolvedValue({ current: "1.2.1", pending: null, checking: true, last_error: null,
+    updated: { version: "1.2.1", notes: "- Pilule plus claire" }, state: "downloading", version: "1.2.2", percent: 42 });
+  render(sheet("updates"));
+  expect(await screen.findByText("Téléchargement de la mise à jour 1.2.2… 42 %")).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Recherche…" })).toBeDisabled();
+  expect(screen.getByText("Nouveautés de la version 1.2.1")).toBeTruthy();
+  expect(screen.getByText("- Pilule plus claire")).toBeTruthy();
 });

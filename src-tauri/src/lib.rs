@@ -135,6 +135,13 @@ pub fn run() {
             modules::voice::pipeline::voice_learn_clear,
             modules::onboarding::onboarding_get,
             modules::onboarding::onboarding_set,
+            modules::pc::pc_state,
+            modules::pc::pc_set_volume,
+            modules::pc::pc_set_mute,
+            modules::pc::pc_set_bluetooth,
+            modules::pc::pc_task_manager,
+            modules::pc::pc_windows_settings,
+            modules::pc::pc_power,
             modules::mail::mail_open_web,
             modules::mail::mail_open_link,
             modules::mail::mail_status,
@@ -157,6 +164,7 @@ pub fn run() {
             modules::updater::update_status,
             modules::updater::update_check_now,
             modules::updater::update_restart,
+            modules::updater::update_whats_new,
             #[cfg(any(debug_assertions, feature = "perf"))]
             perf::perf_frame,
             #[cfg(any(debug_assertions, feature = "perf"))]

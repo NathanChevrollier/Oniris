@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { ipc, onConfirm, onPanelState, toolIpc } from "../lib/ipc";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { ipc, listen, onConfirm, onPanelState, toolIpc } from "../lib/ipc";
 import { useSettings } from "../lib/settings";
 import { usePanelStore } from "./store";
 import { focusHeaderButton, Header } from "./Header";
@@ -25,6 +25,8 @@ import { Welcome } from "../modules/onboarding/Welcome";
 import { CardGrid } from "./CardGrid";
 import { CommandPalette } from "./CommandPalette";
 import { ConfirmQueue } from "./ConfirmQueue";
+import { Handle } from "./Handle";
+import { applyGlass, glassAlpha, useVoidClick } from "./surface";
 import "../ui/tokens.css";
 import "../ui/glass.css";
 import "../ui/motion.css";
@@ -85,23 +87,32 @@ export function Panel() {
     window.addEventListener("keydown", esc);
     return () => { un.then((f) => f()); window.removeEventListener("keydown", esc); };
   }, []);
-  // Fermé : animations en pause (panel.css) et `rise` réarmée pour la prochaine ouverture.
-  useEffect(() => { document.body.classList.toggle("closed", !open); }, [open]);
+  // Fermé : remontée animée, animations en pause (panel.css) et `rise` réarmée pour la prochaine ouverture.
+  // Rouvert : le panneau repart de sa place même s'il avait été « tiré » vers le haut par la poignée.
+  const panel = useRef<HTMLElement>(null);
+  useEffect(() => { document.body.classList.toggle("closed", !open); if (open) panel.current?.style.removeProperty("--pull"); }, [open]);
+  // Verre automatique : intensité du fond mesurée par Rust juste avant chaque ouverture.
+  const [measured, setMeasured] = useState<number | null>(null);
+  useEffect(() => { const un = listen<number>("oniris://glass", (e) => setMeasured(e.payload)); return () => { un.then((f) => f()); }; }, []);
+  useEffect(() => applyGlass(glassAlpha(settings.glass_mode, settings.glass_opacity, measured)), [settings.glass_mode, settings.glass_opacity, measured]);
+  const scrim = useVoidClick(() => void ipc.panelClose());
+  const pct = settings.panel_height_pct;
+  const covered = welcome || accountsOpen || journalOpen || settingsAt !== null;
 
   return (
     <>
-      <div className="scrim" onClick={() => ipc.panelClose()} />
-      <section className="panel" aria-label="Oniris">
+      <div className="scrim" data-void {...scrim} />
+      <section ref={panel} className="panel" aria-label="Oniris" data-sized={pct ? "" : undefined} style={pct ? { "--panel-pct": pct } as CSSProperties : undefined}>
         <Ambient colors={colors} />
-        <div className="inner" inert={welcome || accountsOpen || journalOpen || settingsAt !== null}>
+        <div className="inner" inert={covered}>
           <Header name={settings.user_name} onAccounts={openAccounts} onIris={openIris} onJournal={openJournal} onSettings={openSettings} />
           <IrisReply />
           <Timeline startHour={settings.timeline_start_hour} endHour={settings.timeline_end_hour} items={[...items, ...dots]} />
           <ConfirmQueue subscribe={onConfirm} resolve={toolIpc.resolve} />
           <CardGrid slots={{ music: <MusicCard onAccounts={openAccounts} onColors={setColors} />, mails: <MailCard onAccounts={openAccounts} />, agenda: <AgendaCard />, projects: <ProjectsCard />, notes: <NotesCard />, clipboard: <ClipboardCard />, vps: <FavoritesCard />, pc: <PcCard />, timer: <TimerCard /> }} />
           <CommandPalette />
-          <div className="handle" />
         </div>
+        <Handle pct={pct} panel={panel} inert={covered} />
         <Welcome covered={accountsOpen || settingsAt !== null} onActive={setWelcome} onGo={goTo} />
         <AccountsSheet open={accountsOpen} onClose={closeAccounts} onAutoOpen={openAccounts} />
         <JournalSheet open={journalOpen} onClose={closeJournal} />

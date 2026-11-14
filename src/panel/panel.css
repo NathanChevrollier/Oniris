@@ -1,17 +1,25 @@
 /* Panneau — port de docs/design/maquette-panneau.html. Seule la surface .panel porte un backdrop-filter. */
-.scrim{position:fixed;inset:0;z-index:10;background:rgba(0,0,0,.18);transition:opacity .4s}
-.panel{position:fixed;z-index:20;top:0;left:50%;width:min(1380px,96vw);max-height:calc(100vh - 28px);
-  transform:translateX(-50%);transform-origin:50% 0;transition:transform .55s var(--ease),opacity .3s;
+.scrim{position:fixed;inset:0;z-index:10;background:rgba(0,0,0,.18);transition:opacity .24s ease-out}
+/* Ouverture : descend en 240 ms ; fermeture (body.closed) : remonte en 190 ms, puis Rust masque la fenêtre (CLOSE_ANIM).
+   --pull : décalage vers le haut pendant le geste « remonter » de la poignée. --glass-a : intensité du verre (Réglages). */
+.panel{position:fixed;z-index:20;top:0;left:50%;width:min(1380px,96vw);max-height:calc(100vh - 28px);display:flex;flex-direction:column;
+  transform:translateX(-50%) translateY(var(--pull,0px));transform-origin:50% 0;transition:transform .24s cubic-bezier(.2,.8,.2,1),opacity .2s ease-out;
   border-radius:0 0 34px 34px;overflow:hidden;
-  background:var(--glass);backdrop-filter:blur(48px) saturate(190%);-webkit-backdrop-filter:blur(48px) saturate(190%);
+  background:var(--glass);backdrop-filter:blur(calc(28px + 36px * var(--glass-a))) saturate(190%);-webkit-backdrop-filter:blur(calc(28px + 36px * var(--glass-a))) saturate(190%);
   border:1px solid var(--line2);border-top:none;
   box-shadow:0 50px 120px rgba(0,0,0,.55),inset 0 -1px 0 rgba(255,255,255,.06)}
 
 /* Fermé : tout est figé, et l'absence d'animation sur .card rejoue `rise` à la réouverture. */
-body.closed .scrim{opacity:0}
-body.closed .panel{transform:translateX(-50%) translateY(-24px) scale(.97);opacity:0}
+body.closed .scrim{opacity:0;transition-duration:.18s}
+body.closed .panel{transform:translateX(-50%) translateY(calc(var(--pull,0px) - 36px)) scale(.98);opacity:0;transition-duration:.19s,.17s}
+/* Hauteur choisie à la poignée (% de la hauteur utile) ; la grille prend la place libre. Pas de transition pendant le glissé. */
+.panel[data-sized]{height:max(420px,calc((100vh - 28px) * var(--panel-pct) / 100))}
+.panel[data-sized] .inner>.grid{flex:1 1 0;align-content:start}
+.panel[data-drag]{transition:none}
 body.closed *,body.closed *::before,body.closed *::after{animation-play-state:paused !important}
-body.closed .card{animation:none}
+/* `held` (en pause) garde les cartes visibles pendant la remontée ; repasser à `rise` à l'ouverture la rejoue. */
+body.closed .card{animation:held 1s both}
+@keyframes held{from,to{opacity:1;transform:none}}
 
 /* Halos d'ambiance : dégradés radiaux (pas de filter: blur), seule la translation est animée. */
 .ambient{position:absolute;inset:-20%;z-index:0;pointer-events:none;opacity:.55}
@@ -26,15 +34,15 @@ body.closed .card{animation:none}
 .ambient-tint.out{opacity:0;animation:none}
 @keyframes ambient-in{from{opacity:0}}
 
-.inner{position:relative;z-index:1;padding:18px 26px 14px;display:flex;flex-direction:column;gap:10px;
-  max-height:calc(100vh - 28px);overflow:auto;scrollbar-width:none}
+.inner{position:relative;z-index:1;padding:18px 26px 4px;display:flex;flex-direction:column;gap:10px;
+  flex:1 1 auto;min-height:0;overflow:auto;scrollbar-width:none}
 .inner>*{flex-shrink:0}
 /* Écran trop court : seule la grille défile, en-tête, frise et barre de commande restent visibles. */
 .inner>.grid{flex-shrink:1;min-height:220px;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.18) transparent}
 .inner>.grid:hover{scrollbar-color:rgba(255,255,255,.4) transparent}
 /* Écran de 1080 px ou moins : espacements réduits, texte inchangé ; la grille défile au besoin (fondu `.more`), aucune carte masquée. */
 @media (max-height:1100px){
-  .inner{padding:14px 22px 10px;gap:8px}
+  .inner{padding:14px 22px 2px;gap:8px}
   .inner>.grid{gap:10px}
 }
 /* Encore du contenu plus bas (classe posée par CardGrid) : fondu doux du bord inférieur. */
@@ -118,6 +126,10 @@ button.orb-status:hover{color:var(--txt);background:rgba(255,116,72,.12)}
 .mic[data-on]{background:var(--acc);color:#1a0f0a}
 .mic:focus-visible,.cmd-orb:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 .cmd-orb{flex:none}
-.handle{width:46px;height:5px;border-radius:3px;background:rgba(255,255,255,.25);margin:2px auto 0}
+/* Poignée : zone de prise de 18 px sur toute la largeur utile du trait, le trait seul est dessiné. */
+.handle{position:relative;z-index:1;flex:none;align-self:center;width:160px;height:18px;margin-bottom:4px;cursor:ns-resize;touch-action:none;border-radius:9px;outline:0}
+.handle::before{content:"";position:absolute;left:57px;right:57px;top:6px;height:5px;border-radius:3px;background:rgba(255,255,255,.25);transition:background .15s,transform .15s}
+.handle:hover::before,.panel[data-drag] .handle::before{background:rgba(255,255,255,.5);transform:scaleX(1.25)}
+.handle:focus-visible{outline:2px solid var(--acc);outline-offset:-2px}
 
 .confirm-notice{margin:0 0 10px;padding:8px 14px;border-radius:14px;border:1px solid rgba(255,159,10,.35);background:rgba(255,159,10,.14);color:#ffc470;font:12.5px var(--font)}

@@ -621,6 +621,48 @@
           "markdownDescription": "Enables the panel_toggle command without any pre-configured scope."
         },
         {
+          "description": "Enables the pc_power command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-pc-power",
+          "markdownDescription": "Enables the pc_power command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the pc_set_bluetooth command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-pc-set-bluetooth",
+          "markdownDescription": "Enables the pc_set_bluetooth command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the pc_set_mute command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-pc-set-mute",
+          "markdownDescription": "Enables the pc_set_mute command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the pc_set_volume command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-pc-set-volume",
+          "markdownDescription": "Enables the pc_set_volume command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the pc_state command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-pc-state",
+          "markdownDescription": "Enables the pc_state command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the pc_task_manager command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-pc-task-manager",
+          "markdownDescription": "Enables the pc_task_manager command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the pc_windows_settings command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-pc-windows-settings",
+          "markdownDescription": "Enables the pc_windows_settings command without any pre-configured scope."
+        },
+        {
           "description": "Enables the perf_frame command without any pre-configured scope.",
           "type": "string",
           "const": "allow-perf-frame",
@@ -781,6 +823,12 @@
           "type": "string",
           "const": "allow-update-status",
           "markdownDescription": "Enables the update_status command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the update_whats_new command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-update-whats-new",
+          "markdownDescription": "Enables the update_whats_new command without any pre-configured scope."
         },
         {
           "description": "Enables the voice_azure_key_clear command without any pre-configured scope.",
@@ -1317,6 +1365,48 @@
           "markdownDescription": "Denies the panel_toggle command without any pre-configured scope."
         },
         {
+          "description": "Denies the pc_power command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-pc-power",
+          "markdownDescription": "Denies the pc_power command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the pc_set_bluetooth command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-pc-set-bluetooth",
+          "markdownDescription": "Denies the pc_set_bluetooth command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the pc_set_mute command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-pc-set-mute",
+          "markdownDescription": "Denies the pc_set_mute command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the pc_set_volume command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-pc-set-volume",
+          "markdownDescription": "Denies the pc_set_volume command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the pc_state command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-pc-state",
+          "markdownDescription": "Denies the pc_state command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the pc_task_manager command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-pc-task-manager",
+          "markdownDescription": "Denies the pc_task_manager command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the pc_windows_settings command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-pc-windows-settings",
+          "markdownDescription": "Denies the pc_windows_settings command without any pre-configured scope."
+        },
+        {
           "description": "Denies the perf_frame command without any pre-configured scope.",
           "type": "string",
           "const": "deny-perf-frame",
@@ -1477,6 +1567,12 @@
           "type": "string",
           "const": "deny-update-status",
           "markdownDescription": "Denies the update_status command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the update_whats_new command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-update-whats-new",
+          "markdownDescription": "Denies the update_whats_new command without any pre-configured scope."
         },
         {
           "description": "Denies the voice_azure_key_clear command without any pre-configured scope.",

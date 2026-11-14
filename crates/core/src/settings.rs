@@ -100,6 +100,8 @@ pub struct Settings {
     pub user_name: String,
     pub hotkey: HotkeySetting,
     pub hold_threshold_ms: u32,
+    /// Win seule (relâchée sans autre touche) ouvre ou ferme le panneau au lieu du menu Démarrer.
+    pub win_key_opens_panel: bool,
     pub hover_open: bool,
     pub hover_delay_ms: u32,
     pub autostart: bool,
@@ -174,6 +176,12 @@ pub struct Settings {
     pub voice_azure_region: String,
     /// Nom de la voix neurale (lettres, chiffres et tirets, 80 au plus).
     pub voice_azure_voice: String,
+    /// Hauteur du panneau en % de l'écran : 0 = automatique, sinon 40..=100.
+    pub panel_height_pct: u8,
+    /// Verre : `auto` (adapté au fond d'écran, mesuré à l'ouverture) ou `manual` (`glass_opacity`).
+    pub glass_mode: String,
+    /// Opacité du verre en mode manuel, 20..=95 %.
+    pub glass_opacity: u8,
 }
 
 /// Commandes en lecture seule (aucun de leurs arguments sûrs n'écrit).
@@ -185,6 +193,7 @@ impl Default for Settings {
             user_name: String::new(),
             hotkey: HotkeySetting::default(),
             hold_threshold_ms: 250,
+            win_key_opens_panel: false,
             hover_open: true,
             hover_delay_ms: 350,
             autostart: true,
@@ -228,6 +237,9 @@ impl Default for Settings {
             voice_azure: false,
             voice_azure_region: "francecentral".into(),
             voice_azure_voice: "fr-FR-VivienneMultilingualNeural".into(),
+            panel_height_pct: 0,
+            glass_mode: "manual".into(),
+            glass_opacity: 58,
         }
     }
 }
@@ -475,6 +487,18 @@ impl Settings {
             errs.push(e);
             self.hotkey = d.hotkey;
         }
+        if self.panel_height_pct != 0 && !(40..=100).contains(&self.panel_height_pct) {
+            errs.push("hauteur du panneau : automatique ou 40 à 100 %".into());
+            self.panel_height_pct = d.panel_height_pct;
+        }
+        if !matches!(self.glass_mode.as_str(), "auto" | "manual") {
+            errs.push("verre : auto ou manual".into());
+            self.glass_mode = d.glass_mode.clone();
+        }
+        if !(20..=95).contains(&self.glass_opacity) {
+            errs.push("opacité du verre : 20 à 95 %".into());
+            self.glass_opacity = d.glass_opacity;
+        }
         errs
     }
 
@@ -528,6 +552,7 @@ mod tests {
     use super::*;
     use crate::db::{migrate, open_db, CORE_MIGRATIONS};
     #[test] fn auto_update_defaults_to_true() { assert!(Settings::default().auto_update); }
+    #[test] fn touche_windows_desactivee_par_defaut() { assert!(!Settings::default().win_key_opens_panel); }
     #[test] fn champs_manquants_remplis_par_defaut() {
         let s: Settings = serde_json::from_str(r#"{"user_name":"Nathan"}"#).unwrap();
         assert_eq!(s.user_name, "Nathan");
@@ -781,5 +806,17 @@ mod tests {
         let s = Settings { user_name: "Zoé".into(), hold_threshold_ms: 400, ..Settings::default() };
         save_settings(&c, &s).unwrap();
         assert_eq!(load_settings(&c).unwrap(), s);
+    }
+
+    #[test]
+    fn bornes_hauteur_et_verre() {
+        let ok = |f: fn(&mut Settings)| { let mut s = Settings::default(); f(&mut s); s.validate().is_ok() };
+        assert!(ok(|s| s.panel_height_pct = 0) && ok(|s| s.panel_height_pct = 40) && ok(|s| s.panel_height_pct = 100));
+        assert!(!ok(|s| s.panel_height_pct = 39) && !ok(|s| s.panel_height_pct = 101));
+        assert!(ok(|s| s.glass_mode = "auto".into()) && !ok(|s| s.glass_mode = "Auto".into()));
+        assert!(ok(|s| s.glass_opacity = 20) && ok(|s| s.glass_opacity = 95) && !ok(|s| s.glass_opacity = 19) && !ok(|s| s.glass_opacity = 96));
+        let mut s = Settings { panel_height_pct: 7, glass_opacity: 0, ..Settings::default() };
+        assert_eq!(s.fix().len(), 2);
+        assert_eq!((s.panel_height_pct, s.glass_opacity), (0, 58));
     }
 }

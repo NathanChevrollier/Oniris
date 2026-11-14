@@ -6,7 +6,9 @@ import { HiddenProjects } from "../projects/HiddenProjects";
 import { IrisBrains, IrisHistory, IrisMemories, IrisPersonality, IrisSecurity } from "../iris/IrisSheet";
 import { VoiceSection } from "../voice/VoiceSection";
 import { Area, Field, Group, Row, SetCtx, Toggle, useDraft, useSaver, useSet } from "./controls";
-import { updateIpc, type UpdateStatus } from "./update";
+import { onUpdate, restartText, updateIpc, type UpdateStatus } from "./update";
+import { Appearance } from "./Appearance";
+import { useVoidClick } from "../../panel/surface";
 import "../accounts/accounts.css";
 import "./settings.css";
 
@@ -49,27 +51,43 @@ function HotkeyRow() {
   );
 }
 
-/** Version installée, vérification manuelle et mise à jour en attente. */
+const Notes = ({ text }: { text: string }) => <span style={{ whiteSpace: "pre-line" }}>{text}</span>;
+
+/** Version installée, vérification manuelle, téléchargement et mise à jour en attente, suivis en direct. */
 function UpdateInfo() {
   const [st, setSt] = useState<UpdateStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const [checked, setChecked] = useState(false);
-  useEffect(() => { void updateIpc.status().then(setSt).catch(() => {}); }, []);
+  useEffect(() => {
+    const un = onUpdate(setSt);
+    void updateIpc.status().then((s) => setSt((v) => v ?? s)).catch(() => {});
+    return () => { void un.then((f) => f()); };
+  }, []);
   const check = async () => {
     setBusy(true);
     try { setSt(await updateIpc.checkNow()); setChecked(true); } catch { /* l'échec est journalisé côté Rust */ } finally { setBusy(false); }
   };
+  const working = busy || st?.state === "checking" || st?.state === "downloading";
+  const live = st?.state === "downloading" ? `Téléchargement de la mise à jour ${st.version}…${st.percent !== null ? ` ${st.percent} %` : ""}` : st && restartText(st);
   return (
     <>
       <Row label={st ? `Version ${st.current}` : "Version installée"}
-        desc={st?.last_error && !st.pending ? <span className="err" role="alert">Vérification impossible : {st.last_error}</span>
-          : checked && !busy && !st?.pending ? <span className="set-ok" role="status">Oniris est à jour.</span> : undefined}>
-        <button type="button" className="acc-btn" disabled={busy} onClick={() => void check()}>
-          <RefreshCw size={13} className={busy ? "set-spin" : undefined} />{busy ? "Recherche et téléchargement…" : "Vérifier maintenant"}</button>
+        desc={live ? <span role="status">{live}</span>
+          : st?.last_error && (!st.pending || st.state === "error") ? <span className="err" role="alert">{st.last_error}</span>
+            : checked && !working && !st?.pending ? <span className="set-ok" role="status">Oniris est à jour.</span> : undefined}>
+        <button type="button" className="acc-btn" disabled={working} onClick={() => void check()}>
+          <RefreshCw size={13} className={working ? "set-spin" : undefined} />
+          {working ? "Recherche…" : st?.state === "error" && !st.pending ? "Réessayer" : "Vérifier maintenant"}</button>
       </Row>
       {st?.pending && (
-        <Row label={`Version ${st.pending[0]} prête`} desc={st.pending[1] || undefined}>
-          <button type="button" className="acc-btn primary" onClick={() => void updateIpc.restart().catch(() => {})}>Redémarrer pour l'installer</button>
+        <Row label={`Version ${st.pending[0]} prête`} desc={st.pending[1] ? <Notes text={st.pending[1]} /> : undefined}>
+          {!live && <button type="button" className="acc-btn primary" onClick={() => void updateIpc.restart().catch(() => {})}>
+            {st.state === "error" ? "Réessayer l'installation" : "Redémarrer pour l'installer"}</button>}
+        </Row>
+      )}
+      {st?.updated && (
+        <Row label={`Nouveautés de la version ${st.updated.version}`} desc={<Notes text={st.updated.notes || "Pas de notes pour cette version."} />}>
+          <button type="button" className="acc-btn" onClick={() => void updateIpc.whatsNew().catch(() => {})}>Voir sur GitHub</button>
         </Row>
       )}
     </>
@@ -85,11 +103,13 @@ const CATS: { id: SettingsCat; icon: LucideIcon; title: string; intro: string; p
       <Toggle k="autostart" label="Lancer Oniris au démarrage de Windows" />
       <Toggle k="reduce_motion" label="Réduire les animations" desc="Moins de mouvement dans toute l'app, comme le réglage de Windows." />
     </Group>
+    <Appearance />
   </> },
   { id: "pill", icon: Keyboard, title: "Pilule et raccourci", intro: "Comment ouvrir Oniris : au clavier ou en passant sur la pilule en haut de l'écran.", pane: () => <>
     <Group title="Raccourci">
       <HotkeyRow />
       <Field k="hold_threshold_ms" label="Appui long" unit="ms" desc="Un appui bref ouvre le panneau ; maintenu plus longtemps, le raccourci fait parler IRIS." />
+      <Toggle k="win_key_opens_panel" label="Touche Windows" desc="Un appui seul sur Windows ouvre Oniris au lieu du menu Démarrer ; Win+E, Win+D et les autres combinaisons restent inchangées." />
     </Group>
     <Group title="Pilule">
       <Toggle k="hover_open" label="Ouvrir au survol" desc="Le panneau s'ouvre quand le curseur reste sur la pilule." />
@@ -136,7 +156,7 @@ const CATS: { id: SettingsCat; icon: LucideIcon; title: string; intro: string; p
   { id: "updates", icon: RefreshCw, title: "Mises à jour", intro: "Oniris se met à jour tout seul depuis GitHub, sans te déranger.", pane: () => (
     <Group>
       <Toggle k="auto_update" label="Mises à jour automatiques"
-        desc="Oniris vérifie toutes les 6 h s'il existe une nouvelle version, la télécharge en arrière-plan et l'installe quand tu fermes l'app, jamais pendant que tu joues ou que tu parles à IRIS. Désactivé : plus de vérification ni de téléchargement ; une mise à jour déjà téléchargée s'installe quand même à la fermeture." />
+        desc="Oniris vérifie s'il existe une nouvelle version peu après son démarrage, toutes les 2 h, au réveil du PC et à l'ouverture du panneau (au plus une fois par heure), la télécharge en arrière-plan et l'installe quand tu fermes l'app ou cliques sur « Redémarrer », jamais pendant que tu joues ou que tu parles à IRIS. Désactivé : plus de vérification ni de téléchargement ; une mise à jour déjà téléchargée s'installe quand même à la fermeture." />
       <UpdateInfo />
     </Group>
   ) },
@@ -159,7 +179,7 @@ function Body({ cat, setCat, onClose, onAccounts }: { cat: SettingsCat; setCat: 
   };
   return (
     <SetCtx.Provider value={{ s, save }}>
-      <nav className="set-nav" aria-label="Catégories des réglages">
+      <nav className="set-nav" aria-label="Catégories des réglages" data-void>
         <h2>Réglages</h2>
         <div role="tablist" aria-orientation="vertical" aria-label="Catégories" onKeyDown={keys}>
           {CATS.map(({ id, icon: Icon, title }) => (
@@ -171,14 +191,14 @@ function Body({ cat, setCat, onClose, onAccounts }: { cat: SettingsCat; setCat: 
         <button type="button" className="set-tab" title="Comptes" onClick={onAccounts}><UserRound size={16} /><span>Comptes</span><ChevronRight size={14} className="set-go" /></button>
       </nav>
       <div className="set-main">
-        <header className="set-head">
+        <header className="set-head" data-void>
           <div className="set-title"><h3>{current.title}</h3><p>{current.intro}</p></div>
           {msg && (msg.ok
             ? <span key={msg.n} className="set-saved" role="status"><Check size={13} />{msg.text}</span>
             : <p key={msg.n} className="err set-alert" role="alert">{msg.text}</p>)}
           <button type="button" className="acc-icon" aria-label="Fermer les réglages" onClick={onClose}><X size={16} /></button>
         </header>
-        <div className="set-scroll">
+        <div className="set-scroll" data-void>
           <div key={cat} id="set-panel" role="tabpanel" aria-labelledby={`set-tab-${cat}`} className="set-pane">{current.pane()}</div>
         </div>
       </div>
@@ -192,10 +212,12 @@ export function SettingsSheet({ open, section = "general", onClose, onAccounts }
   const [wasOpen, setWasOpen] = useState(open);
   if (wasOpen !== open) { setWasOpen(open); if (open) setCat(section); }
   const root = useRef<HTMLElement>(null);
+  // Clic dans le vide de la feuille (marges de la barre latérale, de l'en-tête ou sous le contenu) : retour au panneau.
+  const voidClick = useVoidClick(onClose);
   useEffect(() => { if (open) root.current?.focus(); }, [open]);
   if (!open) return null;
   return (
-    <section ref={root} tabIndex={-1} className="acc-sheet set-sheet" role="dialog" aria-modal="true" aria-label="Réglages"
+    <section ref={root} tabIndex={-1} className="acc-sheet set-sheet" role="dialog" aria-modal="true" aria-label="Réglages" data-void {...voidClick}
       onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); onClose(); } }}>
       <Body cat={cat} setCat={setCat} onClose={onClose} onAccounts={onAccounts} />
     </section>

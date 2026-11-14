@@ -21,6 +21,7 @@ export type Settings = {
   user_name: string;
   hotkey: HotkeySetting;
   hold_threshold_ms: number;
+  win_key_opens_panel: boolean;
   hover_open: boolean;
   hover_delay_ms: number;
   autostart: boolean;
@@ -88,6 +89,12 @@ export type Settings = {
   voice_azure: boolean;
   voice_azure_region: string;
   voice_azure_voice: string;
+  /** Hauteur du panneau en % de l'écran : 0 = automatique, sinon 40 à 100. */
+  panel_height_pct: number;
+  /** Verre adapté au fond d'écran (`auto`) ou réglé par `glass_opacity` (`manual`). */
+  glass_mode: "auto" | "manual";
+  /** Opacité du verre en mode manuel : 20 à 95. */
+  glass_opacity: number;
 };
 
 const RESUME_NORMAL = "Reprends là où tu en étais sur ce projet. Appuie-toi sur le plan de développement et l'historique git. Commence par me dire où on en est.";
@@ -97,6 +104,7 @@ export const DEFAULT_SETTINGS: Settings = {
   user_name: "",
   hotkey: { alt: true, ctrl: false, shift: false, win: false, key: "Space" },
   hold_threshold_ms: 250,
+  win_key_opens_panel: false,
   hover_open: true,
   hover_delay_ms: 350,
   autostart: true,
@@ -140,6 +148,9 @@ export const DEFAULT_SETTINGS: Settings = {
   voice_azure: false,
   voice_azure_region: "francecentral",
   voice_azure_voice: "fr-FR-VivienneMultilingualNeural",
+  panel_height_pct: 0,
+  glass_mode: "manual",
+  glass_opacity: 58,
 };
 
 /** Paramètres courants : chargés au montage, puis suivis via `oniris://settings`. */

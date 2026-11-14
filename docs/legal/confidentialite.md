@@ -32,6 +32,10 @@ Le texte de tes rappels et le nom de tes minuteurs s'affichent dans les notifica
 
 Oniris ne mesure pas ton usage et n'envoie ni rapport de plantage, ni statistique, ni identifiant à qui que ce soit.
 
+## Apparence
+
+Avec le verre « Automatique », Oniris regarde l'écran sous le panneau à chaque ouverture, réduit à une image de 32 × 18 points gardée en mémoire le temps d'en calculer la luminosité : cette image n'est jamais enregistrée ni envoyée.
+
 ## Météo
 
 Si tu laisses le champ « ville » vide, la météo est désactivée et Oniris ne fait aucune requête.
@@ -243,9 +247,9 @@ IRIS peut exécuter une commande PowerShell, gérer des fichiers et lancer, ferm
 ## Mises à jour
 
 - **Ce qui est contacté** : `github.com` et son réseau de téléchargement, où les versions d'Oniris sont publiées (page des publications du dépôt public). La requête vise une adresse fixe et porte l'agent standard du composant de mise à jour (`tauri-plugin-updater/x`) : GitHub voit ton **adresse IP**, mais **pas la version d'Oniris**. Aucun autre identifiant, aucun contenu venant de toi n'est envoyé.
-- **Quand** : 3 minutes après le démarrage, puis toutes les 6 heures, tant que les mises à jour automatiques sont activées ; et quand tu cliques sur « Vérifier maintenant ».
+- **Quand** : environ une minute après le démarrage, puis toutes les 2 heures, au réveil du PC après une veille et à l'ouverture du panneau si la dernière vérification date de plus d'une heure (jamais deux vérifications automatiques à moins de 10 minutes d'écart, aucune pendant un plein écran), tant que les mises à jour automatiques sont activées ; et quand tu cliques sur « Vérifier maintenant ». Le bouton « Nouveautés » (après une mise à jour) ouvre la page de la version sur GitHub dans ton navigateur, seulement sur ton clic.
 - **Signature** : une mise à jour téléchargée n'est installée que si sa signature correspond à la clé publique intégrée à Oniris ; sinon elle est ignorée.
-- **Installation** : jamais pendant que tu parles à IRIS ni en plein écran. Elle se fait quand tu fermes l'app, ou quand tu cliques sur « Redémarrer ». Tes données (réglages, base, voix, extraits d'apprentissage) ne sont pas touchées. L'installeur téléchargé reste dans `%LOCALAPPDATA%\Oniris\updates` jusqu'à son installation.
+- **Installation** : jamais pendant que tu parles à IRIS ni en plein écran. Elle se fait quand tu fermes l'app, ou quand tu cliques sur « Redémarrer ». Tes données (réglages, base, voix, extraits d'apprentissage) ne sont pas touchées. L'installeur téléchargé reste dans `%LOCALAPPDATA%\Oniris\updates` jusqu'à son installation, avec les notes de la version (`notes.json`, pour l'annonce « Oniris est passé en X ») ; les deux sont supprimés au lancement suivant.
 - **Couper** : décoche « Mises à jour automatiques » dans les réglages (section « Mises à jour ») : plus aucune vérification ni téléchargement automatique. Une mise à jour déjà téléchargée s'installe quand même à la fermeture d'Oniris. « Vérifier maintenant » reste disponible.
 
 ## À venir

@@ -4,6 +4,7 @@ import { useTopic } from "../../lib/data";
 import { useSettings } from "../../lib/settings";
 import { accountsIpc, COLOR_NAMES, errorText, PALETTE, type AccountView } from "./api";
 import { GUIDES, type Guide, type Step } from "./guide";
+import { useVoidClick } from "../../panel/surface";
 import "./accounts.css";
 
 const PROVIDER_NAME = { google: "Gmail", spotify: "Spotify" } as const;
@@ -110,6 +111,7 @@ export function AccountsSheet({ open, onClose, onAutoOpen }: { open: boolean; on
   const [error, setError] = useState<string | null>(null);
   const root = useRef<HTMLElement>(null);
   const introAsked = useRef(false);
+  const voidClick = useVoidClick(onClose);
 
   useEffect(() => {
     if (data === null || introAsked.current) return;
@@ -145,9 +147,9 @@ export function AccountsSheet({ open, onClose, onAutoOpen }: { open: boolean; on
     </div>
   );
   return (
-    <section ref={root} tabIndex={-1} className="acc-sheet" role="dialog" aria-modal="true" aria-label="Comptes"
+    <section ref={root} tabIndex={-1} className="acc-sheet" role="dialog" aria-modal="true" aria-label="Comptes" data-void {...voidClick}
       onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); onClose(); } }}>
-      <header className="acc-head">
+      <header className="acc-head" data-void>
         <h2>Comptes</h2>
         <button type="button" className="acc-icon" aria-label="Fermer les comptes" onClick={onClose}><X size={16} /></button>
       </header>

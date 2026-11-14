@@ -3,6 +3,7 @@ import { Undo2, X } from "lucide-react";
 import { toolIpc, type JournalEntry, type Origin, type Provenance } from "../../lib/ipc";
 import { errorText } from "../accounts/api";
 import "../accounts/accounts.css";
+import { useVoidClick } from "../../panel/surface";
 import "./iris.css";
 
 const originLabel = (o: Origin) => o === "User" ? "toi" : o === "Mcp" ? "MCP" : o.Assistant.brain === "Claude" ? "Claude" : "IRIS local";
@@ -18,14 +19,15 @@ export function JournalSheet({ open, onClose }: { open: boolean; onClose: () => 
   const [error, setError] = useState<string | null>(null);
   const [loadErr, setLoadErr] = useState(false);
   const root = useRef<HTMLElement>(null);
+  const voidClick = useVoidClick(onClose);
   const load = useCallback(() => { toolIpc.journal(100).then((l) => { setList(l); setLoadErr(false); }, () => setLoadErr(true)); }, []);
   useEffect(() => { if (open) { root.current?.focus(); load(); } }, [open, load]);
   if (!open) return null;
   const undo = (id: number) => toolIpc.undo(id).then(() => setError(null), (e) => setError(errorText(e, "Annulation impossible."))).finally(load);
   return (
-    <section ref={root} tabIndex={-1} className="acc-sheet" role="dialog" aria-modal="true" aria-label="Journal"
+    <section ref={root} tabIndex={-1} className="acc-sheet" role="dialog" aria-modal="true" aria-label="Journal" data-void {...voidClick}
       onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); onClose(); } }}>
-      <header className="acc-head"><h2>Journal</h2>
+      <header className="acc-head" data-void><h2>Journal</h2>
         <button type="button" className="acc-icon" aria-label="Fermer le journal" onClick={onClose}><X size={16} /></button></header>
       <div className="acc-body">
         {error && <p className="err" role="alert">{error}</p>}

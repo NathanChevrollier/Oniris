@@ -6,6 +6,11 @@ use std::collections::HashMap;
 
 pub const NOT_INSTALLED: &str = "non installée";
 
+/// État d'Ollama pour la carte « Ce PC » : un processus `ollama.exe` tourne, sinon installé mais arrêté, sinon absent.
+pub fn local_ai_label(running: bool, installed: bool) -> &'static str {
+    if running { "en marche" } else if installed { "arrêtée" } else { NOT_INSTALLED }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct SystemStatus {
     pub cpu_pct: f32,
@@ -69,5 +74,13 @@ mod tests {
         let v = serde_json::to_value(&st).unwrap();
         assert!(v["gpu_pct"].is_null() && v["vram_used_mb"].is_null() && v["vram_total_mb"].is_null());
         assert_eq!(v["local_ai"], "non installée");
+    }
+
+    #[test]
+    fn etat_de_l_ia_locale() {
+        assert_eq!(local_ai_label(true, true), "en marche");
+        assert_eq!(local_ai_label(true, false), "en marche");
+        assert_eq!(local_ai_label(false, true), "arrêtée");
+        assert_eq!(local_ai_label(false, false), "non installée");
     }
 }

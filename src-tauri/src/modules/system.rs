@@ -2,7 +2,7 @@
 //! CPU/RAM : sysinfo (rafraîchissements minimaux, une seule instance). GPU/VRAM : PDH (compteurs anglais, indépendants de la langue)
 //! + DXGI pour la VRAM totale. Mémoire d'Oniris : octets privés (`PrivateUsage`) d'oniris.exe et de ses `msedgewebview2.exe`
 //!   descendants, via Toolhelp32 + GetProcessMemoryInfo, recalculée toutes les 5 s.
-use oniris_core::system::{gpu_from_counters, SystemStatus, NOT_INSTALLED};
+use oniris_core::system::{gpu_from_counters, SystemStatus};
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
@@ -118,6 +118,8 @@ struct Sampler {
     vram_total_mb: Option<u64>,
     oniris_mb: u64,
     oniris_at: Option<Instant>,
+    /// État d'Ollama, relu avec la mémoire d'Oniris (même liste de processus, toutes les 5 s).
+    local_ai: &'static str,
 }
 
 impl Sampler {
@@ -128,7 +130,7 @@ impl Sampler {
                 .with_memory(MemoryRefreshKind::nothing().with_ram()),
         );
         let gpu = gpu::Pdh::open().inspect_err(|e| tracing::warn!("PDH indisponible, GPU masqué : {e}")).ok();
-        Self { sys, gpu, failures: FailureCounter::new(PDH_FAILURE_LIMIT), hold: GpuHold::new(), vram_total_mb: gpu::vram_total_mb(), oniris_mb: 0, oniris_at: None }
+        Self { sys, gpu, failures: FailureCounter::new(PDH_FAILURE_LIMIT), hold: GpuHold::new(), vram_total_mb: gpu::vram_total_mb(), oniris_mb: 0, oniris_at: None, local_ai: oniris_core::system::NOT_INSTALLED }
     }
 
     /// Première lecture : les erreurs PDH y sont normales (pas de point de comparaison), on les ignore.
@@ -144,7 +146,10 @@ impl Sampler {
         self.sys.refresh_cpu_usage();
         self.sys.refresh_memory();
         if self.oniris_at.is_none_or(|t| t.elapsed() >= ONIRIS_EVERY) {
-            self.oniris_mb = procs::oniris_private_bytes() / MB;
+            let all = procs::all();
+            self.oniris_mb = procs::oniris_private_bytes(&all) / MB;
+            let running = all.iter().any(|(_, _, n)| n.eq_ignore_ascii_case("ollama.exe"));
+            self.local_ai = oniris_core::system::local_ai_label(running, crate::modules::iris::ollama_installed());
             self.oniris_at = Some(Instant::now());
         }
         let mut g = None;
@@ -174,7 +179,7 @@ impl Sampler {
             vram_used_mb: g.map(|g| g.1),
             vram_total_mb: g.and(self.vram_total_mb),
             oniris_mb: self.oniris_mb,
-            local_ai: NOT_INSTALLED.into(),
+            local_ai: self.local_ai.into(),
             voice: crate::modules::voice::pipeline::status_label().into(),
         }
     }
@@ -207,7 +212,7 @@ mod procs {
     use windows::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION};
 
     /// (pid, pid parent, nom de l'exécutable) de tous les processus.
-    fn all() -> Vec<(u32, u32, String)> {
+    pub fn all() -> Vec<(u32, u32, String)> {
         let mut v = vec![];
         let Ok(snap) = (unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) }) else { return v };
         let mut e = PROCESSENTRY32W { dwSize: size_of::<PROCESSENTRY32W>() as u32, ..Default::default() };
@@ -230,9 +235,9 @@ mod procs {
         if ok { c.PrivateUsage as u64 } else { 0 }
     }
 
-    pub fn oniris_private_bytes() -> u64 {
+    pub fn oniris_private_bytes(all: &[(u32, u32, String)]) -> u64 {
         let me = std::process::id();
-        let mut pids = super::descendants_named(&all(), me, "msedgewebview2.exe");
+        let mut pids = super::descendants_named(all, me, "msedgewebview2.exe");
         pids.push(me);
         pids.into_iter().map(private_bytes).sum()
     }

@@ -174,6 +174,8 @@ pub struct TurnResult { pub shown: Vec<Segment>, pub pending: bool, pub first_to
 pub enum TurnError { Failed, Aborted }
 
 /// `ollama.exe` : installation par défaut (pour l'utilisateur), sinon le PATH.
+pub(crate) fn ollama_installed() -> bool { ollama_exe().is_some() }
+
 fn ollama_exe() -> Option<PathBuf> {
     let default = std::env::var_os("LOCALAPPDATA").map(|d| PathBuf::from(d).join(r"Programs\Ollama\ollama.exe"));
     let path = std::env::var_os("PATH").into_iter().flat_map(|p| std::env::split_paths(&p).collect::<Vec<_>>()).map(|d| d.join("ollama.exe"));

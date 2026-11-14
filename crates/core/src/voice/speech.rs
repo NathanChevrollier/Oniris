@@ -50,7 +50,7 @@ fn strip_markup(s: &str) -> String {
                 "&" => "et".to_string(),
                 _ => {
                     let w: String = w.chars().filter(|c| !matches!(c, '*' | '_' | '`' | '~' | '#' | '•' | '|') && !pictograph(*c)).collect();
-                    clock(&w).unwrap_or(w)
+                    clock(&w).or_else(|| own_name(&w)).unwrap_or(w)
                 }
             };
             if !w.is_empty() {
@@ -69,6 +69,14 @@ fn pictograph(c: char) -> bool {
 }
 
 /// « 14:30 » se dit « 14 h 30 » (sinon : « quatorze deux-points trente »).
+/// « IRIS » se lirait « iri » (s final muet en français) : graphie phonétique, ponctuation et élision gardées
+/// (« d'IRIS » -> « d'Irisse »).
+fn own_name(w: &str) -> Option<String> {
+    let start = w.rfind(['\'', '’']).map_or(0, |i| i + 1);
+    let end = w.trim_end_matches(|c: char| !c.is_alphanumeric()).len();
+    (end > start && w[start..end].eq_ignore_ascii_case("iris")).then(|| format!("{}Irisse{}", &w[..start], &w[end..]))
+}
+
 fn clock(w: &str) -> Option<String> {
     let (core, tail) = w.split_at(w.trim_end_matches(|c: char| !c.is_ascii_digit()).len());
     let (h, m) = core.split_once(':')?;
@@ -129,6 +137,12 @@ fn push(out: &mut Vec<String>, part: &[char]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn iris_prononce_son_nom() {
+        assert_eq!(strip_markup("Je suis IRIS, l'assistante d'Iris. iris !"), "Je suis Irisse, l'assistante d'Irisse. Irisse !");
+        assert_eq!(strip_markup("Irisée, Osiris et iris9 restent tels quels"), "Irisée, Osiris et iris9 restent tels quels");
+    }
 
     #[test]
     fn emojis_symboles_et_heures_pour_l_oral() {

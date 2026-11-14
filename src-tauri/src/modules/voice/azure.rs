@@ -154,7 +154,7 @@ pub async fn voice_azure_test(app: tauri::AppHandle, region: String, voice: Stri
         (key, volume)
     };
     let c = AzureConf { key, region, voice };
-    let pcm = synthesize(&reqwest::Client::new(), &c, "Bonjour ! Je suis IRIS. Voilà à quoi ressemble ma nouvelle voix.").await?;
+    let pcm = synthesize(&reqwest::Client::new(), &c, "Bonjour ! Je suis Irisse. Voilà à quoi ressemble ma nouvelle voix.").await?;
     let h = play_pcm(Arc::new(super::playback::CpalOut), pcm, volume).await.map_err(|e| e.to_string())?;
     h.done().await;
     Ok(())

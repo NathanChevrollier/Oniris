@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ipc, onPanelState } from "../lib/ipc";
 import { useSettings } from "../lib/settings";
 import { hhmm, useNow } from "../lib/time";
@@ -6,7 +6,7 @@ import { PillTimer } from "../modules/timers/PillTimer";
 import { Orb } from "../ui/Orb";
 import { onIris } from "../modules/iris/api";
 import { onVoice, orbFor, useVoice, voiceIpc } from "../modules/voice/api";
-import { onUpdate, updateIpc } from "../modules/settings/update";
+import { onUpdate, restartText, retry, updateIpc, type UpdateStatus } from "../modules/settings/update";
 import { PillToast } from "../modules/voice/PillToast";
 import "../ui/tokens.css";
 import "../ui/glass.css";
@@ -70,26 +70,34 @@ function LearnButtons() {
   );
 }
 
-/** Annonce d'une mise à jour prête : hors de l'îlot (pas de bouton dans un bouton), sans prendre le focus. */
+/** Mise à jour (téléchargement, prête, installation, échec), sinon l'annonce de la version installée.
+ *  Hors de l'îlot (pas de bouton dans un bouton), sans prendre le focus. */
 function UpdateToast() {
-  const [version, setVersion] = useState<string | null>(null);
-  const [waiting, setWaiting] = useState(false);
+  const [st, setSt] = useState<UpdateStatus | null>(null);
+  const [hidden, setHidden] = useState<string | null>(null);
   useEffect(() => {
-    const un = onUpdate((u) => setVersion(u.version));
-    // Mise à jour déjà prête avant l'ouverture de la pilule (l'événement a pu partir sans elle).
-    void updateIpc.status().then((s) => { if (s.pending) setVersion((v) => v ?? s.pending![0]); }).catch(() => {});
+    const un = onUpdate(setSt);
+    // État déjà connu avant l'ouverture de la pilule (l'événement a pu partir sans elle).
+    void updateIpc.status().then((s) => setSt((v) => v ?? s)).catch(() => {});
     return () => { void un.then((f) => f()); };
   }, []);
-  if (!version) return null;
-  return (
-    <div className="pill-update" role="status">
-      <span>Mise à jour {version} prête</span>
-      {waiting ? <span>Installation dès que tu es disponible…</span> : <>
-        <button type="button" className="pill-learn" onClick={() => { setWaiting(true); void updateIpc.restart().catch(() => setWaiting(false)); }}>Redémarrer</button>
-        <button type="button" className="pill-learn" onClick={() => setVersion(null)}>Plus tard</button>
-      </>}
-    </div>
-  );
+  if (!st) return null;
+  const v = "version" in st ? st.version : null;
+  const btn = (label: string, on: () => void) => <button type="button" className="pill-learn" onClick={on}>{label}</button>;
+  const fail = (e: unknown) => setSt((s) => s && ({ ...s, state: "error", message: `Échec : ${String(e)}`, version: v }) as UpdateStatus);
+  const later = (key: string) => btn("Plus tard", () => setHidden(key));
+  let key = `${st.state}:${v}`;
+  let body: ReactNode;
+  if (st.state === "downloading") body = <span>Téléchargement de la mise à jour {v}…{st.percent !== null && ` ${st.percent} %`}</span>;
+  else if (st.state === "ready") body = <><span>Mise à jour {v} prête</span>{btn("Redémarrer", () => void updateIpc.restart().catch(fail))}{later(key)}</>;
+  else if (st.state === "waiting" || st.state === "installing") body = <span>{restartText(st)}</span>;
+  else if (st.state === "error" && v) body = <><span>{st.message}</span>{btn("Réessayer", () => void retry(st).catch(fail))}{later(key)}</>;
+  else if (st.updated) {
+    key = `updated:${st.updated.version}`;
+    body = <><span>Oniris est passé en {st.updated.version}</span>{btn("Nouveautés", () => void updateIpc.whatsNew().catch(() => {}))}{btn("Fermer", () => setHidden(key))}</>;
+  }
+  if (!body || hidden === key) return null;
+  return <div className="pill-update" role="status">{body}</div>;
 }
 
 export function Pill() {

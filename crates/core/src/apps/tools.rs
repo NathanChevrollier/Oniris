@@ -84,23 +84,21 @@ impl Tool for FilesRun {
 #[async_trait]
 impl Tool for AppsLaunch {
     fn spec(&self) -> ToolSpec {
-        spec("apps.launch", "Lance une application de l'inventaire du menu Démarrer.", json!({"type":"object","properties":{"key":{"type":"string"}},"required":["key"]}), Permission::Free)
+        spec("apps.launch", "Lance une application ou un jeu installé, désigné par son nom (ex. « Rocket League », « Discord »).", json!({"type":"object","properties":{"key":{"type":"string","description":"Nom de l'application"}},"required":["key"]}), Permission::Free)
     }
     fn describe(&self, _: &Value) -> ConfirmationText {
         low("Lancer une application")
     }
     async fn run(&self, a: &Value) -> Result<ToolResult, ToolError> {
         let KeyArgs { key } = parse(a)?;
-        if !self.inventory.contains_key(&key) {
-            return Err(bad("application inconnue"));
-        }
+        let Some((key, title)) = self.inventory.resolve(&key) else { return Err(bad("application introuvable sur ce PC")) };
         if key.starts_with(super::APPS_FOLDER) {
             // Application du Store : l'AppID vient de l'inventaire (vérifié ci-dessus), passé en argument séparé.
             self.opener.spawn_detached("explorer.exe", std::slice::from_ref(&key), None).map_err(|e| ToolError::Failed(format!("lancement impossible : {e}")))?;
         } else {
             self.opener.open_path(std::path::Path::new(&key)); // le .lnk lance sa cible
         }
-        Ok(ToolResult { output: json!({"launched": true}), undo: None })
+        Ok(ToolResult { output: json!({"launched": title}), undo: None })
     }
 }
 

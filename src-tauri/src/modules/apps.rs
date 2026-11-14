@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{AppHandle, Manager};
 use windows::Win32::System::Com::CoTaskMemFree;
-use windows::Win32::UI::Shell::{FOLDERID_CommonPrograms, FOLDERID_Programs, SHGetKnownFolderPath, KF_FLAG_DEFAULT};
+use windows::Win32::UI::Shell::{FOLDERID_CommonPrograms, FOLDERID_Desktop, FOLDERID_Programs, FOLDERID_PublicDesktop, SHGetKnownFolderPath, KF_FLAG_DEFAULT};
 
 static SCANNING: AtomicBool = AtomicBool::new(false);
 
@@ -18,15 +18,16 @@ impl Drop for ScanGuard {
     }
 }
 
-/// Menus Démarrer (utilisateur d'abord : il gagne les doublons) via les dossiers connus, pas de chemin en dur.
-fn start_menu_dirs() -> Vec<PathBuf> {
-    [&FOLDERID_Programs, &FOLDERID_CommonPrograms]
+/// Menus Démarrer (récursifs, utilisateur d'abord : il gagne les doublons) puis Bureaux (à plat, comme la
+/// recherche de Windows : beaucoup de jeux n'y ont que leur raccourci), via les dossiers connus.
+fn shortcut_dirs() -> Vec<(PathBuf, bool)> {
+    [(&FOLDERID_Programs, true), (&FOLDERID_CommonPrograms, true), (&FOLDERID_Desktop, false), (&FOLDERID_PublicDesktop, false)]
         .into_iter()
-        .filter_map(|id| unsafe {
+        .filter_map(|(id, recursive)| unsafe {
             let p = SHGetKnownFolderPath(id, KF_FLAG_DEFAULT, None).ok()?;
             let s = p.to_string().ok();
             CoTaskMemFree(Some(p.0 as _));
-            s.map(PathBuf::from)
+            s.map(|s| (PathBuf::from(s), recursive))
         })
         .collect()
 }
@@ -57,7 +58,7 @@ pub fn refresh(app: &AppHandle) {
     let app = app.clone();
     let spawned = std::thread::Builder::new().name("oniris-apps".into()).spawn(move || {
         let _guard = ScanGuard;
-        let items = apps::merge_start_apps(apps::scan(&start_menu_dirs()), &start_apps_json());
+        let items = apps::merge_start_apps(apps::scan(&shortcut_dirs()), &start_apps_json());
         tracing::info!("applications : {} entrées", items.len());
         app.state::<AppState>().apps.set(items, now_ms());
     });

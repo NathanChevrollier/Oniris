@@ -189,7 +189,34 @@ fn image(pid: u32) -> Option<String> {
 }
 
 /// Fenêtres principales visibles (sans propriétaire) des processus dont l'image est `exe` (casse ignorée).
+/// Fenêtres principales de l'application : par l'exécutable de son raccourci `.lnk`, sinon (jeu `.url`, appli du
+/// Store) par son nom dans le titre de la fenêtre.
+fn app_windows(app_key: &str, title: &str) -> Result<Vec<windows::Win32::Foundation::HWND>, String> {
+    if let Ok(exe) = lnk_target(app_key) {
+        return Ok(windows_of(&exe));
+    }
+    let want = title.trim().to_lowercase();
+    if want.is_empty() {
+        return Err("application sans nom".into());
+    }
+    Ok(main_windows(|h, _| window_text(h).to_lowercase().contains(&want)))
+}
+
+fn window_text(h: windows::Win32::Foundation::HWND) -> String {
+    use windows::Win32::UI::WindowsAndMessaging::GetWindowTextW;
+    let mut buf = [0u16; 512];
+    // SAFETY: tampon local de taille connue ; fenêtre disparue : 0 caractère.
+    let n = unsafe { GetWindowTextW(h, &mut buf) }.max(0) as usize;
+    String::from_utf16_lossy(&buf[..n.min(buf.len())])
+}
+
 fn windows_of(exe: &Path) -> Vec<windows::Win32::Foundation::HWND> {
+    let want = exe.to_string_lossy().to_lowercase();
+    main_windows(|_, pid| image(pid).is_some_and(|p| p.to_lowercase() == want))
+}
+
+/// Fenêtres visibles, sans propriétaire, d'un autre processus qu'Oniris, retenues par `keep(fenêtre, pid)`.
+fn main_windows(keep: impl Fn(windows::Win32::Foundation::HWND, u32) -> bool) -> Vec<windows::Win32::Foundation::HWND> {
     use windows::core::BOOL;
     use windows::Win32::Foundation::{HWND, LPARAM};
     use windows::Win32::UI::WindowsAndMessaging::{EnumWindows, GetWindow, GetWindowThreadProcessId, IsWindowVisible, GW_OWNER};
@@ -201,21 +228,21 @@ fn windows_of(exe: &Path) -> Vec<windows::Win32::Foundation::HWND> {
     let mut all: Vec<HWND> = vec![];
     // SAFETY: rappel synchrone ; `all` survit à l'appel.
     let _ = unsafe { EnumWindows(Some(push), LPARAM(&mut all as *mut _ as isize)) };
-    let (me, want) = (std::process::id(), exe.to_string_lossy().to_lowercase());
+    let me = std::process::id();
     all.into_iter()
         .filter(|&h| {
             let mut pid = 0;
             // SAFETY: simples lectures sur une fenêtre (une fenêtre disparue rend 0 ou une erreur).
             let main = unsafe { IsWindowVisible(h).as_bool() && GetWindow(h, GW_OWNER).is_err() && GetWindowThreadProcessId(h, Some(&mut pid)) != 0 };
-            main && pid != me && image(pid).is_some_and(|p| p.to_lowercase() == want)
+            main && pid != me && keep(h, pid)
         })
         .collect()
 }
 
 impl WindowControl for Win32Windows {
-    fn focus(&self, app_key: &str) -> Result<(), String> {
+    fn focus(&self, app_key: &str, title: &str) -> Result<(), String> {
         use windows::Win32::UI::WindowsAndMessaging::{IsIconic, SetForegroundWindow, ShowWindow, SW_RESTORE};
-        let h = *windows_of(&lnk_target(app_key)?).first().ok_or("aucune fenêtre ouverte pour cette application")?;
+        let h = *app_windows(app_key, title)?.first().ok_or("aucune fenêtre ouverte pour cette application")?;
         // SAFETY: appels sur une fenêtre existante (au pire déjà fermée : échec sans effet).
         unsafe {
             if IsIconic(h).as_bool() {
@@ -227,10 +254,10 @@ impl WindowControl for Win32Windows {
         }
         Ok(())
     }
-    fn close(&self, app_key: &str) -> Result<(), String> {
+    fn close(&self, app_key: &str, title: &str) -> Result<(), String> {
         use windows::Win32::Foundation::{LPARAM, WPARAM};
         use windows::Win32::UI::WindowsAndMessaging::{PostMessageW, WM_CLOSE};
-        let ws = windows_of(&lnk_target(app_key)?);
+        let ws = app_windows(app_key, title)?;
         if ws.is_empty() {
             return Err("aucune fenêtre ouverte pour cette application".into());
         }
@@ -303,8 +330,10 @@ mod tests {
         let lnk = make_lnk(t.path(), &exe.to_string_lossy());
         assert_eq!(lnk_target(&lnk).unwrap().to_string_lossy().to_lowercase(), exe.to_string_lossy().to_lowercase());
         // Aucun processus n'a cette image : ni premier plan ni fermeture n'ont lieu.
-        assert!(Win32Windows.focus(&lnk).is_err());
-        assert!(Win32Windows.close(&lnk).is_err());
+        assert!(Win32Windows.focus(&lnk, "absent_zz").is_err());
+        assert!(Win32Windows.close(&lnk, "absent_zz").is_err());
+        // Sans exécutable (jeu .url) : recherche par titre, aucune fenêtre ne s'appelle ainsi.
+        assert!(Win32Windows.focus(r"C:\x\Jeu.url", "zz titre introuvable zz").is_err());
     }
 
     #[test]
@@ -331,8 +360,8 @@ mod tests {
     #[ignore]
     fn vraies_fenetres_premier_plan_puis_fermeture() {
         let lnk = std::env::var("ONIRIS_TEST_LNK").expect("ONIRIS_TEST_LNK");
-        Win32Windows.focus(&lnk).unwrap();
-        Win32Windows.close(&lnk).unwrap();
+        Win32Windows.focus(&lnk, "").unwrap();
+        Win32Windows.close(&lnk, "").unwrap();
     }
 
     #[tokio::test]

@@ -7,11 +7,12 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use std::sync::Arc;
 
-/// `app_key` : clé de l'inventaire des applications (chemin du raccourci `.lnk`).
+/// `app_key` : clé de l'inventaire (raccourci `.lnk`/`.url` ou `shell:AppsFolder\…`) ; `title` : son nom, pour
+/// retrouver les fenêtres quand le raccourci ne désigne pas d'exécutable.
 pub trait WindowControl: Send + Sync {
-    fn focus(&self, app_key: &str) -> Result<(), String>;
+    fn focus(&self, app_key: &str, title: &str) -> Result<(), String>;
     /// Demande polie (`WM_CLOSE`) : l'application peut proposer d'enregistrer. Jamais `TerminateProcess`.
-    fn close(&self, app_key: &str) -> Result<(), String>;
+    fn close(&self, app_key: &str, title: &str) -> Result<(), String>;
 }
 
 #[derive(Deserialize)]
@@ -28,16 +29,13 @@ pub struct AppsClose {
     pub inventory: Arc<Inventory>,
 }
 
-fn known(inv: &Inventory, a: &Value) -> Result<String, ToolError> {
+fn known(inv: &Inventory, a: &Value) -> Result<(String, String), ToolError> {
     let KeyArgs { key } = parse(a)?;
-    if !inv.contains_key(&key) {
-        return Err(bad("application inconnue"));
-    }
-    Ok(key)
+    inv.resolve(&key).ok_or_else(|| bad("application introuvable sur ce PC"))
 }
 
 fn key_schema() -> Value {
-    json!({"type":"object","properties":{"key":{"type":"string"}},"required":["key"]})
+    json!({"type":"object","properties":{"key":{"type":"string","description":"Nom de l'application"}},"required":["key"]})
 }
 
 #[async_trait]
@@ -52,7 +50,8 @@ impl Tool for AppsFocus {
         low("Mettre une application au premier plan")
     }
     async fn run(&self, a: &Value) -> Result<ToolResult, ToolError> {
-        self.windows.focus(&known(&self.inventory, a)?).map_err(failed)?;
+        let (key, title) = known(&self.inventory, a)?;
+        self.windows.focus(&key, &title).map_err(failed)?;
         Ok(ToolResult { output: json!({"focused": true}), undo: None })
     }
 }
@@ -71,7 +70,8 @@ impl Tool for AppsClose {
         ConfirmationText { summary: format!("Fermer {title}"), details: "Ses fenêtres reçoivent une demande de fermeture : rien n'est tué de force.".into(), risk: Risk::Medium }
     }
     async fn run(&self, a: &Value) -> Result<ToolResult, ToolError> {
-        self.windows.close(&known(&self.inventory, a)?).map_err(failed)?;
+        let (key, title) = known(&self.inventory, a)?;
+        self.windows.close(&key, &title).map_err(failed)?;
         Ok(ToolResult { output: json!({"closed": true}), undo: None })
     }
 }
@@ -94,11 +94,11 @@ mod tests {
     #[derive(Default)]
     struct Fake(Mutex<Vec<String>>);
     impl WindowControl for Fake {
-        fn focus(&self, k: &str) -> Result<(), String> {
+        fn focus(&self, k: &str, _: &str) -> Result<(), String> {
             self.0.lock().push(format!("focus {k}"));
             Ok(())
         }
-        fn close(&self, k: &str) -> Result<(), String> {
+        fn close(&self, k: &str, _: &str) -> Result<(), String> {
             self.0.lock().push(format!("close {k}"));
             Ok(())
         }

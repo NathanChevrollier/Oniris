@@ -19,27 +19,33 @@ fn excluded(title: &str) -> bool {
     words.iter().any(|w| EXCLUDED.contains(w)) || words.windows(2).any(|w| w == ["read", "me"])
 }
 
-fn walk(dir: &Path, depth: usize, out: &mut Vec<PathBuf>) {
+/// Raccourcis lancés par Windows : `.lnk` et `.url` (jeux Steam et Epic).
+fn is_shortcut(p: &Path) -> bool {
+    p.extension().is_some_and(|x| x.eq_ignore_ascii_case("lnk") || x.eq_ignore_ascii_case("url"))
+}
+
+fn walk(dir: &Path, depth: usize, max_depth: usize, out: &mut Vec<PathBuf>) {
     let Ok(rd) = std::fs::read_dir(dir) else { return };
     for e in rd.flatten() {
         let Ok(ft) = e.file_type() else { continue };
         let p = e.path();
         if ft.is_dir() {
-            if depth < MAX_DEPTH {
-                walk(&p, depth + 1, out);
+            if depth < max_depth {
+                walk(&p, depth + 1, max_depth, out);
             }
-        } else if ft.is_file() && p.extension().is_some_and(|x| x.eq_ignore_ascii_case("lnk")) {
+        } else if ft.is_file() && is_shortcut(&p) {
             out.push(p);
         }
     }
 }
 
-/// Raccourcis `.lnk` de `dirs` (récursif ; en cas de doublon de titre, le premier dossier gagne), sans doublon de titre ni outils de désinstallation/aide ; triés par titre.
-pub fn scan(dirs: &[PathBuf]) -> Vec<Item> {
+/// Raccourcis de `dirs` : récursif pour le menu Démarrer, à plat (`recursive` faux) pour le Bureau.
+/// En cas de doublon de titre, le premier dossier gagne ; sans outils de désinstallation/aide ; triés par titre.
+pub fn scan(dirs: &[(PathBuf, bool)]) -> Vec<Item> {
     let mut files = vec![];
-    for d in dirs {
+    for (d, recursive) in dirs {
         let mut f = vec![];
-        walk(d, 0, &mut f);
+        walk(d, 0, if *recursive { MAX_DEPTH } else { 0 }, &mut f);
         f.sort();
         files.extend(f);
     }
@@ -47,7 +53,8 @@ pub fn scan(dirs: &[PathBuf]) -> Vec<Item> {
     let mut items: Vec<Item> = files
         .into_iter()
         .filter_map(|p| {
-            let title = p.file_stem()?.to_string_lossy().into_owned();
+            // « Rocket League®.url » : les marques déposées gênent la recherche et l'affichage.
+            let title = p.file_stem()?.to_string_lossy().replace(['®', '™', '©'], "").trim().to_string();
             (!excluded(&title) && seen.insert(title.to_lowercase()))
                 .then(|| Item { kind: ItemKind::App, key: p.to_string_lossy().into_owned(), title, subtitle: "Application".into() })
         })
@@ -109,6 +116,23 @@ impl Inventory {
     pub fn contains_key(&self, key: &str) -> bool {
         self.items.read().iter().any(|i| i.key == key)
     }
+
+    /// Clé de l'application désignée par `q` : sa clé exacte, son nom (casse et ponctuation ignorées), sinon le
+    /// nom le plus court qui le contient (« rocket » -> « Rocket League »). IRIS ne connaît que les noms.
+    pub fn resolve(&self, q: &str) -> Option<(String, String)> {
+        let items = self.items.read();
+        if let Some(i) = items.iter().find(|i| i.key == q) {
+            return Some((i.key.clone(), i.title.clone()));
+        }
+        let norm = |s: &str| s.to_lowercase().split(|c: char| !c.is_alphanumeric()).filter(|w| !w.is_empty()).collect::<Vec<_>>().join(" ");
+        let q = norm(q);
+        if q.is_empty() {
+            return None;
+        }
+        let pick = |i: &Item| (i.key.clone(), i.title.clone());
+        items.iter().find(|i| norm(&i.title) == q).map(pick)
+            .or_else(|| items.iter().filter(|i| norm(&i.title).contains(&q)).min_by_key(|i| i.title.len()).map(pick))
+    }
 }
 
 #[cfg(test)]
@@ -137,7 +161,7 @@ mod tests {
         ] {
             std::fs::write(d.join(n), "").unwrap();
         }
-        let titles: Vec<_> = scan(&[a, b]).into_iter().map(|i| i.title).collect();
+        let titles: Vec<_> = scan(&[(a, true), (b, true)]).into_iter().map(|i| i.title).collect();
         assert_eq!(titles, ["Code", "Firefox", "Helpdesk", "Tomb Raider"]);
     }
 
@@ -149,7 +173,7 @@ mod tests {
         std::fs::create_dir_all(&common).unwrap();
         std::fs::write(user.join("App.lnk"), "").unwrap();
         std::fs::write(common.join("App.lnk"), "").unwrap();
-        let items = scan(&[user.clone(), common]);
+        let items = scan(&[(user.clone(), true), (common, true)]);
         assert_eq!(items.len(), 1);
         assert!(items[0].key.starts_with(&*user.to_string_lossy()));
     }
@@ -166,6 +190,32 @@ mod tests {
         let one = merge_start_apps(vec![], r#"{"Name":"Photos","AppID":"Microsoft.Windows.Photos_8wekyb3d8bbwe!App"}"#);
         assert_eq!(one.len(), 1);
         assert_eq!(merge_start_apps(lnk.clone(), "pas du json"), lnk);
+    }
+
+    #[test]
+    fn bureau_a_plat_avec_raccourcis_url() {
+        let t = tempfile::tempdir().unwrap();
+        let desk = t.path().join("Bureau");
+        std::fs::create_dir_all(desk.join("dossier")).unwrap();
+        for n in ["Rocket League®.url", "GTA V.lnk", "notes.txt", "dossier/Caché.lnk"] {
+            std::fs::write(desk.join(n), "").unwrap();
+        }
+        let titles: Vec<_> = scan(&[(desk, false)]).into_iter().map(|i| i.title).collect();
+        assert_eq!(titles, ["GTA V", "Rocket League"]);
+    }
+
+    #[test]
+    fn resolution_par_nom() {
+        let inv = Inventory::default();
+        let it = |k: &str, t: &str| Item { kind: ItemKind::App, key: k.into(), title: t.into(), subtitle: String::new() };
+        inv.set(vec![it("k1", "Rocket League"), it("k2", "Rocket League Tracker"), it("k3", "Discord"), it("k4", "Discord Canary")], 1);
+        let key = |q: &str| inv.resolve(q).map(|(k, _)| k);
+        assert_eq!(key("k3").as_deref(), Some("k3"));
+        assert_eq!(key("rocket league").as_deref(), Some("k1"));
+        assert_eq!(key("ROCKET").as_deref(), Some("k1"), "le plus court gagne");
+        assert_eq!(key("discord").as_deref(), Some("k3"));
+        assert_eq!(key("tracker").as_deref(), Some("k2"));
+        assert!(key("steam").is_none() && key(" ").is_none());
     }
 
     #[test]

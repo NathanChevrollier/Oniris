@@ -1,6 +1,6 @@
 [package]
 name = "oniris-core"
-version = "1.2.2"
+version = "1.2.3"
 license = "LicenseRef-Proprietary"
 edition = "2021"
 

@@ -4,6 +4,7 @@ import { useVoice, voiceIpc } from "../modules/voice/api";
 import { formatLongDate, greeting, hhmm, ss, useNow } from "../lib/time";
 import { usePanelStore } from "./store";
 import { WeatherBadge } from "../modules/weather/WeatherBadge";
+import { QuickControls } from "./QuickControls";
 
 /** Horloge isolée : seul composant rafraîchi chaque seconde, et seulement panneau ouvert. */
 function Clock() {
@@ -40,6 +41,7 @@ export function Header({ name, onAccounts, onIris, onJournal, onSettings }: { na
       <div className="clock">
         <Clock />
         <WeatherBadge />
+        <QuickControls />
       </div>
     </header>
   );

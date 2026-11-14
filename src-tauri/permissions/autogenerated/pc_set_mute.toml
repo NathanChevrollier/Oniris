@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-pc-set-mute"
+description = "Enables the pc_set_mute command without any pre-configured scope."
+commands.allow = ["pc_set_mute"]
+
+[[permission]]
+identifier = "deny-pc-set-mute"
+description = "Denies the pc_set_mute command without any pre-configured scope."
+commands.deny = ["pc_set_mute"]

@@ -121,7 +121,7 @@ impl AppState {
             voice_paused: AtomicBool::new(false),
             speaker: Arc::new(crate::modules::voice::piper::PiperSpeaker::new(crate::modules::voice::install::voice_dir(), Arc::new(crate::modules::voice::playback::CpalOut))),
             hide_pill_in_fullscreen: AtomicBool::new(s.hide_pill_in_fullscreen),
-            hotkey: Arc::new(RwLock::new(HotkeyConfig::from_setting(&s.hotkey, s.hold_threshold_ms as u64))),
+            hotkey: Arc::new(RwLock::new(HotkeyConfig::of(&s))),
             events,
             scheduler: OnceLock::new(),
             indexer: OnceLock::new(),
@@ -199,6 +199,8 @@ pub fn tools(d: ToolDeps) -> Vec<Arc<dyn Tool>> {
     tools.extend(oniris_core::general::files::all(&recycler, work_dirs, oniris_core::general::files::protected_dirs()));
     let win: Arc<dyn oniris_core::general::windows::WindowControl> = Arc::new(crate::modules::general::Win32Windows);
     tools.extend(oniris_core::general::windows::all(&win, &apps));
+    let pc: Arc<dyn oniris_core::general::pc::PcControl> = Arc::new(crate::modules::pc::Win32Pc);
+    tools.extend(oniris_core::general::pc::all(&pc));
     tools
 }
 

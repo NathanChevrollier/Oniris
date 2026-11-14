@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-pc-windows-settings"
+description = "Enables the pc_windows_settings command without any pre-configured scope."
+commands.allow = ["pc_windows_settings"]
+
+[[permission]]
+identifier = "deny-pc-windows-settings"
+description = "Denies the pc_windows_settings command without any pre-configured scope."
+commands.deny = ["pc_windows_settings"]

@@ -64,6 +64,8 @@ struct Chord {
     held_vk: Option<u16>,
     /// Le raccourci a servi avec Alt ou Win : masquer le menu au prochain relâchement de l'un d'eux.
     mask_pending: bool,
+    /// Touche Win tenue et « seule jusqu'ici » (aucune autre touche frappée depuis son appui).
+    win: Option<(u16, bool)>,
 }
 
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -71,6 +73,28 @@ struct Decision {
     swallow: bool,
     inject_mask: bool,
     key_event: Option<KeyEvent>,
+    /// Win relâchée seule (option `win_alone`) : basculer le panneau.
+    toggle: bool,
+}
+
+fn is_win(vk: u16) -> bool {
+    vk == VK_LWIN.0 || vk == VK_RWIN.0
+}
+
+/// Win seule : vrai au relâchement d'une Win frappée sans modificateur ni autre touche entre-temps.
+/// La Win n'est jamais avalée, donc Win+E, Win+D, Win+Maj+S… gardent leur effet.
+fn win_alone(chord: &mut Chord, vk: u16, down: bool, mods: Modifiers) -> bool {
+    match (chord.win, is_win(vk), down) {
+        (None, true, true) => chord.win = Some((vk, !(mods.alt || mods.ctrl || mods.shift))),
+        (Some((w, _)), true, true) if w == vk => {} // répétition automatique
+        (Some((w, _)), _, true) => chord.win = Some((w, false)),
+        (Some((w, solo)), true, false) if w == vk => {
+            chord.win = None;
+            return solo;
+        }
+        _ => {}
+    }
+    false
 }
 
 fn is_alt_or_win(vk: u16) -> bool {
@@ -93,6 +117,11 @@ fn decide(
     let mut d = Decision::default();
     if ours {
         return d;
+    }
+    if cfg.win_alone && win_alone(chord, vk, down, mods) {
+        // Le masque précède le relâchement de Win : le menu Démarrer ne s'ouvre pas.
+        d.toggle = true;
+        d.inject_mask = true;
     }
     if chord.held_vk == Some(vk) {
         // Répétition automatique avalée ; relâchement (quels que soient les modificateurs) : fin du raccourci.
@@ -206,6 +235,9 @@ impl Hook {
                 self.feed(ev);
             }
             None => {}
+        }
+        if d.toggle {
+            let _ = self.tx.send(HotkeyAction::TogglePanel);
         }
         d
     }
@@ -438,6 +470,51 @@ mod tests {
             Decision::default()
         );
         assert!(c.held_vk.is_some() && c.mask_pending);
+    }
+
+    fn win(chord: &mut Chord, vk: u16, down: bool, mods: Modifiers) -> Decision {
+        let cfg = HotkeyConfig { win_alone: true, ..HotkeyConfig::default() };
+        decide(chord, &cfg, vk, down, false, mods, 0)
+    }
+
+    #[test]
+    fn win_seule_bascule_le_panneau_et_masque_demarrer() {
+        let mut c = Chord::default();
+        for vk in [VK_LWIN.0, VK_RWIN.0] {
+            assert_eq!(win(&mut c, vk, true, NONE), Decision::default());
+            assert_eq!(win(&mut c, vk, true, NONE), Decision::default()); // répétition
+            let d = win(&mut c, vk, false, NONE);
+            assert!(d.toggle && d.inject_mask && !d.swallow);
+        }
+    }
+
+    #[test]
+    fn combinaisons_win_inchangees() {
+        let with_win = Modifiers { win: true, ..NONE };
+        // Win+E, Win+D, Win+Maj+S : rien n'est avalé, aucune bascule.
+        for keys in [&[0x45u16][..], &[0x44], &[VK_SHIFT.0, 0x53]] {
+            let mut c = Chord::default();
+            win(&mut c, VK_LWIN.0, true, NONE);
+            for &k in keys {
+                assert_eq!(win(&mut c, k, true, with_win), Decision::default());
+                assert_eq!(win(&mut c, k, false, with_win), Decision::default());
+            }
+            assert_eq!(win(&mut c, VK_LWIN.0, false, NONE), Decision::default());
+        }
+        // Ctrl tenu avant Win, ou l'autre Win frappée entre-temps : pas de bascule.
+        let mut c = Chord::default();
+        win(&mut c, VK_LWIN.0, true, Modifiers { ctrl: true, ..NONE });
+        assert!(!win(&mut c, VK_LWIN.0, false, NONE).toggle);
+        win(&mut c, VK_LWIN.0, true, NONE);
+        win(&mut c, VK_RWIN.0, true, with_win);
+        assert!(!win(&mut c, VK_LWIN.0, false, with_win).toggle);
+    }
+
+    #[test]
+    fn win_seule_ignoree_si_l_option_est_coupee() {
+        let mut c = Chord::default();
+        assert_eq!(run(&mut c, VK_LWIN.0, true, NONE), Decision::default());
+        assert_eq!(run(&mut c, VK_LWIN.0, false, NONE), Decision::default());
     }
 
     #[test]

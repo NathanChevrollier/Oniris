@@ -15,6 +15,8 @@ pub struct HotkeyConfig {
     pub win: bool,
     pub vk: u16,
     pub threshold_ms: u64,
+    /// Win seule ouvre le panneau (réglage `win_key_opens_panel`).
+    pub win_alone: bool,
 }
 
 impl Default for HotkeyConfig {
@@ -27,6 +29,7 @@ impl Default for HotkeyConfig {
             win: false,
             vk: 0x20,
             threshold_ms: 250,
+            win_alone: false,
         }
     }
 }
@@ -37,7 +40,11 @@ impl HotkeyConfig {
             tracing::warn!("touche de raccourci inconnue {:?}, Espace conservée", s.key);
             0x20
         });
-        Self { alt: s.alt, ctrl: s.ctrl, shift: s.shift, win: s.win, vk, threshold_ms }
+        Self { alt: s.alt, ctrl: s.ctrl, shift: s.shift, win: s.win, vk, threshold_ms, win_alone: false }
+    }
+
+    pub fn of(s: &oniris_core::Settings) -> Self {
+        Self { win_alone: s.win_key_opens_panel, ..Self::from_setting(&s.hotkey, s.hold_threshold_ms as u64) }
     }
 }
 

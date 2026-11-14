@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-pc-task-manager"
+description = "Enables the pc_task_manager command without any pre-configured scope."
+commands.allow = ["pc_task_manager"]
+
+[[permission]]
+identifier = "deny-pc-task-manager"
+description = "Denies the pc_task_manager command without any pre-configured scope."
+commands.deny = ["pc_task_manager"]

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-pc-set-volume"
+description = "Enables the pc_set_volume command without any pre-configured scope."
+commands.allow = ["pc_set_volume"]
+
+[[permission]]
+identifier = "deny-pc-set-volume"
+description = "Denies the pc_set_volume command without any pre-configured scope."
+commands.deny = ["pc_set_volume"]

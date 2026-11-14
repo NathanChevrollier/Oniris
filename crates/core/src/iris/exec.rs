@@ -253,7 +253,7 @@ mod tests {
             "focus.start", "iris.ask_claude", "iris.digest", "iris.inspect", "mail.archive", "mail.delete", "mail.list", "mail.mark_read", "mail.open_link", "mail.open_web",
             "mail.read", "mail.send", "music.devices", "music.next", "music.play_playlist", "music.play_search", "music.previous",
             "music.queue", "music.seek", "music.toggle", "music.transfer", "music.volume", "notes.create", "notes.delete",
-            "notes.pin", "notes.search", "notes.to_reminder", "projects.list", "projects.resume", "projects.status",
+            "notes.pin", "notes.search", "notes.to_reminder", "pc.bluetooth", "pc.power", "pc.task_manager", "pc.volume", "projects.list", "projects.resume", "projects.status",
             "reminders.complete", "reminders.create", "reminders.delete", "sites.status", "system.status", "timer.cancel",
             "timer.start", "vps.status", "weather.today",
         ];

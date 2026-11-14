@@ -49,7 +49,7 @@ pub fn apply_settings(app: &AppHandle, mut settings: Settings) -> Result<(), Str
     }
     settings.validate()?;
     save_settings(&state.db.lock(), &settings).map_err(|e| e.to_string())?;
-    let cfg = HotkeyConfig::from_setting(&settings.hotkey, settings.hold_threshold_ms as u64);
+    let cfg = HotkeyConfig::of(&settings);
     *state.hotkey.write() = cfg;
     let hide = settings.hide_pill_in_fullscreen;
     let changed = state.hide_pill_in_fullscreen.swap(hide, Ordering::SeqCst) != hide;

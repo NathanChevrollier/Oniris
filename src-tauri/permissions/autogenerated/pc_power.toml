@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-pc-power"
+description = "Enables the pc_power command without any pre-configured scope."
+commands.allow = ["pc_power"]
+
+[[permission]]
+identifier = "deny-pc-power"
+description = "Denies the pc_power command without any pre-configured scope."
+commands.deny = ["pc_power"]

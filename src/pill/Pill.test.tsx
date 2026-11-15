@@ -259,6 +259,21 @@ it("veille : bande fine, réveil au contact du curseur ou de la voix, puis rendo
   expect(root).not.toHaveClass("asleep");
 });
 
+it("veille : se rendort après un survol qui a ouvert le panneau, et malgré un niveau de micro resté seul", async () => {
+  vi.spyOn(ipc, "getSettings").mockResolvedValue({ ...DEFAULT_SETTINGS, pill_sleep: true });
+  const { container } = render(<Pill />);
+  await act(async () => {});
+  const root = container.querySelector(".pill-root")!;
+  fireEvent.mouseEnter(root); // réveil, puis le panneau s'ouvre par-dessus : pas de mouseleave
+  act(() => panelState({ open: true, at_ms: 0 }));
+  act(() => panelState({ open: false, at_ms: 1 }));
+  expect(root).toHaveClass("asleep");
+  act(() => voiceCb({ phase: "listening", level: 0.2 } as VoiceEvent)); // niveau tardif, sans « idle » derrière
+  expect(root).not.toHaveClass("asleep");
+  act(() => { vi.advanceTimersByTime(3000); });
+  expect(root).toHaveClass("asleep");
+});
+
 const track = (playing: boolean): NowPlaying => ({
   title: "Nuit Blanche", artist: "Polo & Pan", album: "", cover: null, colors: [], playing,
   position_ms: 0, duration_ms: 1000, updated_ms: 0, source: "spotify",

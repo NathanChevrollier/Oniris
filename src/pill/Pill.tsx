@@ -33,12 +33,20 @@ function useVoiceBusy(enabled: boolean) {
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     if (!enabled) return setBusy(false);
-    const un = onVoice((e) => setBusy(e.phase !== "idle"));
-    return () => { void un.then((f) => f()); };
+    let stale: ReturnType<typeof setTimeout> | undefined;
+    const un = onVoice((e) => {
+      clearTimeout(stale);
+      setBusy(e.phase !== "idle");
+      // L'écoute envoie son niveau ~30 fois/s : sans nouvelle depuis 3 s, c'est un niveau tardif resté seul,
+      // la pilule ne doit pas rester éveillée pour lui.
+      if (e.phase === "listening") stale = setTimeout(() => setBusy(false), LISTEN_STALE_MS);
+    });
+    return () => { clearTimeout(stale); void un.then((f) => f()); };
   }, [enabled]);
   return busy;
 }
 
+const LISTEN_STALE_MS = 3000;
 const ARMED_MS = 5000;
 const FALSE_WAKE_MS = 10_000;
 
@@ -168,6 +176,10 @@ export function Pill() {
   useEffect(() => {
     const un = onPanelState((p) => {
       setPanelOpen(p.open);
+      // Le panneau plein écran passe par-dessus la pilule : elle ne reçoit jamais « curseur parti ».
+      // Le curseur qui revient sur la bande la réveillera.
+      clearTimeout(leave.current);
+      setNear(false);
       if (!p.open) { closedAt.current = Date.now(); cancelHover(); }
     });
     return () => { un.then((f) => f()); cancelHover(); };
@@ -199,6 +211,7 @@ export function Pill() {
   return (
     <div ref={root} className={`pill-root${panelOpen ? " open" : ""}${asleep ? " asleep" : ""}`}
       onMouseEnter={() => { clearTimeout(leave.current); setNear(true); }}
+      onMouseMove={() => { if (!near) { clearTimeout(leave.current); setNear(true); } }}
       onMouseLeave={() => { clearTimeout(leave.current); leave.current = setTimeout(() => setNear(false), SLEEP_AFTER_MS); }}>
       <button type="button" className="island" aria-label="Ouvrir le panneau Oniris"
         onClick={() => { cancelHover(); ipc.panelToggle(); }}

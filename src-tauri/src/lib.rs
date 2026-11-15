@@ -145,6 +145,10 @@ pub fn run() {
             modules::mail::mail_open_web,
             modules::mail::mail_open_link,
             modules::mail::mail_status,
+            modules::mail::mail_todo_count,
+            modules::palette::palette_rates,
+            modules::palette::palette_web_search,
+            modules::icons::search_icon,
             modules::smtc::music_now,
             modules::smtc::music_toggle,
             modules::smtc::music_next,
@@ -161,6 +165,11 @@ pub fn run() {
             modules::indexer::index_status,
             modules::search::search_query,
             modules::search::search_open,
+            modules::routines::routines_list,
+            modules::routines::routines_save,
+            modules::routines::routines_run,
+            modules::screen::screen_vision_status,
+            modules::screen::screen_vision_pull,
             modules::updater::update_status,
             modules::updater::update_check_now,
             modules::updater::update_restart,
@@ -208,6 +217,10 @@ pub fn run() {
             tauri::async_runtime::spawn(modules::iris::ensure_ollama()); // tri des mails et briefing en ont besoin
             modules::iris_briefing::load(app.handle());
             modules::mail::start(app.handle());
+            // Titre en cours dans la pilule : écoute SMTC (locale, par événements) même panneau fermé.
+            if app.state::<state::AppState>().settings.read().pill_extras {
+                modules::smtc::set_listening(app.handle(), true);
+            }
             modules::sites::start(app.handle());
             modules::favicons::spawn(app.handle());
             modules::apps::start(app.handle());

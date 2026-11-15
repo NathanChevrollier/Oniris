@@ -65,12 +65,14 @@ pub struct UpdateStatus {
     last_error: Option<String>,
     /// Version installée depuis le lancement précédent, avec ses notes (annonce « Oniris est passé en X »).
     updated: Option<Remote>,
+    /// Début de la dernière vérification (ms Unix) depuis le lancement, pour le diagnostic.
+    last_check_ms: Option<i64>,
     #[serde(flatten)]
     phase: Phase,
 }
 
 #[derive(Default)]
-struct St { pending: Option<Pending>, checking: bool, last_error: Option<String>, phase: Phase, updated: Option<Remote> }
+struct St { pending: Option<Pending>, checking: bool, last_error: Option<String>, phase: Phase, updated: Option<Remote>, last_check_ms: Option<i64> }
 
 /// Fin de vérification quel que soit le chemin de sortie (panique ou future abandonnée comprises).
 struct CheckGuard<'a>(&'a Mutex<St>);
@@ -121,6 +123,7 @@ impl Updater {
             checking: s.checking,
             last_error: s.last_error.clone(),
             updated: s.updated.clone(),
+            last_check_ms: s.last_check_ms,
             phase: s.phase.clone(),
         }
     }
@@ -194,6 +197,7 @@ impl Updater {
                 return;
             }
             s.checking = true;
+            s.last_check_ms = Some(oniris_core::time_util::now_ms());
         }
         let _guard = CheckGuard(&self.st);
         self.schedule.lock().done(Instant::now());

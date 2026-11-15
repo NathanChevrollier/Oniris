@@ -17,6 +17,8 @@ pub mod notes;
 pub mod oauth;
 pub mod projects;
 pub mod reminders;
+pub mod routines;
+pub mod screen;
 pub mod search;
 pub mod sites;
 pub mod secrets;

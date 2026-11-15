@@ -12,8 +12,8 @@ use tokio::task::JoinHandle;
 /// Taille maximale d'une ligne du protocole (octets, sans le `\n`).
 pub const LINE_MAX: usize = 1 << 20;
 
-/// Outils jamais offerts à Claude, ni listés ni appelables (Claude ne se rappelle pas lui-même).
-const EXCLUDED: &[&str] = &["iris.ask_claude"];
+/// Outils jamais offerts à Claude, ni listés ni appelables (Claude ne se rappelle pas lui-même ; l'écran reste local).
+pub(crate) const EXCLUDED: &[&str] = &["iris.ask_claude", "screen.describe"];
 
 /// Session d'un tour de Claude : la lâcher arrête le tube.
 pub struct McpSession { pub pipe: String, pub token: String, pub task: JoinHandle<()> }

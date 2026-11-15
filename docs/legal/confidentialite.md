@@ -4,7 +4,7 @@ Version 11 — 13 novembre 2026. Ce document décrit simplement ce qu'Oniris fai
 
 ## En bref
 
-Oniris range tout chez toi, sur ton PC. Il n'envoie aucune statistique d'usage, et il n'y a aucun compte à créer pour l'utiliser. Oniris ne contacte Internet que pour ce que tu as choisi d'activer : la météo (si tu as choisi une ville), les icônes de tes favoris, les sondes de tes sites, le téléchargement de la voix (sur ton clic), la recherche de mises à jour sur GitHub (activée par défaut et désactivable), la voix naturelle Azure (si tu ajoutes ta clé et l'actives) et, si tu connectes tes comptes, Google (Gmail et Agenda) et Spotify. Les comptes ne sont jamais obligatoires : sans eux, rien de tout cela n'est contacté. IRIS, l'assistante, réfléchit d'abord **sur ton PC** ; elle ne passe par Claude (donc par Anthropic) que dans les cas décrits plus bas.
+Oniris range tout chez toi, sur ton PC. Il n'envoie aucune statistique d'usage, et il n'y a aucun compte à créer pour l'utiliser. Oniris ne contacte Internet que pour ce que tu as choisi d'activer : la météo (si tu as choisi une ville), les taux de change (quand tu tapes une conversion de devise), les icônes de tes favoris, les sondes de tes sites, le téléchargement de la voix (sur ton clic), la recherche de mises à jour sur GitHub (activée par défaut et désactivable), la voix naturelle Azure (si tu ajoutes ta clé et l'actives) et, si tu connectes tes comptes, Google (Gmail et Agenda) et Spotify. Les comptes ne sont jamais obligatoires : sans eux, rien de tout cela n'est contacté. IRIS, l'assistante, réfléchit d'abord **sur ton PC** ; elle ne passe par Claude (donc par Anthropic) que dans les cas décrits plus bas.
 
 ## Où sont tes données
 
@@ -67,6 +67,12 @@ Pour te répondre vite, Oniris construit une liste des **noms et des chemins** d
 - La base garde seulement des **statistiques d'usage** : le type et le chemin de ce que tu as ouvert depuis la recherche, un score et la date du dernier usage, pour classer en premier ce que tu utilises souvent. Ces statistiques ne sont pas encore purgées automatiquement ; supprimer le dossier `%APPDATA%\Oniris` les efface.
 - Les journaux techniques ne contiennent jamais de chemin : seulement des compteurs.
 - La recherche n'envoie rien sur Internet.
+
+## Barre de recherche : calculs, devises et web
+
+- **Calculs et conversions d'unités** (« 15 % de 240 », « 5 km en mi ») : calculés sur ton PC, rien n'est envoyé.
+- **Devises** (« 30 € en $ ») : seulement quand tu tapes une conversion de devise, Oniris demande les taux du jour de la Banque centrale européenne au service gratuit [Frankfurter](https://www.frankfurter.app) (sans compte ni clé). La requête est **toujours la même** (« les taux pour 1 euro ») : ni le montant, ni les devises, ni rien de ce que tu tapes n'est envoyé. Les taux sont gardés en mémoire 12 heures, puis oubliés à la fermeture d'Oniris. Frankfurter voit, comme tout site web, l'adresse IP de ta connexion ; Oniris s'identifie seulement par « Oniris/0.1 ».
+- **« Rechercher sur le web »** : rien n'est envoyé tant que tu ne choisis pas ce résultat. Si tu le choisis, Oniris ouvre ton navigateur par défaut sur le moteur réglé (Google, DuckDuckGo ou Bing) avec ce que tu as tapé ; ce moteur reçoit alors ta recherche, comme si tu l'avais tapée toi-même.
 
 ## Projets
 
@@ -177,6 +183,22 @@ Ce qui part chez Anthropic dans ce cas :
 
 Claude ne reçoit aucun outil propre : il n'agit que par les outils d'Oniris, avec les mêmes cartes de confirmation que si c'était IRIS en local. Pour cela, Oniris ouvre un petit canal **sur ton PC seulement**, protégé par un jeton aléatoire valable le temps d'un tour. Un mail qui contiendrait des consignes ne peut déclencher aucune action sans qu'une carte te la montre d'abord.
 
+## IRIS : « Qu'est-ce qu'il y a sur mon écran ? »
+
+IRIS ne regarde ton écran que si tu le lui demandes (« qu'est-ce qu'il y a sur mon écran ? », « lis-moi cette erreur »). Elle te dit alors qu'elle a pris une capture. Le chemin exact :
+
+1. **Vérifications d'abord** : si un jeu ou une vidéo est en plein écran, IRIS refuse, sauf si tu lui demandes explicitement de regarder quand même. Si le modèle de vision n'est pas installé dans ton Ollama, ou si Ollama ne répond pas, **aucune capture n'est prise** et IRIS te dit de télécharger le modèle dans Réglages → IRIS.
+2. **Capture** : une image de l'**écran principal** seulement, prise par Windows (GDI), réduite à 1280 pixels de large et compressée en JPEG **en mémoire**. Pendant la capture, les fenêtres d'Oniris (panneau, pilule) sont exclues de l'image ; si Windows refuse cette exclusion, le panneau peut y figurer et IRIS le sait. L'image n'est **jamais écrite sur le disque**, ni dans `oniris.db`, ni dans les journaux.
+3. **Lecture** : l'image et ta question partent vers le **modèle de vision d'Ollama sur ton PC** (`127.0.0.1`, réglage « Modèle de vision », `qwen3-vl:8b` par défaut), qui en fait une description. Le modèle reste en mémoire 2 minutes, et il est libéré tout de suite si tu joues en plein écran. L'image est oubliée dès la réponse reçue.
+4. **Réponse** : la description revient à IRIS comme un **contenu non fiable** (comme un mail) : rangée dans le coffre de la conversation, elle ne peut déclencher aucune action sans carte de confirmation. Le journal des actions ne garde que « 1 résultat », jamais la description.
+5. **Jamais Claude** : ni l'image ni sa description ne sont envoyées à Claude. L'outil n'est pas offert à Claude, et la quarantaine refuse de lui confier un résumé détaillé ou un brouillon tiré de l'écran. Ta question peut, elle, rester dans la conversation comme tout message (voir « IRIS : Claude »).
+
+Le modèle de vision se télécharge, comme le modèle principal, **sur ton clic** dans Réglages → IRIS : c'est ton Ollama qui contacte ses serveurs.
+
+## Routines
+
+Les routines (« mode jeu », « mode boulot »…) sont enregistrées dans `oniris.db` : leur nom, leurs phrases de déclenchement et leurs étapes. Lancer une routine (par IRIS, la barre de commande ou le bouton « Lancer ») exécute chaque étape sur ton PC, avec les mêmes règles et le même journal que si tu la demandais toi-même ; seules des actions sûres sont permises (jamais une commande ou un programme arbitraire), et celles qui demandent confirmation affichent leur carte. Une étape qui touche un service en ligne (Spotify, par exemple) le contacte comme si tu la lançais à la main.
+
 ## Conversations et mémoire
 
 - Tes conversations avec IRIS (tes messages, ses réponses) sont gardées dans `oniris.db`. Tu peux les **consulter et les effacer** depuis les réglages d'IRIS ; effacer l'historique ne supprime pas tes préférences.
@@ -189,7 +211,8 @@ La voix est facultative et se passe **sur ton PC**, sauf si tu choisis la voix n
 
 - **Micro** : il n'est ouvert que pendant que tu maintiens le raccourci (au plus 30 secondes d'affilée), ou après un clic sur le micro ou la sphère d'IRIS ; il se referme alors à la fin de ta phrase (15 secondes au plus). Avec « Conversation continue » (activée par défaut, désactivable), il se rouvre quelques secondes après une réponse dite, puis se referme si tu ne parles pas. En dehors du mot d'activation (voir plus bas), Oniris n'écoute jamais en continu. Le son reste **en mémoire** : il n'est écrit ni sur le disque, ni dans la base, ni dans les journaux, et n'est envoyé nulle part.
 - **Transcription** : [Whisper](https://github.com/ggml-org/whisper.cpp) tourne sur ton processeur, en local (`127.0.0.1`). Le programme se lance au premier usage et s'arrête après quelques minutes d'inactivité ; il s'arrête aussi dès l'entrée en plein écran (jeu, vidéo), et juste après chaque transcription faite en plein écran.
-- **Synthèse** : [Piper](https://github.com/rhasspy/piper) lit les réponses d'IRIS à voix haute, en local, avec une voix française. Tu peux le désactiver (réponses écrites seulement) et régler le volume. Les textes lus ne sont gardés nulle part et n'apparaissent pas dans les journaux.
+- **Synthèse** : [Piper](https://github.com/rhasspy/piper) lit les réponses d'IRIS à voix haute, en local, avec une voix française. Tu peux le désactiver (réponses écrites seulement) et régler le volume. Avec « Parler pendant la réflexion » (activé par défaut, désactivable), chaque phrase est lue dès qu'IRIS l'a écrite. Les textes lus ne sont gardés nulle part et n'apparaissent pas dans les journaux.
+- **Briefing parlé** : « fais-moi le briefing » ou « qu'est-ce que j'ai aujourd'hui » à la voix fait lire le briefing (agenda, mails à traiter, rappels, météo) sans passer par un modèle. Avec « Briefing du matin » (activé par défaut, désactivable), IRIS le lit aussi à la première ouverture du panneau de la journée, après 5 h, jamais en plein écran, voix en pause ou voix haute coupée, ni pendant que tu lui parles. Seul le jour du dernier briefing dit est gardé dans `oniris.db`, jamais son texte. Le titre d'un événement d'agenda peut y être lu, donc envoyé à Azure si tu utilises la voix naturelle.
 - **Ce que tu dis à IRIS** est transcrit en texte, puis suit **exactement le même chemin qu'une demande écrite** (voir « IRIS : le cerveau local » et « IRIS : Claude ») : local par défaut, et Claude seulement dans les cas décrits plus haut. Le texte transcrit s'ajoute à la conversation, dans `oniris.db`, comme un message écrit.
 - **Pause** : « Mettre la voix en pause » dans le menu de l'icône d'Oniris coupe l'écoute.
 
@@ -197,7 +220,7 @@ La voix est facultative et se passe **sur ton PC**, sauf si tu choisis la voix n
 
 Facultative et **désactivée par défaut**. Si tu ajoutes ta propre clé Azure AI Speech et coches « Utiliser la voix Azure » (Paramètres → Voix), les réponses d'IRIS sont lues par une voix neurale de Microsoft au lieu de Piper.
 
-- **Ce qui est envoyé** : le **texte de chaque réponse dite à voix haute** (300 caractères au plus), le nom de la voix choisie et ta clé, à `<région>.tts.speech.microsoft.com` (la région que tu indiques, `francecentral` par défaut), en HTTPS. Microsoft voit aussi ton adresse IP. **Ta voix et ce que tu dis à IRIS ne sont jamais envoyés** : seule la réponse à lire part.
+- **Ce qui est envoyé** : le **texte de chaque réponse dite à voix haute** (300 caractères au plus, envoyé phrase par phrase quand IRIS parle pendant sa réflexion), briefing parlé compris, le nom de la voix choisie et ta clé, à `<région>.tts.speech.microsoft.com` (la région que tu indiques, `francecentral` par défaut), en HTTPS. Microsoft voit aussi ton adresse IP. **Ta voix et ce que tu dis à IRIS ne sont jamais envoyés** : seule la réponse à lire part.
 - **Chez Microsoft** : le service Azure AI Speech traite ce texte selon les conditions de ton abonnement Azure ; d'après Microsoft, le texte de synthèse n'est pas conservé. C'est ton compte, ton contrat et ta facturation (la formule gratuite F0 suffit pour un usage normal).
 - **Ta clé** est rangée dans le Gestionnaire d'identification de Windows, jamais dans `oniris.db` ni dans les journaux. « Retirer » la supprime.
 - **Le bouton « Écouter »** envoie une phrase d'essai fixe, rien de personnel.
@@ -220,7 +243,8 @@ Le mot d'activation (« Dis Iris » ou « Hé Iris ») est **désactivé par dé
 - **Ce qui est écouté** : une fois activé, Oniris écoute le micro en continu, sur ton PC, pour repérer ce seul mot. Windows affiche l'icône du micro tant que l'écoute est active.
 - **Les 2 dernières secondes, en mémoire** : avant la détection, l'audio ne vit que dans la mémoire du détecteur, sur 2 secondes au plus, et s'efface au fur et à mesure.
 - **Aucune écriture** : rien n'est écrit sur le disque, transcrit, journalisé ni envoyé avant la détection. Après la détection, l'audio suit les mêmes règles que le raccourci clavier : 30 secondes au plus, en mémoire, vers Whisper sur ton PC seulement.
-- **Suspensions** : l'écoute s'arrête quand la voix est en pause (zone de notification), quand une application est en plein écran, pendant qu'IRIS traite ta demande ou répond, et pendant que tu utilises le raccourci.
+- **Suspensions** : l'écoute s'arrête quand la voix est en pause (zone de notification), quand une application est en plein écran, pendant qu'IRIS traite ta demande, et pendant que tu utilises le raccourci.
+- **Pendant qu'IRIS parle** : l'écoute reste ouverte pour que « Dis Iris » puisse l'interrompre (sa voix se coupe et elle t'écoute). Seul le mot d'activation est guetté, avec les mêmes règles qu'au-dessus : rien n'est écrit, transcrit ni envoyé avant lui. Sa voix arrivant elle aussi au micro, l'écoute est suspendue quand sa réponse contient son propre nom (pour qu'elle ne se réveille pas elle-même) et une demi-seconde après sa voix. Dire ensuite seulement « stop », « tais-toi » ou « ok merci » la fait taire sans rien lui demander.
 - **Le modèle** : il est fourni avec l'app et tourne sur ton PC. Il a été entraîné sur des voix synthétiques et, si tu l'as fait, sur tes propres enregistrements, qui restent sur ton PC.
 - Désactiver le réglage arrête l'écoute immédiatement.
 

@@ -1,6 +1,7 @@
 import { render, screen, cleanup, act, fireEvent } from "@testing-library/react";
 import { it, expect, vi, afterEach, beforeEach } from "vitest";
-import { Pill } from "./Pill";
+import { Pill, pillIpc } from "./Pill";
+import { musicIpc, type NowPlaying } from "../modules/music/api";
 import { ipc, type PanelState } from "../lib/ipc";
 import type { VoiceEvent } from "../modules/voice/api";
 import { timersIpc } from "../modules/timers/api";
@@ -15,11 +16,13 @@ vi.mock("../lib/ipc", async (orig) => ({
   listen: (name: string, cb: (e: { payload: unknown }) => void) => {
     if (name === "oniris://voice") { const prev = voiceCb; voiceCb = (payload) => { prev(payload); cb({ payload }); }; }
     if (name === "oniris://update") updateCb = (payload) => cb({ payload });
+    if (name === "oniris://changed") { const prev = changedCb; changedCb = (payload) => { prev(payload); cb({ payload }); }; }
     return Promise.resolve(() => {});
   },
 }));
 
 let updateCb: (e: UpdateStatus) => void = () => {};
+let changedCb: (e: { topic: string }) => void = () => {};
 let voiceCb: (e: VoiceEvent) => void = () => {};
 const settingsReads = vi.fn();
 vi.mock("../lib/settings", async (orig) => {
@@ -34,6 +37,7 @@ const spies = { pillResize: vi.fn(), panelOpen: vi.fn(), panelToggle: vi.fn() };
 
 beforeEach(() => {
   voiceCb = () => {};
+  changedCb = () => {};
   vi.useFakeTimers();
   vi.spyOn(timersIpc, "list").mockResolvedValue([]); // la pilule charge ses minuteurs (données factices hors Tauri)
   vi.stubGlobal("ResizeObserver", class {
@@ -253,4 +257,43 @@ it("veille : bande fine, réveil au contact du curseur ou de la voix, puis rendo
   act(() => voiceCb({ phase: "idle" } as VoiceEvent));
   act(() => panelState({ open: true, at_ms: 0 }));
   expect(root).not.toHaveClass("asleep");
+});
+
+const track = (playing: boolean): NowPlaying => ({
+  title: "Nuit Blanche", artist: "Polo & Pan", album: "", cover: null, colors: [], playing,
+  position_ms: 0, duration_ms: 1000, updated_ms: 0, source: "spotify",
+});
+
+it("musique et mails : affichés quand ça joue et qu'il y a des mails, masqués sinon", async () => {
+  const now = vi.spyOn(musicIpc, "now").mockResolvedValue(track(true));
+  const count = vi.spyOn(pillIpc, "todoCount").mockResolvedValue(4);
+  const { container } = render(<Pill />);
+  await act(async () => {});
+  expect(screen.getByText("Nuit Blanche")).toBeInTheDocument();
+  expect(screen.getByText("· Polo & Pan")).toBeInTheDocument();
+  expect(screen.getByTitle("4 mails à traiter")).toHaveTextContent("4");
+  expect(screen.getAllByRole("button")).toHaveLength(1); // tout reste dans l'îlot : un clic ouvre le panneau
+  fireEvent.click(screen.getByText("Nuit Blanche"));
+  expect(spies.panelToggle).toHaveBeenCalledOnce();
+  now.mockResolvedValue({ ...track(true), position_ms: 500 });
+  await act(async () => changedCb({ topic: "music" }));
+  expect(screen.getByText("Nuit Blanche")).toBeInTheDocument();
+  now.mockResolvedValue(track(false));
+  count.mockResolvedValue(0);
+  await act(async () => changedCb({ topic: "music" }));
+  await act(async () => changedCb({ topic: "mail" }));
+  expect(container.querySelector(".pill-music")).toBeNull();
+  expect(container.querySelector(".pill-mail")).toBeNull();
+  expect(vi.getTimerCount()).toBe(1); // seule l'horloge : aucune minuterie ajoutée
+});
+
+it("réglage « musique et mails » coupé : rien n'est lu ni affiché", async () => {
+  vi.spyOn(ipc, "getSettings").mockResolvedValue({ ...DEFAULT_SETTINGS, pill_extras: false });
+  vi.spyOn(pillIpc, "todoCount").mockResolvedValue(4);
+  const { container } = render(<Pill />);
+  await act(async () => {});
+  expect(container.querySelector(".pill-music")).toBeNull();
+  expect(container.querySelector(".pill-mail")).toBeNull();
+  await act(async () => changedCb({ topic: "mail" }));
+  expect(container.querySelector(".pill-mail")).toBeNull();
 });

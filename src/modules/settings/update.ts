@@ -18,6 +18,8 @@ export type UpdateStatus = UpdatePhase & {
   last_error: string | null;
   /** Version installée depuis le lancement précédent : annonce « Oniris est passé en X ». */
   updated: { version: string; notes: string } | null;
+  /** Début de la dernière vérification depuis le lancement (ms Unix). */
+  last_check_ms?: number | null;
 };
 
 export const updateIpc = {

@@ -100,7 +100,11 @@ impl Quarantine {
             content.push_str("\n\n");
         }
         let system = format!("{QUARANTINE}\n{instruction}");
-        let text = if detail == "long" || task == "draft_reply" {
+        let to_claude = detail == "long" || task == "draft_reply";
+        if to_claude && sources.iter().any(|s| s.starts_with(crate::screen::SOURCE_PREFIX)) {
+            return err("le contenu de l'écran n'est jamais confié à Claude : demande un résumé court");
+        }
+        let text = if to_claude {
             self.claude.complete(&system, content, &mut |_: &str| {}).await.map_err(|_| "Claude indisponible")
         } else {
             let schema = json!({"type": "object", "required": ["text"], "properties": {"text": {"type": "string"}}});
@@ -227,5 +231,17 @@ mod tests {
         let many: Vec<String> = (0..21).map(|_| a.clone()).collect();
         assert!(q.call("iris.digest", json!({"refs": many, "task": "summarize"})).await["error"].is_string());
         assert!(q.call("iris.digest", json!({"refs": [a], "task": "rm"})).await["error"].is_string());
+    }
+
+    #[tokio::test]
+    async fn contenu_de_l_ecran_jamais_confie_a_claude() {
+        let (q, local, claude) = fx(json!({"text": "résumé"}));
+        let s = q.vault.lock().put("screen.describe", "écran".into());
+        for (task, detail) in [("summarize", "long"), ("draft_reply", "short")] {
+            assert!(q.call("iris.digest", json!({"refs": [s], "task": task, "detail": detail})).await["error"].is_string());
+        }
+        assert!(claude.0.lock().is_empty());
+        assert!(q.call("iris.digest", json!({"refs": [s], "task": "summarize"})).await["text"].is_string(), "court : local");
+        assert_eq!(local.seen.lock().len(), 1);
     }
 }

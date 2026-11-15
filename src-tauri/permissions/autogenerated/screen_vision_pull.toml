@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-screen-vision-pull"
+description = "Enables the screen_vision_pull command without any pre-configured scope."
+commands.allow = ["screen_vision_pull"]
+
+[[permission]]
+identifier = "deny-screen-vision-pull"
+description = "Denies the screen_vision_pull command without any pre-configured scope."
+commands.deny = ["screen_vision_pull"]

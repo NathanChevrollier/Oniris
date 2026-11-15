@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-palette-rates"
+description = "Enables the palette_rates command without any pre-configured scope."
+commands.allow = ["palette_rates"]
+
+[[permission]]
+identifier = "deny-palette-rates"
+description = "Denies the palette_rates command without any pre-configured scope."
+commands.deny = ["palette_rates"]

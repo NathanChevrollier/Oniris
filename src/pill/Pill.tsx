@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { ipc, onPanelState } from "../lib/ipc";
+import { Mail, Music } from "lucide-react";
+import { invoke, ipc, isTauri, listen, onPanelState } from "../lib/ipc";
+import { musicIpc, type NowPlaying } from "../modules/music/api";
 import { useSettings } from "../lib/settings";
 import { hhmm, useNow } from "../lib/time";
 import { PillTimer } from "../modules/timers/PillTimer";
@@ -100,6 +102,48 @@ function UpdateToast() {
   return <div className="pill-update" role="status">{body}</div>;
 }
 
+export const pillIpc = {
+  /** Compte des mails « à traiter » déjà en cache (aucune requête réseau). */
+  todoCount: (): Promise<number> => isTauri ? invoke("mail_todo_count") : Promise.resolve(3),
+};
+
+const sameTrack = (a: NowPlaying | null, b: NowPlaying | null) =>
+  a === b || (!!a && !!b && a.title === b.title && a.artist === b.artist && a.playing === b.playing && a.cover === b.cover);
+
+/** Titre en cours et mails à traiter : lus au montage puis à chaque `oniris://changed` de leur sujet, sans minuterie.
+ *  Un événement sans changement visible (position de lecture) ne redessine rien. */
+export function PillExtras() {
+  const [np, setNp] = useState<NowPlaying | null>(null);
+  const [todo, setTodo] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    const music = () => musicIpc.now().then((n) => { if (alive) setNp((p) => (sameTrack(p, n) ? p : n)); }, () => {});
+    const mail = () => pillIpc.todoCount().then((n) => { if (alive) setTodo(n); }, () => {});
+    music(); mail();
+    const un = listen<{ topic: string }>("oniris://changed", (e) => {
+      if (e.payload.topic === "music") music();
+      else if (e.payload.topic === "mail") mail();
+    });
+    return () => { alive = false; void un.then((f) => f()); };
+  }, []);
+  const track = np?.playing && np.title ? np : null;
+  return (
+    <>
+      {track && (
+        <span className="pill-music" title={track.artist ? `${track.title} · ${track.artist}` : track.title}>
+          {track.cover ? <img src={track.cover} alt="" /> : <Music size={13} aria-hidden />}
+          <span className="pill-music-txt">{track.title}{track.artist && <i> · {track.artist}</i>}</span>
+        </span>
+      )}
+      {todo > 0 && (
+        <span className="pill-mail" title={`${todo} mail${todo > 1 ? "s" : ""} à traiter`}>
+          <Mail size={12} aria-hidden />{todo > 99 ? "99+" : todo}
+        </span>
+      )}
+    </>
+  );
+}
+
 export function Pill() {
   const settings = useSettings();
   const now = useNow(60_000);
@@ -163,6 +207,7 @@ export function Pill() {
         }}
         onMouseLeave={cancelHover}>
         <span className="time">{hhmm(now)}</span>
+        {settings.pill_extras && <PillExtras />}
         <PillTimer />
         <PillToast />
         <VoiceOrb thinking={thinking} />

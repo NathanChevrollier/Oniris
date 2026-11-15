@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-mail-todo-count"
+description = "Enables the mail_todo_count command without any pre-configured scope."
+commands.allow = ["mail_todo_count"]
+
+[[permission]]
+identifier = "deny-mail-todo-count"
+description = "Denies the mail_todo_count command without any pre-configured scope."
+commands.deny = ["mail_todo_count"]

@@ -29,6 +29,10 @@ export type Settings = {
   auto_update: boolean;
   hide_pill_in_fullscreen: boolean;
   pill_sleep: boolean;
+  /** La pilule affiche le titre en cours et le nombre de mails à traiter. */
+  pill_extras: boolean;
+  /** Moteur de « Rechercher sur le web » de la palette. */
+  web_search_engine: "google" | "duckduckgo" | "bing";
   timeline_start_hour: number;
   timeline_end_hour: number;
   reduce_motion: boolean;
@@ -71,6 +75,8 @@ export type Settings = {
   iris_claude_auto: boolean;
   /** Minutes avant que le modèle local quitte la mémoire : 1 à 60. */
   iris_unload_minutes: number;
+  /** Modèle de vision d'Ollama (« qu'est-ce qu'il y a sur mon écran ? »), local seulement. */
+  iris_vision_model: string;
   /** Personnalité d'IRIS (`{prénom}` est remplacé) : 1 à 2000 caractères. */
   iris_personality: string;
   /** Modèle de transcription : "small" ou "turbo". */
@@ -86,6 +92,10 @@ export type Settings = {
   voice_wake: boolean;
   voice_wake_learning: boolean;
   voice_follow_up: boolean;
+  /** IRIS dit chaque phrase dès qu'elle est écrite. */
+  voice_stream: boolean;
+  /** Briefing dit à la première ouverture du panneau de la journée. */
+  voice_briefing_auto: boolean;
   voice_azure: boolean;
   voice_azure_region: string;
   voice_azure_voice: string;
@@ -111,6 +121,8 @@ export const DEFAULT_SETTINGS: Settings = {
   auto_update: true,
   hide_pill_in_fullscreen: true,
   pill_sleep: false,
+  pill_extras: true,
+  web_search_engine: "google",
   timeline_start_hour: 8,
   timeline_end_hour: 23,
   reduce_motion: false,
@@ -136,6 +148,7 @@ export const DEFAULT_SETTINGS: Settings = {
   iris_local_model: "qwen3:14b",
   iris_claude_auto: false,
   iris_unload_minutes: 30,
+  iris_vision_model: "qwen3-vl:8b",
   iris_personality: "Tu es IRIS, l'assistante d'Oniris. Tu tutoies {prénom} et l'appelles par son prénom. Ton ton est chaleureux, concis, avec une pointe d'humour discrète ; jamais servile, jamais bavarde. Une ou deux phrases suffisent pour une action simple.",
   voice_stt_model: "small",
   voice_tts: true,
@@ -145,6 +158,8 @@ export const DEFAULT_SETTINGS: Settings = {
   voice_wake: false,
   voice_wake_learning: false,
   voice_follow_up: true,
+  voice_stream: true,
+  voice_briefing_auto: true,
   voice_azure: false,
   voice_azure_region: "francecentral",
   voice_azure_voice: "fr-FR-VivienneMultilingualNeural",

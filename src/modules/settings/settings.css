@@ -128,3 +128,11 @@
   .set-ctl{max-width:none}
   .set-sheet .set-alert{max-width:none}
 }
+
+/* Diagnostic : pastille d'état (vert, orange, rouge, gris pour un composant désactivé). */
+.diag-row{gap:12px}
+.diag-dot{flex:none;width:9px;height:9px;border-radius:50%;background:var(--txt3)}
+.diag-row[data-level=ok] .diag-dot{background:var(--green)}
+.diag-row[data-level=warn] .diag-dot{background:var(--yellow)}
+.diag-row[data-level=bad] .diag-dot{background:#ff5a4f}
+.diag-tools{justify-content:flex-end;gap:8px}

@@ -244,6 +244,13 @@ pub async fn mail_list(state: tauri::State<'_, AppState>, account: Option<i64>, 
     mail_tools::list(&state.db.lock(), account, bucket.as_deref(), limit.unwrap_or(mail_tools::LIST_MAX)).map_err(|e| e.to_string())
 }
 
+/// Nombre de mails « à traiter » du cache (badge de la pilule) : un simple compte, aucun contenu.
+#[tauri::command]
+pub async fn mail_todo_count(state: tauri::State<'_, AppState>) -> Result<i64, String> {
+    state.db.lock().query_row("SELECT count(*) FROM mails WHERE labels LIKE '%\"INBOX\"%' AND bucket = 'todo'", [], |r| r.get(0))
+        .map_err(|e| e.to_string())
+}
+
 #[derive(serde::Serialize)]
 pub struct MailStatus { last_ok_ms: Option<i64> }
 

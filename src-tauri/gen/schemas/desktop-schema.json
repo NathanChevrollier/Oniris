@@ -483,6 +483,12 @@
           "markdownDescription": "Enables the mail_status command without any pre-configured scope."
         },
         {
+          "description": "Enables the mail_todo_count command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-mail-todo-count",
+          "markdownDescription": "Enables the mail_todo_count command without any pre-configured scope."
+        },
+        {
           "description": "Enables the music_devices command without any pre-configured scope.",
           "type": "string",
           "const": "allow-music-devices",
@@ -601,6 +607,18 @@
           "type": "string",
           "const": "allow-onboarding-set",
           "markdownDescription": "Enables the onboarding_set command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the palette_rates command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-palette-rates",
+          "markdownDescription": "Enables the palette_rates command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the palette_web_search command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-palette-web-search",
+          "markdownDescription": "Enables the palette_web_search command without any pre-configured scope."
         },
         {
           "description": "Enables the panel_close command without any pre-configured scope.",
@@ -733,6 +751,42 @@
           "type": "string",
           "const": "allow-reminders-list",
           "markdownDescription": "Enables the reminders_list command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the routines_list command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-routines-list",
+          "markdownDescription": "Enables the routines_list command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the routines_run command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-routines-run",
+          "markdownDescription": "Enables the routines_run command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the routines_save command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-routines-save",
+          "markdownDescription": "Enables the routines_save command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the screen_vision_pull command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-screen-vision-pull",
+          "markdownDescription": "Enables the screen_vision_pull command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the screen_vision_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-screen-vision-status",
+          "markdownDescription": "Enables the screen_vision_status command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the search_icon command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-search-icon",
+          "markdownDescription": "Enables the search_icon command without any pre-configured scope."
         },
         {
           "description": "Enables the search_open command without any pre-configured scope.",
@@ -1227,6 +1281,12 @@
           "markdownDescription": "Denies the mail_status command without any pre-configured scope."
         },
         {
+          "description": "Denies the mail_todo_count command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-mail-todo-count",
+          "markdownDescription": "Denies the mail_todo_count command without any pre-configured scope."
+        },
+        {
           "description": "Denies the music_devices command without any pre-configured scope.",
           "type": "string",
           "const": "deny-music-devices",
@@ -1345,6 +1405,18 @@
           "type": "string",
           "const": "deny-onboarding-set",
           "markdownDescription": "Denies the onboarding_set command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the palette_rates command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-palette-rates",
+          "markdownDescription": "Denies the palette_rates command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the palette_web_search command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-palette-web-search",
+          "markdownDescription": "Denies the palette_web_search command without any pre-configured scope."
         },
         {
           "description": "Denies the panel_close command without any pre-configured scope.",
@@ -1477,6 +1549,42 @@
           "type": "string",
           "const": "deny-reminders-list",
           "markdownDescription": "Denies the reminders_list command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the routines_list command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-routines-list",
+          "markdownDescription": "Denies the routines_list command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the routines_run command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-routines-run",
+          "markdownDescription": "Denies the routines_run command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the routines_save command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-routines-save",
+          "markdownDescription": "Denies the routines_save command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the screen_vision_pull command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-screen-vision-pull",
+          "markdownDescription": "Denies the screen_vision_pull command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the screen_vision_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-screen-vision-status",
+          "markdownDescription": "Denies the screen_vision_status command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the search_icon command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-search-icon",
+          "markdownDescription": "Denies the search_icon command without any pre-configured scope."
         },
         {
           "description": "Denies the search_open command without any pre-configured scope.",

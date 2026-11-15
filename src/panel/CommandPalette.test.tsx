@@ -1,7 +1,7 @@
 import { render, screen, cleanup, act, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { it, expect, vi, afterEach, beforeEach } from "vitest";
-import { CommandPalette, highlight, parseQuery, searchIpc, shortPath, type Hit, type SearchResult } from "./CommandPalette";
+import { CommandPalette, highlight, iconIpc, paletteIpc, parseQuery, searchIpc, shortPath, type Hit, type SearchResult } from "./CommandPalette";
 import { Panel } from "./Panel";
 import { usePanelStore } from "./store";
 import { ipc, invoke } from "../lib/ipc";
@@ -33,6 +33,9 @@ afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.mocked(invoke).mockClear()
 
 const bar = () => screen.getByRole("combobox", { name: "Commande" });
 const selected = () => screen.getAllByRole("option").find((o) => o.getAttribute("aria-selected") === "true");
+/** Résultats de la recherche, sans la ligne « Rechercher sur le web » ajoutée en dernier. */
+const results = () => screen.getAllByRole("option").filter((o) => !o.classList.contains("k-web"));
+const findResult = async () => { await screen.findAllByRole("option"); const r = results(); expect(r).toHaveLength(1); return r[0]; };
 
 it("aucune recherche à l'ouverture : seulement à la frappe", async () => {
   const q = answer();
@@ -48,10 +51,12 @@ it("navigation au clavier : ↑/↓ bornés, Entrée ouvre, Ctrl+Entrée ouvre l
   const open = vi.spyOn(searchIpc, "open").mockResolvedValue("done");
   render(<CommandPalette />);
   await userEvent.type(bar(), "rapport");
-  expect(await screen.findAllByRole("option")).toHaveLength(3);
+  expect(await screen.findAllByRole("option")).toHaveLength(4);
   expect(selected()).toHaveTextContent("rapport.pdf");
   expect(bar()).toHaveAttribute("aria-activedescendant", selected()!.id);
-  await userEvent.keyboard("{ArrowDown}{ArrowDown}{ArrowDown}");
+  await userEvent.keyboard("{ArrowDown}{ArrowDown}{ArrowDown}{ArrowDown}");
+  expect(selected()).toHaveTextContent("Rechercher « rapport » sur Google"); // borné en bas : la ligne web
+  await userEvent.keyboard("{ArrowUp}");
   expect(selected()).toHaveTextContent("rapports");
   expect(selected()).not.toHaveTextContent("Application");
   await userEvent.keyboard("{ArrowUp}");
@@ -91,7 +96,7 @@ it("les réponses périmées sont ignorées", async () => {
   expect(reqs[1]).toBeGreaterThan(reqs[0]);
   await act(async () => pending[1]({ req: reqs[1], hits: [HITS[1]], indexing: false }));
   await act(async () => pending[0]({ req: reqs[0], hits: [HITS[0], HITS[2]], indexing: false }));
-  expect(screen.getAllByRole("option")).toHaveLength(1);
+  expect(results()).toHaveLength(1);
   expect(selected()).toHaveTextContent("Rapports");
 });
 
@@ -225,7 +230,7 @@ it("un exécutable en attente de confirmation : barre vidée, sans erreur", asyn
   vi.spyOn(searchIpc, "open").mockResolvedValue("pending");
   render(<CommandPalette />);
   await userEvent.type(bar(), "setup");
-  await screen.findByRole("option");
+  await findResult();
   await userEvent.keyboard("{Enter}");
   expect(bar()).toHaveValue("");
   expect(screen.getByRole("alert")).toBeEmptyDOMElement();
@@ -261,7 +266,7 @@ it("une correspondance dans le sous-titre seulement y est surlignée", async () 
   answer([hit("note", "2", "Réunion client jeudi", "Préparer la démo Oniris")]);
   render(<CommandPalette />);
   await userEvent.type(bar(), "oni", { skipClick: true });
-  const opt = await screen.findByRole("option");
+  const opt = await findResult();
   expect(opt.querySelector(".pal-title mark")).toBeNull();
   expect([...opt.querySelectorAll(".pal-sub mark")].map((m) => m.textContent).join("")).toBe("Oni");
 });
@@ -275,7 +280,7 @@ it("une Entrée en attente est oubliée si l'utilisateur retape avant la répons
   await userEvent.type(bar(), "r{Enter}a", { skipClick: true });
   await act(async () => pending[1]({ req: reqs[1], hits: HITS, indexing: false }));
   expect(open).not.toHaveBeenCalled();
-  expect(screen.getAllByRole("option")).toHaveLength(3);
+  expect(results()).toHaveLength(3);
 });
 
 it("la fenêtre de résultats n'est montée que s'il y a quelque chose à montrer", async () => {
@@ -283,7 +288,7 @@ it("la fenêtre de résultats n'est montée que s'il y a quelque chose à montre
   const { container } = render(<CommandPalette />);
   expect(container.querySelector(".pal-pop")).toBeNull();
   await userEvent.type(bar(), "reu", { skipClick: true });
-  await screen.findByRole("option");
+  await findResult();
   expect(container.querySelector(".pal-pop")).not.toBeNull();
   await userEvent.keyboard("{Escape}");
   expect(container.querySelector(".pal-pop")).toBeNull();
@@ -302,4 +307,72 @@ it("zones d'annonce (status, alert) toujours montées : seul leur contenu change
   expect(screen.getByRole("status")).toBe(status);
   expect(status).toHaveTextContent("Commande inconnue");
   expect(screen.getByRole("alert")).toBe(alert);
+});
+
+it("calcul tapé : résultat en tête, Entrée le copie sans interroger IRIS", async () => {
+  answer();
+  const write = vi.fn().mockResolvedValue(undefined);
+  vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText: write } });
+  const ask = vi.spyOn(irisIpc, "ask").mockResolvedValue(1);
+  const rates = vi.spyOn(paletteIpc, "rates");
+  render(<CommandPalette />);
+  await userEvent.type(bar(), "15% de 240", { skipClick: true });
+  await screen.findAllByRole("option");
+  const opts = screen.getAllByRole("option");
+  expect(opts[0]).toHaveTextContent("= 36");
+  expect(opts[opts.length - 1]).toHaveTextContent("Rechercher « 15% de 240 » sur Google");
+  await userEvent.keyboard("{Enter}");
+  expect(write).toHaveBeenCalledWith("36");
+  expect(ask).not.toHaveBeenCalled();
+  expect(rates).not.toHaveBeenCalled(); // pas une devise : aucun taux demandé
+  await act(async () => {});
+  expect(screen.getByRole("status")).toHaveTextContent("36 copié");
+  vi.unstubAllGlobals();
+});
+
+it("devise : taux demandés une fois (faux taux, aucun réseau), résultat en tête", async () => {
+  answer([]);
+  const rates = vi.spyOn(paletteIpc, "rates").mockResolvedValue({ EUR: 1, USD: 2 });
+  render(<CommandPalette />);
+  await userEvent.type(bar(), "30 € en $", { skipClick: true });
+  expect(await screen.findByText(/60,00/)).toBeInTheDocument();
+  expect(screen.getAllByRole("option")[0]).toHaveTextContent("taux BCE");
+  expect(rates).toHaveBeenCalledOnce();
+});
+
+it("recherche web : toujours en dernier, envoyée seulement au clic", async () => {
+  answer([]);
+  const web = vi.spyOn(paletteIpc, "webSearch").mockResolvedValue();
+  const ask = vi.spyOn(irisIpc, "ask").mockResolvedValue(1);
+  render(<CommandPalette />);
+  await userEvent.type(bar(), "météo lyon", { skipClick: true });
+  const row = await screen.findByRole("option");
+  expect(row).toHaveTextContent("Rechercher « météo lyon » sur Google");
+  expect(web).not.toHaveBeenCalled();
+  await userEvent.click(row);
+  expect(web).toHaveBeenCalledWith("météo lyon");
+  expect(ask).not.toHaveBeenCalled();
+  // Préfixe de portée ou commande : pas de ligne web.
+  fireEvent.change(bar(), { target: { value: "/note" } });
+  expect(screen.queryByText(/Rechercher «/)).toBeNull();
+});
+
+it("vraies icônes chargées après l'affichage, une demande par appli ou par extension ; libellé de la sorte", async () => {
+  // Clés neuves : le cache des icônes vit pour toute la page (les autres tests laissent des demandes sans réponse).
+  answer([hit("file", "D:/u/rapport.odt", "rapport.odt", "D:/u"), hit("app", "D:/m/Outil.lnk", "Outil", "Application"),
+    hit("dir", "D:/u/rapports", "rapports", "D:/u"), hit("file", "D:/u/autre.odt", "autre.odt", "D:/u")]);
+  const get = vi.spyOn(iconIpc, "get").mockImplementation((kind) =>
+    Promise.resolve(kind === "app" ? { png: "data:image/png;base64,AAAA", type_name: null } : { png: null, type_name: "Texte OpenDocument" }));
+  render(<CommandPalette />);
+  await userEvent.type(bar(), "rapport", { skipClick: true });
+  await screen.findAllByRole("option");
+  await act(async () => {});
+  const [pdf, app, dir] = results();
+  expect(app.querySelector("img")).toHaveAttribute("src", "data:image/png;base64,AAAA");
+  expect(app).toHaveTextContent("Application");
+  expect(pdf).toHaveTextContent("Texte OpenDocument");
+  expect(dir.querySelector("img")).toBeNull();
+  expect(dir).toHaveTextContent("Dossier");
+  expect(get.mock.calls.filter(([k]) => k === "file")).toHaveLength(1); // deux .odt : une seule demande
+  expect(get).not.toHaveBeenCalledWith("dir", expect.anything());
 });

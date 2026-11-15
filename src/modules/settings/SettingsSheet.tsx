@@ -4,10 +4,16 @@ import { hotkeyText, useSettings, type HotkeySetting } from "../../lib/settings"
 import { projectsIpc } from "../projects/api";
 import { HiddenProjects } from "../projects/HiddenProjects";
 import { IrisBrains, IrisHistory, IrisMemories, IrisPersonality, IrisSecurity } from "../iris/IrisSheet";
+import { RoutinesSection } from "../routines/RoutinesSection";
+import { VisionSection } from "../screen/VisionSection";
+import { ListChecks } from "lucide-react";
 import { VoiceSection } from "../voice/VoiceSection";
 import { Area, Field, Group, Row, SetCtx, Toggle, useDraft, useSaver, useSet } from "./controls";
 import { onUpdate, restartText, updateIpc, type UpdateStatus } from "./update";
 import { Appearance } from "./Appearance";
+import { Diagnostics } from "./Diagnostics";
+import { Choice } from "./controls";
+import { Stethoscope } from "lucide-react";
 import { useVoidClick } from "../../panel/surface";
 import "../accounts/accounts.css";
 import "./settings.css";
@@ -94,9 +100,11 @@ function UpdateInfo() {
   );
 }
 
-export type SettingsCat = "general" | "pill" | "day" | "iris" | "voice" | "memory" | "clipboard" | "search" | "updates";
+export type SettingsCat = "general" | "pill" | "day" | "iris" | "routines" | "voice" | "memory" | "clipboard" | "search" | "updates" | "diagnostic";
+/** Navigation offerte aux catégories (le diagnostic renvoie vers Comptes ou une autre catégorie). */
+type Nav = { onAccounts: () => void; go: (c: SettingsCat) => void };
 
-const CATS: { id: SettingsCat; icon: LucideIcon; title: string; intro: string; pane: () => ReactNode }[] = [
+const CATS: { id: SettingsCat; icon: LucideIcon; title: string; intro: string; pane: (nav: Nav) => ReactNode }[] = [
   { id: "general", icon: Settings2, title: "Général", intro: "Ton prénom, le démarrage avec Windows et les animations.", pane: () => <>
     <Group title="Toi"><Field k="user_name" label="Prénom" desc="IRIS et l'accueil t'appellent ainsi." /></Group>
     <Group title="Démarrage et affichage">
@@ -116,6 +124,7 @@ const CATS: { id: SettingsCat; icon: LucideIcon; title: string; intro: string; p
       <Field k="hover_delay_ms" label="Délai de survol" unit="ms" />
       <Toggle k="hide_pill_in_fullscreen" label="Masquer en plein écran" desc="Pendant un jeu ou une vidéo en plein écran." />
       <Toggle k="pill_sleep" label="Pilule en veille" desc="Cachée, elle réapparaît quand le curseur touche le haut de l'écran, au milieu." />
+      <Toggle k="pill_extras" label="Afficher la musique et les mails dans la pilule" desc="Le titre en cours pendant la lecture et le nombre de mails à traiter. Un clic ouvre le panneau." />
     </Group>
   </> },
   { id: "day", icon: Sun, title: "Journée", intro: "La frise du jour, le minuteur, la météo et la relève des mails.", pane: () => <>
@@ -132,7 +141,8 @@ const CATS: { id: SettingsCat; icon: LucideIcon; title: string; intro: string; p
       <Field k="mail_poll_minutes" label="Relève des mails" unit="min" min={2} max={5} desc="Toutes les 2 à 5 minutes." />
     </Group>
   </> },
-  { id: "iris", icon: Sparkles, title: "IRIS", intro: "Les cerveaux d'IRIS, sa personnalité et ce qu'elle peut faire sans te demander.", pane: () => <><IrisBrains /><IrisPersonality /><IrisSecurity /></> },
+  { id: "iris", icon: Sparkles, title: "IRIS", intro: "Les cerveaux d'IRIS, sa personnalité et ce qu'elle peut faire sans te demander.", pane: () => <><IrisBrains /><VisionSection /><IrisPersonality /><IrisSecurity /></> },
+  { id: "routines", icon: ListChecks, title: "Routines", intro: "Une phrase, plusieurs actions : « lance le mode jeu » règle le son, coupe le Bluetooth et ouvre Steam.", pane: () => <RoutinesSection /> },
   { id: "voice", icon: Mic, title: "Voix", intro: "Parler à IRIS et l'entendre répondre, avec ou sans la voix naturelle d'Azure.", pane: () => <VoiceSection /> },
   { id: "memory", icon: Brain, title: "Mémoire et historique", intro: "Ce qu'IRIS retient de toi et vos derniers échanges.", pane: () => <><IrisMemories /><IrisHistory /></> },
   { id: "clipboard", icon: ClipboardList, title: "Presse-papiers", intro: "L'historique de ce que tu copies, dans la carte Presse-papiers.", pane: () => (
@@ -152,6 +162,9 @@ const CATS: { id: SettingsCat; icon: LucideIcon; title: string; intro: string; p
       <Area k="resume_prompt_orchestrator" label="Invite « Reprendre » (orchestrateur)" />
     </Group>
     <section className="set-group"><HiddenProjects /></section>
+    <Group title="Recherche sur le web" note="Rien n'est envoyé tant que tu ne choisis pas « Rechercher sur le web » dans la barre.">
+      <Choice k="web_search_engine" label="Moteur" options={[["google", "Google"], ["duckduckgo", "DuckDuckGo"], ["bing", "Bing"]]} />
+    </Group>
   </> },
   { id: "updates", icon: RefreshCw, title: "Mises à jour", intro: "Oniris se met à jour tout seul depuis GitHub, sans te déranger.", pane: () => (
     <Group>
@@ -160,6 +173,7 @@ const CATS: { id: SettingsCat; icon: LucideIcon; title: string; intro: string; p
       <UpdateInfo />
     </Group>
   ) },
+  { id: "diagnostic", icon: Stethoscope, title: "Diagnostic", intro: "L'état de chaque composant d'Oniris, avec de quoi réparer ce qui coince.", pane: (nav) => <Diagnostics {...nav} /> },
 ];
 
 function Body({ cat, setCat, onClose, onAccounts }: { cat: SettingsCat; setCat: (c: SettingsCat) => void; onClose: () => void; onAccounts: () => void }) {
@@ -199,7 +213,7 @@ function Body({ cat, setCat, onClose, onAccounts }: { cat: SettingsCat; setCat: 
           <button type="button" className="acc-icon" aria-label="Fermer les réglages" onClick={onClose}><X size={16} /></button>
         </header>
         <div className="set-scroll" data-void>
-          <div key={cat} id="set-panel" role="tabpanel" aria-labelledby={`set-tab-${cat}`} className="set-pane">{current.pane()}</div>
+          <div key={cat} id="set-panel" role="tabpanel" aria-labelledby={`set-tab-${cat}`} className="set-pane">{current.pane({ onAccounts, go })}</div>
         </div>
       </div>
     </SetCtx.Provider>

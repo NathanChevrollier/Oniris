@@ -218,12 +218,15 @@ pub async fn ensure_ollama() -> bool {
 /// Lance un tour et rend son numéro ; le tour précédent, s'il court encore, est abandonné.
 #[tauri::command]
 pub async fn iris_ask(app: AppHandle, text: String, force_claude: bool, local_only: bool) -> Result<u32, String> {
-    start_turn(app, text, force_claude, local_only, false).map(|(turn, _)| turn)
+    start_turn(app, text, force_claude, local_only, None).map(|(turn, _)| turn)
 }
 
+/// Écoute des événements d'un tour vocal (réponse en flux, confirmation) : la voix parle avant la fin du tour.
+pub type Tap = Arc<dyn Fn(&IrisEventKind) + Send + Sync>;
+
 /// Tour vocal : le même qu'`iris_ask(text, false, false)`.
-pub async fn voice_turn(app: &AppHandle, text: String) -> Result<TurnResult, TurnError> {
-    let (_, rx) = start_turn(app.clone(), text, false, false, true).map_err(|_| TurnError::Failed)?;
+pub async fn voice_turn(app: &AppHandle, text: String, tap: Tap) -> Result<TurnResult, TurnError> {
+    let (_, rx) = start_turn(app.clone(), text, false, false, Some(tap)).map_err(|_| TurnError::Failed)?;
     outcome(rx).await
 }
 
@@ -238,13 +241,13 @@ async fn outcome(rx: tokio::sync::oneshot::Receiver<Result<TurnResult, String>>)
 /// Tour vocal : le panneau n'a pas demandé ce tour, il apprend ici le texte dit (jamais écrit dans les journaux).
 fn user_event(turn: u32, text: &str) -> serde_json::Value { json!({ "turn": turn, "type": "user", "text": text }) }
 
-fn start_turn(app: AppHandle, text: String, force_claude: bool, local_only: bool, voice: bool) -> Result<(u32, tokio::sync::oneshot::Receiver<Result<TurnResult, String>>), String> {
+fn start_turn(app: AppHandle, text: String, force_claude: bool, local_only: bool, voice: Option<Tap>) -> Result<(u32, tokio::sync::oneshot::Receiver<Result<TurnResult, String>>), String> {
     let text = text.trim().to_string();
     if text.is_empty() || text.len() > ASK_MAX {
         return Err("message vide ou trop long".into());
     }
     let turn = NEXT_TURN.fetch_add(1, Ordering::SeqCst) + 1;
-    if voice {
+    if voice.is_some() {
         let _ = app.emit("oniris://iris", user_event(turn, &text));
     }
     let (done, rx) = tokio::sync::oneshot::channel();
@@ -308,7 +311,7 @@ impl<F: FnOnce()> Drop for OnAbort<F> {
 }
 
 /// Cerveaux construits d'après les réglages du moment ; exécuteur sur le coffre de la conversation.
-async fn run_turn(app: &AppHandle, turn: u32, text: String, force_claude: bool, local_only: bool, voice: bool) -> Result<TurnResult, String> {
+async fn run_turn(app: &AppHandle, turn: u32, text: String, force_claude: bool, local_only: bool, voice: Option<Tap>) -> Result<TurnResult, String> {
     ensure_ollama().await;
     let st = app.state::<AppState>();
     let s = st.settings.read().clone();
@@ -336,12 +339,15 @@ async fn run_turn(app: &AppHandle, turn: u32, text: String, force_claude: bool, 
         })),
     });
     let at = chrono::Local::now();
-    let oral = if voice { prompt::ORAL } else { "" };
+    let oral = if voice.is_some() { prompt::ORAL } else { "" };
     let system = prompt::system(&s.iris_personality, &s.user_name, at, &memories, Brain::Local) + oral;
     let claude_system = prompt::system(&s.iris_personality, &s.user_name, at, &memories, Brain::Claude) + oral;
     let agent = Agent { local, claude, model: s.iris_local_model.clone(), keep_alive_min: s.iris_unload_minutes, claude_auto: s.iris_claude_auto };
     let emitter = app.clone();
     let emit = move |kind: IrisEventKind| {
+        if let Some(tap) = &voice {
+            tap(&kind);
+        }
         let _ = emitter.emit("oniris://iris", IrisEvent { turn, kind });
     };
     let unload = app.clone();

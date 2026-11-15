@@ -161,6 +161,7 @@ fn route(kind: ItemKind, key: &str) -> Result<Route, ToolError> {
         ItemKind::Command => Route::Ui(Opened::Command),
         ItemKind::Favorite => Route::Tool("favorites.open", json!({ "id": key.parse::<i64>().map_err(|_| ToolError::BadArgs("favori inconnu".into()))? })),
         ItemKind::Project => Route::Tool("files.open", json!({ "path": key })),
+        ItemKind::Routine => Route::Tool("routines.run", json!({ "name": key })),
     })
 }
 
@@ -185,7 +186,10 @@ pub async fn search_query(app: AppHandle, q: String, scope: Option<String>, req:
         let favs = st.favorites.read().clone();
         let projects = st.projects.read().items.clone();
         let notes = st.notes.read().clone();
-        let extra = extras(&st.apps, &favs, &projects, &notes, scope);
+        let mut extra = extras(&st.apps, &favs, &projects, &notes, scope);
+        if wants(scope, ItemKind::Routine) {
+            extra.push(crate::modules::routines::items());
+        }
         let empty = FileIndex::new();
         let index = st.indexer.get().map(|i| i.index.read());
         let hits = run(index.as_deref().unwrap_or(&empty), &extra, &st.usage.read(), &q, scope, now_ms());
@@ -203,6 +207,8 @@ pub async fn search_open(app: AppHandle, kind: String, key: String) -> Result<Op
     let opened = match route(kind, &key).map_err(|e| e.to_string())? {
         Route::Ui(o) => o,
         Route::Tool(tool, args) => match dispatch_as_user(&app, tool, args).await {
+            // Routine dont une étape attend sa carte : le panneau reste ouvert.
+            ToolOutcome::Done { output, .. } if output["pending"].as_u64().is_some_and(|n| n > 0) => Opened::Pending,
             ToolOutcome::Done { .. } => Opened::Done,
             ToolOutcome::NeedsConfirmation(_) => Opened::Pending,
             ToolOutcome::Rejected { .. } => return Err("action refusée".into()),
@@ -367,6 +373,7 @@ mod tests {
         assert_eq!(tool(ItemKind::Project, r"C:\p\Zenytt"), ("files.open", json!({"path": r"C:\p\Zenytt"})));
         assert_eq!(tool(ItemKind::Favorite, "7"), ("favorites.open", json!({"id": 7})));
         assert!(route(ItemKind::Favorite, "abc").is_err());
+        assert_eq!(tool(ItemKind::Routine, "Mode jeu"), ("routines.run", json!({"name": "Mode jeu"})));
     }
 
     #[test]

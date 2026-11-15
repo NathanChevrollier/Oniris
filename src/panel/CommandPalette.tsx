@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
-import { AppWindow, FileText, Folder, FolderGit2, Slash, Star, StickyNote, type LucideIcon } from "lucide-react";
+import { AppWindow, Calculator, FileText, Folder, FolderGit2, Globe, Slash, Star, StickyNote, Workflow, type LucideIcon } from "lucide-react";
 import { invoke, ipc, isTauri, listen, type ToolOutcome } from "../lib/ipc";
 import { friendlyError, useToolAction } from "../lib/toolAction";
 import { focusCard, usePaletteFocus } from "../lib/focusCard";
@@ -10,23 +10,86 @@ import { agendaIpc } from "../modules/agenda/api";
 import { ask, cancel, useIris } from "../modules/iris/store";
 import { CommandBar } from "./CommandBar";
 import { usePanelStore } from "./store";
+import { useSettings, type Settings } from "../lib/settings";
+import { calc, convertMoney, convertUnits, parseMoney } from "./calc";
 
 /** Premiers essais : des demandes qu'IRIS sait traiter (agenda, mails, rappels, minuteur, notes, météo). */
 export const SUGGESTIONS = ["Qu'est-ce que j'ai aujourd'hui ?", "Résume mes mails importants", "Rappelle-moi de boire de l'eau dans 1 h", "Minuteur 25 minutes", "Note idées pour le week-end", "Quel temps fera-t-il demain ?"];
 import "./palette.css";
 
-export type ItemKind = "file" | "dir" | "app" | "project" | "favorite" | "note" | "command";
+export type ItemKind = "file" | "dir" | "app" | "project" | "favorite" | "note" | "command" | "routine";
 /** Miroirs de `oniris_core::search::Hit` et de `modules::search::SearchResult`. */
 export type Hit = { item: { kind: ItemKind; key: string; title: string; subtitle: string }; score: number };
 export type SearchResult = { req: number; hits: Hit[]; indexing: boolean };
 type Opened = "done" | "pending" | "note" | "command";
 type IndexStatus = { state: "indexing"; done: number } | { state: "ready"; count: number };
+/** Lignes ajoutées par la barre elle-même : résultat de calcul (en tête) et recherche web (en dernier). */
+type Kind = ItemKind | "calc" | "web";
+type Row = { item: { kind: Kind; key: string; title: string; subtitle: string }; score: number };
+type Rates = Record<string, number> | "loading" | "error" | null;
 
 const OPEN_FAILED = "Impossible d'ouvrir cet élément.";
 const DONE: ToolOutcome = { Done: { action_id: 0, output: {} } };
-const ICONS: Record<ItemKind, LucideIcon> = {
-  file: FileText, dir: Folder, app: AppWindow, project: FolderGit2, favorite: Star, note: StickyNote, command: Slash,
+const ICONS: Record<Kind, LucideIcon> = {
+  file: FileText, dir: Folder, app: AppWindow, project: FolderGit2, favorite: Star, note: StickyNote, command: Slash, routine: Workflow, calc: Calculator, web: Globe,
 };
+/** Libellé discret de la sorte, à droite de la ligne (fichiers : le type donné par Windows). */
+const KIND_LABEL: Record<Kind, string> = {
+  file: "Fichier", dir: "Dossier", app: "Application", project: "Projet", favorite: "Favori", note: "Note", command: "Commande", routine: "Routine", calc: "", web: "",
+};
+
+/** Miroir de `modules::icons::Icon`. */
+type IconInfo = { png: string | null; type_name: string | null };
+const NO_ICON: IconInfo = { png: null, type_name: null };
+export const iconIpc = {
+  get: (kind: "app" | "file", key: string): Promise<IconInfo> => isTauri ? invoke("search_icon", { kind, key }) : Promise.resolve(NO_ICON),
+};
+/** Icônes déjà demandées (une requête par application ou par extension, pour toute la vie de la page). */
+const iconReqs = new Map<string, Promise<IconInfo>>();
+const iconDone = new Map<string, IconInfo>();
+const iconKey = (kind: Kind, key: string): string | null => {
+  if (kind === "app") return `app:${key}`;
+  const ext = kind === "file" ? /\.([a-z0-9]{1,10})$/i.exec(key)?.[1] : undefined;
+  return ext ? `ext:${ext.toLowerCase()}` : null;
+};
+
+/** Icône réelle chargée après l'affichage (jamais pendant la frappe) ; l'icône lucide de la sorte en attendant. */
+function useIcon(kind: Kind, key: string): IconInfo | null {
+  const k = iconKey(kind, key);
+  const [v, setV] = useState<IconInfo | null>(() => (k && iconDone.get(k)) || null);
+  useEffect(() => {
+    if (!k) return setV(null);
+    const known = iconDone.get(k);
+    if (known) return setV(known);
+    let alive = true;
+    let req = iconReqs.get(k);
+    if (!req) {
+      req = iconIpc.get(kind as "app" | "file", key).catch(() => NO_ICON).then((i) => { iconDone.set(k, i); return i; });
+      iconReqs.set(k, req);
+    }
+    void req.then((i) => { if (alive) setV(i); });
+    return () => { alive = false; };
+  }, [k, kind, key]);
+  return v;
+}
+
+function RowIcon({ kind, path }: { kind: Kind; path: string }) {
+  const info = useIcon(kind, path);
+  const Icon = ICONS[kind] ?? FileText;
+  return (
+    <span className={`pal-ico k-${kind}${info?.png ? " real" : ""}`}>
+      {info?.png ? <img src={info.png} alt="" width={20} height={20} /> : <Icon size={15} aria-hidden />}
+    </span>
+  );
+}
+
+function KindLabel({ kind, path }: { kind: Kind; path: string }) {
+  const info = useIcon(kind, path);
+  const ext = kind === "file" ? /\.([a-z0-9]{1,10})$/i.exec(path)?.[1] : undefined;
+  const label = info?.type_name ?? (ext ? `Fichier ${ext.toUpperCase()}` : KIND_LABEL[kind] ?? "");
+  return label ? <span className="pal-kind">{label}</span> : null;
+}
+const ENGINES: Record<Settings["web_search_engine"], string> = { google: "Google", duckduckgo: "DuckDuckGo", bing: "Bing" };
 const SCOPES: Record<string, ItemKind> = { p: "project", f: "file", a: "app", b: "favorite", n: "note" };
 
 /**
@@ -153,6 +216,24 @@ export const searchIpc = {
     isTauri ? invoke("projects_resume", { path, mode }) : Promise.resolve(null),
 };
 
+export const paletteIpc = {
+  /** Taux BCE pour 1 EUR (cache Rust de 12 h) ; demandés seulement pour une conversion de devise. */
+  rates: (): Promise<Record<string, number>> => isTauri ? invoke("palette_rates") : Promise.resolve({ EUR: 1, USD: 1.08, GBP: 0.85, CHF: 0.94 }),
+  /** Ouvre le navigateur sur le moteur réglé ; rien ne part avant ce choix. */
+  webSearch: (q: string): Promise<void> => isTauri ? invoke("palette_web_search", { q }) : Promise.resolve(),
+};
+
+/** Calcul, conversion d'unités ou de devise en tête ; « Rechercher sur le web » en dernier. Texte libre seulement. */
+export function withExtras(text: string, hits: Hit[], rates: Rates, engine: Settings["web_search_engine"]): Row[] {
+  const { q, scope } = parseQuery(text);
+  if (scope !== null || !q.trim()) return hits;
+  const money = parseMoney(q);
+  const r = convertUnits(q) ?? calc(q) ?? (money && rates && typeof rates === "object" ? convertMoney(money, rates) : null);
+  const top: Row[] = r ? [{ item: { kind: "calc", key: r.copy, title: r.title, subtitle: r.subtitle }, score: 0 }] : [];
+  const web: Row = { item: { kind: "web", key: q.trim(), title: `Rechercher « ${q.trim()} » sur ${ENGINES[engine] ?? "Google"}`, subtitle: "Ouvre ton navigateur" }, score: 0 };
+  return [...top, ...hits, web];
+}
+
 /** Numéro de requête, croissant pour toute la vie de la page ; seules les requêtes Rust le consomment : la première
  *  vaut toujours 1, ce qui remet le compteur Rust à zéro si la page est rechargée. */
 let seq = 0;
@@ -167,6 +248,10 @@ export function CommandPalette() {
   const [text, setText] = useState("");
   const exchanging = useIris((s) => s.user !== "");
   const [hits, setHits] = useState<Hit[]>([]);
+  /** Les lignes ajoutées (calcul, web) suivent la liste : repliées avec elle. */
+  const [shown, setShown] = useState(false);
+  const [rates, setRates] = useState<Rates>(null);
+  const engine = useSettings().web_search_engine;
   const [sel, setSel] = useState(0);
   const [indexing, setIndexing] = useState(false);
   const [indexed, setIndexed] = useState<number | null>(null);
@@ -182,13 +267,14 @@ export function CommandPalette() {
     latest.current = 0;
     inflight.current = false;
     queued.current = null;
-    setText(""); setHits([]); setSel(0); setMsg(null); clear();
+    setText(""); setHits([]); setShown(false); setSel(0); setMsg(null); setRates(null); clear();
   };
 
   const search = (t: string) => {
     setMsg(null); clear();
     queued.current = null; // une Entrée en attente visait l'ancien texte
     const { q, scope } = parseQuery(t);
+    setShown(true); setSel(0);
     if (scope === "command") { latest.current = 0; inflight.current = false; queued.current = null; setHits(commandHits(q)); setSel(0); return; }
     const req = ++seq;
     latest.current = req;
@@ -199,7 +285,7 @@ export function CommandPalette() {
       setHits(r.hits); setSel(0); setIndexing(r.indexing);
       const e = queued.current;
       queued.current = null;
-      if (e) submit(e.text, r.hits, 0, e.ctrl, e.shift);
+      if (e) submit(e.text, withExtras(e.text, r.hits, rates, engine), 0, e.ctrl, e.shift);
     }, () => { if (req === latest.current) { inflight.current = false; queued.current = null; setHits([]); } });
   };
 
@@ -217,9 +303,14 @@ export function CommandPalette() {
     if (await run(c.run(arg))) reset();
   };
 
-  const activate = (h: Hit, ctrl: boolean, t: string) => {
+  const activate = (h: Row, ctrl: boolean, t: string) => {
     const it = h.item;
     if (it.kind === "command") { void runCommand(it.key, t); return; }
+    if (it.kind === "calc") {
+      navigator.clipboard.writeText(it.key).then(() => setMsg(`${it.key} copié`), () => setMsg("Copie impossible."));
+      return;
+    }
+    if (it.kind === "web") { paletteIpc.webSearch(it.key).then(reset, (e) => setMsg(friendlyError(String(e), OPEN_FAILED))); return; }
     if (ctrl && it.kind === "project") {
       searchIpc.resume(it.key, "normal").then((info) => { if (info) setMsg(info); else reset(); },
         (e) => setMsg(friendlyError(String(e), OPEN_FAILED)));
@@ -241,8 +332,9 @@ export function CommandPalette() {
     return true;
   };
 
-  const submit = (t: string, list: Hit[], i: number, ctrl: boolean, shift = false) => {
-    const h = list[i];
+  const submit = (t: string, list: Row[], i: number, ctrl: boolean, shift = false) => {
+    // Seule ligne, la recherche web ne prend pas Entrée : le texte libre reste pour IRIS (clic pour le web).
+    const h = list[i]?.item.kind === "web" && i === 0 ? undefined : list[i];
     // Ctrl+↵ garde son sens sur fichiers, dossiers, projets et commandes ; ailleurs il interroge IRIS (Ctrl+Maj+↵ : Claude).
     if (h && !(shift || (ctrl && !["file", "dir", "project", "command"].includes(h.item.kind)))) return activate(h, ctrl, t);
     if (!t.trim()) return;
@@ -253,12 +345,12 @@ export function CommandPalette() {
     if (e.nativeEvent.isComposing) return;
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       e.preventDefault();
-      if (!hits.length) { search(text); return; } // récents au premier geste, ou liste repliée par un clic ailleurs
-      setSel((s) => Math.min(Math.max(s + (e.key === "ArrowDown" ? 1 : -1), 0), hits.length - 1));
+      if (!list.length) { search(text); return; } // récents au premier geste, ou liste repliée par un clic ailleurs
+      setSel((s) => Math.min(Math.max(s + (e.key === "ArrowDown" ? 1 : -1), 0), list.length - 1));
     } else if (e.key === "Enter") {
       e.preventDefault();
       if (inflight.current) queued.current = { text, ctrl: e.ctrlKey, shift: e.ctrlKey && e.shiftKey };
-      else submit(text, hits, sel, e.ctrlKey, e.ctrlKey && e.shiftKey); // Maj seul n'a aucun sens ici
+      else submit(text, list, sel, e.ctrlKey, e.ctrlKey && e.shiftKey); // Maj seul n'a aucun sens ici
     } else if (e.key === "Escape" && useIris.getState().state === "thinking") {
       e.stopPropagation(); // abandonne le tour au lieu de fermer le panneau
       cancel();
@@ -269,7 +361,7 @@ export function CommandPalette() {
   };
 
   // Les effets ci-dessous ne dépendent que de leur déclencheur : ils lisent les gestionnaires du rendu courant ici.
-  const collapse = () => { latest.current = 0; inflight.current = false; queued.current = null; setHits([]); setMsg(null); clear(); };
+  const collapse = () => { latest.current = 0; inflight.current = false; queued.current = null; setHits([]); setShown(false); setMsg(null); clear(); };
   const handlers = useRef({ reset, edit, collapse });
   useEffect(() => { handlers.current = { reset, edit, collapse }; });
 
@@ -290,13 +382,22 @@ export function CommandPalette() {
 
   usePaletteFocus((t) => { input.current?.focus(); edit(t); });
 
-  useEffect(() => { document.getElementById(`pal-opt-${sel}`)?.scrollIntoView?.({ block: "nearest" }); }, [sel, hits]);
+  useEffect(() => { document.getElementById(`pal-opt-${sel}`)?.scrollIntoView?.({ block: "nearest" }); }, [sel, hits, shown]);
+
+  const list = shown ? withExtras(text, hits, rates, engine) : hits;
+  const wantsRates = shown && parseQuery(text).scope === null && parseMoney(text) !== null;
+  // Taux demandés une fois par ouverture (Rust les garde 12 h) ; un échec n'est pas retenté avant la fermeture.
+  useEffect(() => {
+    if (!wantsRates || rates !== null) return;
+    setRates("loading");
+    paletteIpc.rates().then(setRates, () => setRates("error"));
+  }, [wantsRates, rates]);
 
   const { q, scope } = parseQuery(text);
   const hq = scope === "command" ? `/${q.split(" ")[0]}` : q;
   const note = error ?? msg;
   const showHint = indexing && text.trim() !== "" && scope !== "command";
-  const visible = hits.length > 0 || note != null || showHint;
+  const visible = list.length > 0 || note != null || showHint;
 
   // Clic hors de la barre (vide du panneau, carte…) : la liste se replie, le texte reste ; un clic dans la barre la rouvre.
   useEffect(() => {
@@ -312,23 +413,23 @@ export function CommandPalette() {
       <div className="sr-only"><span role="alert">{error}</span><span role="status">{error ? null : msg}</span></div>
       {visible && (
         <div className="pal-pop">
-          {hits.length > 0 && (
+          {list.length > 0 && (
             <ul className="pal-list" id="pal-list" role="listbox" aria-label="Résultats">
-              {hits.map((h, i) => {
-                const Icon = ICONS[h.item.kind];
+              {list.map((h, i) => {
                 const path = h.item.kind === "file" || h.item.kind === "dir";
                 const sub = path ? shortPath(h.item.subtitle) : h.item.subtitle;
                 const tm = highlight(h.item.title, hq);
                 const sm = tm.length ? [] : highlight(sub, hq); // correspondance dans le chemin : marquée sur le chemin affiché
                 return (
                   <li key={`${h.item.kind}:${h.item.key}`} id={`pal-opt-${i}`} role="option" aria-selected={i === sel}
-                    className={i === sel ? "on" : undefined} onMouseMove={() => setSel(i)}
+                    className={`k-${h.item.kind}${i === sel ? " on" : ""}`} onMouseMove={() => setSel(i)}
                     onMouseDown={(e) => e.preventDefault()} onClick={(e) => activate(h, e.ctrlKey, text)}>
-                    <span className={`pal-ico k-${h.item.kind}`}><Icon size={15} aria-hidden /></span>
+                    <RowIcon kind={h.item.kind} path={h.item.key} />
                     <span className="pal-txt">
                       <span className="pal-title"><Marked text={h.item.title} marks={tm} /></span>
                       <span className="pal-sub" title={path ? h.item.subtitle : undefined}><Marked text={sub} marks={sm} /></span>
                     </span>
+                    <KindLabel kind={h.item.kind} path={h.item.key} />
                     {i === sel && <kbd className="pal-enter" aria-hidden>↵</kbd>}
                   </li>
                 );
@@ -339,14 +440,14 @@ export function CommandPalette() {
             <span className="pal-err">{error}</span>
             <span>{error ? null : msg}</span>
             {note == null && showHint && <span className="pal-idx">indexation…{indexed != null && ` ${indexed.toLocaleString("fr-FR")} fichiers`}</span>}
-            {note == null && !showHint && hits[sel]?.item.kind === "project" && <span className="pal-tip">Ctrl+↵ reprendre avec Claude</span>}
+            {note == null && !showHint && list[sel]?.item.kind === "project" && <span className="pal-tip">Ctrl+↵ reprendre avec Claude</span>}
           </div>
         </div>
       )}
-      <CommandBar inputRef={input} value={text} onIris={() => askIris(text, false)} onClaude={() => askIris(text, true)} role="combobox" aria-expanded={hits.length > 0} aria-controls={hits.length ? "pal-list" : undefined}
-        aria-autocomplete="list" aria-activedescendant={hits.length ? `pal-opt-${sel}` : undefined}
+      <CommandBar inputRef={input} value={text} onIris={() => askIris(text, false)} onClaude={() => askIris(text, true)} role="combobox" aria-expanded={list.length > 0} aria-controls={list.length ? "pal-list" : undefined}
+        aria-autocomplete="list" aria-activedescendant={list.length ? `pal-opt-${sel}` : undefined}
         onChange={(e) => edit(e.target.value)} onKeyDown={onKeyDown}
-        onMouseDown={() => { if (!hits.length) search(text); }} />
+        onMouseDown={() => { if (!list.length) search(text); }} />
       {!text && !exchanging && (
         <div className="pal-try" role="group" aria-label="Exemples de demandes à IRIS">
           <span>Essaie :</span>

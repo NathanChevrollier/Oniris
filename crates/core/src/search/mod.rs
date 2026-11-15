@@ -19,6 +19,7 @@ pub enum ItemKind {
     Favorite,
     Note,
     Command,
+    Routine,
 }
 
 impl ItemKind {
@@ -31,6 +32,7 @@ impl ItemKind {
             Self::Favorite => "favorite",
             Self::Note => "note",
             Self::Command => "command",
+            Self::Routine => "routine",
         }
     }
     pub fn parse(s: &str) -> Option<Self> {
@@ -42,6 +44,7 @@ impl ItemKind {
             "favorite" => Self::Favorite,
             "note" => Self::Note,
             "command" => Self::Command,
+            "routine" => Self::Routine,
             _ => return None,
         })
     }

@@ -10,9 +10,9 @@ const RESCHEDULE: [(Topic, &str, NextFn); 2] = [
     (Topic::Timers, timers::KEY, oniris_core::timers::next_end),
 ];
 
-/// Fenêtres qui écoutent un sujet : la pilule n'affiche que les minuteurs.
+/// Fenêtres qui écoutent un sujet : la pilule affiche les minuteurs, le titre en cours et le compte des mails.
 fn windows_for(topic: Topic) -> &'static [&'static str] {
-    if topic == Topic::Timers { &["panel", "pill"] } else { &["panel"] }
+    if matches!(topic, Topic::Timers | Topic::Music | Topic::Mail) { &["panel", "pill"] } else { &["panel"] }
 }
 
 /// Émet `oniris://changed` vers les fenêtres concernées (`windows_for`) et reprogramme les échéances.
@@ -48,9 +48,11 @@ impl Events for TauriEvents {
 mod tests {
     use super::*;
     #[test]
-    fn la_pilule_n_ecoute_que_les_minuteurs() {
-        assert_eq!(windows_for(Topic::Timers), ["panel", "pill"]);
-        for t in [Topic::Agenda, Topic::Reminders, Topic::Notes, Topic::Clipboard, Topic::Weather, Topic::Favorites, Topic::Projects, Topic::Accounts, Topic::Mail, Topic::Music, Topic::Sites, Topic::Iris] {
+    fn la_pilule_n_ecoute_que_minuteurs_musique_et_mails() {
+        for t in [Topic::Timers, Topic::Music, Topic::Mail] {
+            assert_eq!(windows_for(t), ["panel", "pill"], "{t:?}");
+        }
+        for t in [Topic::Agenda, Topic::Reminders, Topic::Notes, Topic::Clipboard, Topic::Weather, Topic::Favorites, Topic::Projects, Topic::Accounts, Topic::Sites, Topic::Iris] {
             assert_eq!(windows_for(t), ["panel"], "{t:?}");
         }
     }

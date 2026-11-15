@@ -112,6 +112,8 @@ impl AppState {
             account_http: account_http.clone(), roots, projects, resume_env, sites, vps, allowlist, work_dirs, home,
         });
         let broker = Arc::new(ToolBroker::new(db.clone(), clock, tools)?);
+        crate::modules::routines::bind(app, &broker, &db);
+        crate::modules::screen::bind(app);
         let notes = crate::modules::search::note_items(&db);
         broker.mark_interrupted();
         broker.expire_stale();
@@ -201,6 +203,8 @@ pub fn tools(d: ToolDeps) -> Vec<Arc<dyn Tool>> {
     tools.extend(oniris_core::general::windows::all(&win, &apps));
     let pc: Arc<dyn oniris_core::general::pc::PcControl> = Arc::new(crate::modules::pc::Win32Pc);
     tools.extend(oniris_core::general::pc::all(&pc));
+    tools.extend(crate::modules::routines::tools(&db));
+    tools.push(crate::modules::screen::tool());
     tools
 }
 

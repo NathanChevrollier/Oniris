@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-palette-web-search"
+description = "Enables the palette_web_search command without any pre-configured scope."
+commands.allow = ["palette_web_search"]
+
+[[permission]]
+identifier = "deny-palette-web-search"
+description = "Denies the palette_web_search command without any pre-configured scope."
+commands.deny = ["palette_web_search"]

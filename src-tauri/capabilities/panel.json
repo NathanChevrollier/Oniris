@@ -55,6 +55,11 @@
     "allow-index-status",
     "allow-search-query",
     "allow-search-open",
+    "allow-routines-list",
+    "allow-routines-save",
+    "allow-routines-run",
+    "allow-screen-vision-status",
+    "allow-screen-vision-pull",
     "allow-accounts-list",
     "allow-accounts-set-google-app",
     "allow-accounts-set-spotify-app",
@@ -125,6 +130,9 @@
     "allow-update-status",
     "allow-update-check-now",
     "allow-update-restart",
-    "allow-update-whats-new"
+    "allow-update-whats-new",
+    "allow-palette-rates",
+    "allow-palette-web-search",
+    "allow-search-icon"
   ]
 }

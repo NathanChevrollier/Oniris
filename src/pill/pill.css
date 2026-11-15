@@ -23,3 +23,12 @@
 .pill-root.asleep .pill-learn,.pill-root.asleep .pill-update{display:none}
 .pill-root.asleep::before{content:"";position:absolute;top:0;left:50%;width:56px;height:2px;margin-left:-28px;
   border-radius:2px;background:var(--line2)}
+
+/* Titre en cours et mails à traiter : statiques, aucune animation (R7). */
+.pill-music{display:flex;align-items:center;gap:7px;max-width:210px;min-width:0;color:var(--txt2)}
+.pill-music img{flex:none;width:20px;height:20px;border-radius:5px;object-fit:cover}
+.pill-music svg{flex:none;color:var(--acc)}
+.pill-music-txt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--txt)}
+.pill-music-txt i{font-style:normal;color:var(--txt3)}
+.pill-mail{display:flex;align-items:center;gap:4px;height:20px;padding:0 7px;border-radius:999px;
+  font-size:11.5px;color:var(--txt2);background:rgba(255,255,255,.08)}

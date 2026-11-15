@@ -110,6 +110,10 @@ pub struct Settings {
     pub hide_pill_in_fullscreen: bool,
     /// Veille : la pilule se cache et réapparaît quand le curseur touche le haut de l'écran, au milieu.
     pub pill_sleep: bool,
+    /// La pilule affiche le titre en cours et le nombre de mails à traiter.
+    pub pill_extras: bool,
+    /// Moteur de « Rechercher sur le web » de la palette : `google`, `duckduckgo` ou `bing`.
+    pub web_search_engine: String,
     pub timeline_start_hour: u8,
     pub timeline_end_hour: u8,
     pub reduce_motion: bool,
@@ -152,6 +156,8 @@ pub struct Settings {
     pub iris_claude_auto: bool,
     /// Minutes avant que le modèle local quitte la mémoire, 1..=60.
     pub iris_unload_minutes: u8,
+    /// Modèle de vision d'Ollama (`screen.describe`, local seulement) : mêmes règles que `iris_local_model`.
+    pub iris_vision_model: String,
     /// Personnalité d'IRIS (`{prénom}` est remplacé) : non vide, 2000 caractères au plus.
     pub iris_personality: String,
     /// Modèle de transcription : `small` (rapide) ou `turbo` (meilleur, plus lourd).
@@ -170,6 +176,10 @@ pub struct Settings {
     pub voice_wake_learning: bool,
     /// Conversation continue : après une réponse dite, le micro se rouvre pour une suite.
     pub voice_follow_up: bool,
+    /// IRIS dit chaque phrase dès qu'elle est écrite, sans attendre la fin de sa réponse.
+    pub voice_stream: bool,
+    /// Briefing dit à voix haute à la première ouverture du panneau de la journée (après 5 h).
+    pub voice_briefing_auto: bool,
     /// Voix Azure AI Speech (texte envoyé à Microsoft) ; désactivée par défaut, la clé est dans le coffre Windows.
     pub voice_azure: bool,
     /// Région de la ressource (minuscules et chiffres, 32 au plus), ex. « francecentral ».
@@ -200,6 +210,8 @@ impl Default for Settings {
             auto_update: true,
             hide_pill_in_fullscreen: true,
             pill_sleep: false,
+            pill_extras: true,
+            web_search_engine: "google".into(),
             timeline_start_hour: 8,
             timeline_end_hour: 23,
             reduce_motion: false,
@@ -225,6 +237,7 @@ impl Default for Settings {
             iris_local_model: "qwen3:14b".into(),
             iris_claude_auto: false,
             iris_unload_minutes: 30,
+            iris_vision_model: crate::screen::DEFAULT_VISION_MODEL.into(),
             iris_personality: crate::iris::prompt::PERSONALITY.into(),
             voice_stt_model: "small".into(),
             voice_tts: true,
@@ -234,6 +247,8 @@ impl Default for Settings {
             voice_wake: false,
             voice_wake_learning: false,
             voice_follow_up: true,
+            voice_stream: true,
+            voice_briefing_auto: true,
             voice_azure: false,
             voice_azure_region: "francecentral".into(),
             voice_azure_voice: "fr-FR-VivienneMultilingualNeural".into(),
@@ -446,6 +461,12 @@ impl Settings {
             errs.push("modèle local : 1 à 100 caractères parmi a-z 0-9 . _ : / -".into());
             self.iris_local_model = d.iris_local_model.clone();
         }
+        let vision_ok = (1..=100).contains(&self.iris_vision_model.len())
+            && self.iris_vision_model.bytes().all(|b| matches!(b, b'a'..=b'z' | b'0'..=b'9' | b'.' | b'_' | b':' | b'/' | b'-'));
+        if !vision_ok {
+            errs.push("modèle de vision : 1 à 100 caractères parmi a-z 0-9 . _ : / -".into());
+            self.iris_vision_model = d.iris_vision_model.clone();
+        }
         if !(1..=60).contains(&self.iris_unload_minutes) {
             errs.push("déchargement du modèle : 1 à 60 minutes".into());
             self.iris_unload_minutes = d.iris_unload_minutes;
@@ -494,6 +515,10 @@ impl Settings {
         if !matches!(self.glass_mode.as_str(), "auto" | "manual") {
             errs.push("verre : auto ou manual".into());
             self.glass_mode = d.glass_mode.clone();
+        }
+        if !matches!(self.web_search_engine.as_str(), "google" | "duckduckgo" | "bing") {
+            errs.push("moteur de recherche : google, duckduckgo ou bing".into());
+            self.web_search_engine = d.web_search_engine.clone();
         }
         if !(20..=95).contains(&self.glass_opacity) {
             errs.push("opacité du verre : 20 à 95 %".into());
@@ -576,6 +601,9 @@ mod tests {
         assert!(m("QWEN 3").is_err() && m("").is_err() && m(&"a".repeat(101)).is_err());
         assert!(u(1).is_ok() && u(60).is_ok());
         assert!(u(0).is_err() && u(61).is_err());
+        let v = |x: &str| Settings { iris_vision_model: x.into(), ..Settings::default() }.validate();
+        assert!(v("qwen2.5vl:7b").is_ok() && v("").is_err() && v("Qwen VL").is_err());
+        assert_eq!(Settings::default().iris_vision_model, "qwen3-vl:8b");
     }
     #[test] fn azure_desactive_par_defaut_et_region_voix_bornees() {
         assert!(!Settings::default().voice_azure);
@@ -814,6 +842,7 @@ mod tests {
         assert!(ok(|s| s.panel_height_pct = 0) && ok(|s| s.panel_height_pct = 40) && ok(|s| s.panel_height_pct = 100));
         assert!(!ok(|s| s.panel_height_pct = 39) && !ok(|s| s.panel_height_pct = 101));
         assert!(ok(|s| s.glass_mode = "auto".into()) && !ok(|s| s.glass_mode = "Auto".into()));
+        assert!(ok(|s| s.web_search_engine = "bing".into()) && !ok(|s| s.web_search_engine = "https://evil".into()));
         assert!(ok(|s| s.glass_opacity = 20) && ok(|s| s.glass_opacity = 95) && !ok(|s| s.glass_opacity = 19) && !ok(|s| s.glass_opacity = 96));
         let mut s = Settings { panel_height_pct: 7, glass_opacity: 0, ..Settings::default() };
         assert_eq!(s.fix().len(), 2);

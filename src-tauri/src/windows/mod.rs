@@ -113,7 +113,9 @@ fn motion_reduced(app: &AppHandle) -> bool {
 /// sauf réouverture entre-temps.
 pub fn close_panel(app: &AppHandle) -> tauri::Result<()> {
     crate::modules::system::set_sampling(app, false);
-    crate::modules::smtc::set_listening(app, false);
+    // La pilule affiche le titre en cours : l'écoute SMTC (locale, par événements) reste active si elle le montre.
+    let extras = app.state::<AppState>().settings.read().pill_extras;
+    crate::modules::smtc::set_listening(app, extras);
     let win = window(app, "panel")?;
     let gen = PANEL_GEN.fetch_add(1, Ordering::SeqCst) + 1;
     if motion_reduced(app) {

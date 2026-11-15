@@ -33,3 +33,12 @@
 .pal-idx::before{content:"";display:inline-block;width:6px;height:6px;margin-right:7px;border-radius:50%;background:var(--acc);
   vertical-align:1px;animation:pal-pulse 1.2s ease-in-out infinite}
 @keyframes pal-pulse{50%{opacity:.25}}
+/* Calcul en tête (résultat en chiffres tabulaires), recherche web en dernier. */
+.pal-ico.k-calc{color:var(--green)}
+.pal-ico.k-web{color:var(--blue)}
+.pal-list li.k-calc .pal-title{font-size:15px;font-weight:600;font-feature-settings:"tnum" 1}
+/* Icône réelle (application, type de fichier) : sans pastille, à sa taille. */
+.pal-ico.real{background:none}
+.pal-ico img{width:20px;height:20px;object-fit:contain}
+.pal-ico.k-routine{color:var(--teal)}
+.pal-kind{position:relative;flex:none;max-width:120px;font-size:11px;color:var(--txt3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

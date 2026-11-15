@@ -2,6 +2,9 @@
 //! détecteur ; après la détection, ce même flux enregistre la demande jusqu'à la fin de parole, puis le pipeline la
 //! traite comme un push-to-talk. Avant la détection, l'audio ne vit qu'en mémoire (canal et tampons du détecteur) :
 //! jamais écrit, transcrit ni journalisé.
+//! Barge-in : pendant qu'IRIS parle, l'écoute reste ouverte et « Dis Iris » la coupe. Sans annulation d'écho (cpal n'en
+//! offre pas), sa propre voix arrive au micro : seul le mot d'activation, très sélectif, est guetté (pas de détection
+//! d'énergie), et pas du tout quand sa réponse contient son nom (« Irisse »), qui pourrait la réveiller elle-même.
 use super::capture::{CpalMic, Listening, Mic};
 use super::learn::{Collector, Event, Label};
 use super::pipeline::{self, Input, Mark, Pipeline};
@@ -162,13 +165,19 @@ impl WakeListener {
                 }
             });
         }
-        if self.p.speaking.load(Ordering::SeqCst) {
+        let speaking = self.p.speaking.load(Ordering::SeqCst);
+        if speaking {
             self.spoke = Some(now);
         }
+        let barge_in = speaking && !self.p.self_named.load(Ordering::SeqCst);
         let (press, busy) = self.p.snapshot();
         let hold = if !c.wake {
             Some(State::Off)
-        } else if c.paused || !c.installed || c.fullscreen || self.spoke.is_some_and(|t| now - t < AFTER_SPEECH) {
+        } else if c.paused || !c.installed || c.fullscreen {
+            Some(State::Suspended)
+        } else if barge_in {
+            None
+        } else if self.spoke.is_some_and(|t| now - t < AFTER_SPEECH) {
             Some(State::Suspended)
         } else if let State::Recording { press: mine, .. } = self.state {
             (mine != press).then_some(State::Suspended) // push-to-talk : il prend la main, sans tour pour le mot
@@ -540,9 +549,10 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn suspended_while_speaking_and_after() {
+    async fn suspended_while_saying_her_name_and_after() {
         let h = h(base());
         h.feed(0.1, 1.0).await;
+        h.f.p.self_named.store(true, Ordering::SeqCst);
         h.f.speaking.store(true, Ordering::SeqCst);
         h.feed(0.1, 1.0).await;
         assert_eq!(h.count("unlisten"), 1, "IRIS parle : micro fermé");
@@ -553,6 +563,19 @@ mod tests {
         assert!(h.inputs().is_empty());
         h.feed(0.1, 0.32).await;
         h.feed(0.999, 0.08).await; // +700 ms
+        h.feed(0.1, 0.16).await;
+        assert_eq!(h.inputs(), ["wake"]);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn dis_iris_heard_while_she_speaks() {
+        let h = h(base());
+        h.feed(0.1, 1.0).await;
+        h.f.speaking.store(true, Ordering::SeqCst);
+        h.feed(0.1, 1.0).await;
+        assert_eq!(h.count("unlisten"), 0, "micro gardé ouvert pendant la voix");
+        assert_eq!(h.label(), "à l'écoute");
+        h.feed(0.999, 0.08).await;
         h.feed(0.1, 0.16).await;
         assert_eq!(h.inputs(), ["wake"]);
     }
@@ -665,7 +688,7 @@ mod tests {
     struct SlowTurns(Log);
     #[async_trait::async_trait]
     impl Turns for SlowTurns {
-        async fn run(&self, text: String) -> Result<TurnResult, TurnError> {
+        async fn run(&self, text: String, _: crate::modules::iris::Tap) -> Result<TurnResult, TurnError> {
             sleep(Duration::from_secs(3)).await;
             self.0.lock().push(format!("turn:{text}"));
             Ok(TurnResult { shown: vec![Segment::Text { text: "Il fait beau.".into() }], pending: false, first_tool: None })

@@ -1,16 +1,17 @@
 //! Push-to-talk : micro → Whisper → tour d'IRIS → toast de la pilule (ou panneau) et voix de Piper.
+//! En flux (`voice_stream`), chaque phrase complète de la réponse part vers la voix pendant que le tour continue.
 //! La logique vit dans `Pipeline`, derrière des traits, testable sans Tauri. Journal : durées et longueurs seulement.
 use super::capture::{CpalMic, Mic, Recording};
 use super::install::voice_dir;
-use super::piper::Speaker;
+use super::piper::{SpeakHandle, Speaker};
 use super::whisper::WhisperProcess;
-use crate::modules::iris::{TurnError, TurnResult};
+use crate::modules::iris::{Tap, TurnError, TurnResult};
 use crate::state::AppState;
 use async_trait::async_trait;
-use oniris_core::iris::Segment;
+use oniris_core::iris::{IrisEventKind, Segment};
 use oniris_core::system::NOT_INSTALLED;
 use oniris_core::voice::assets::{self, AssetKind};
-use oniris_core::voice::speech::{speakable, TO_PANEL};
+use oniris_core::voice::speech::{speakable, Utterance, REST_TO_PANEL, TO_PANEL};
 use oniris_core::voice::stt::{self, SttError};
 use oniris_core::voice::audio;
 use oniris_core::voice::endpoint::{Endpoint, Endpointer};
@@ -21,6 +22,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager};
+use tokio::sync::mpsc;
 
 /// En deçà de cette durée de parole, l'appui est ignoré.
 const MIN_SPEECH_MS: u32 = 300;
@@ -41,7 +43,7 @@ pub enum Ui { Phase(VoicePhase, Option<f32>), WakeListening, Toast(String), Open
 
 /// Réglages et état relus à chaque appui.
 #[derive(Debug, Clone, Default)]
-pub struct Conf { pub paused: bool, pub installed: bool, pub fullscreen: bool, pub device: String, pub tts: bool, pub volume: u8, pub user_name: String, pub wake: bool, pub learning: bool, pub follow_up: bool }
+pub struct Conf { pub paused: bool, pub installed: bool, pub fullscreen: bool, pub device: String, pub tts: bool, pub volume: u8, pub user_name: String, pub wake: bool, pub learning: bool, pub follow_up: bool, pub stream: bool }
 
 #[async_trait]
 pub trait Stt: Send + Sync {
@@ -54,8 +56,8 @@ pub trait Stt: Send + Sync {
 
 #[async_trait]
 pub trait Turns: Send + Sync {
-    /// Même tour qu'`iris_ask(text, false, false)`.
-    async fn run(&self, text: String) -> Result<TurnResult, TurnError>;
+    /// Même tour qu'`iris_ask(text, false, false)` ; `tap` voit passer ses événements (réponse en flux, confirmation).
+    async fn run(&self, text: String, tap: Tap) -> Result<TurnResult, TurnError>;
 }
 
 /// Appui en cours : son numéro (un nouvel appui rend les suites de l'ancien muettes), son tour en cours
@@ -71,6 +73,13 @@ impl Drop for TurnGuard {
 
 type Recorded = (u64, Vec<f32>);
 
+/// Événements du tour utiles à la voix en flux.
+enum Flow { Partial(Vec<Segment>), Pending }
+
+/// Voix en flux d'un tour : la sortie s'ouvre à la première phrase, les suivantes la rejoignent dans l'ordre.
+#[derive(Default)]
+struct Live { utt: Utterance, tx: Option<mpsc::UnboundedSender<String>>, h: Option<SpeakHandle>, cut: bool }
+
 pub struct Pipeline {
     mic: Arc<dyn Mic>,
     stt: Arc<dyn Stt>,
@@ -83,6 +92,8 @@ pub struct Pipeline {
     pub(super) speaking: &'static AtomicBool,
     /// Vrai tant que l'écouteur du mot d'activation tient le micro.
     pub(super) wake_open: Arc<AtomicBool>,
+    /// Ce que dit IRIS contient son nom : l'écouteur ne guette pas « Dis Iris » par-dessus sa voix (auto-réveil).
+    pub(super) self_named: AtomicBool,
     /// Micro fermé d'office au-delà (PttEnd perdu) : jamais d'écoute sans touche tenue.
     max_hold: Duration,
     state: Mutex<State>,
@@ -205,7 +216,8 @@ impl Pipeline {
         }
         let press = {
             let mut s = self.state.lock();
-            if s.busy {
+            // IRIS qui parle peut être interrompue par le mot (barge-in) ; un autre tour en cours, non.
+            if s.busy && !self.speaking.load(Ordering::SeqCst) {
                 return None;
             }
             s.busy = true;
@@ -343,7 +355,7 @@ impl Pipeline {
     }
 
     pub async fn process(self: Arc<Self>, (press, samples): Recorded) {
-        let _turn = TurnGuard(self.clone(), press);
+        let turn = TurnGuard(self.clone(), press);
         let t0 = Instant::now();
         let speech = audio::speech_ms(&samples, 0.01);
         let text = self.hear(press, &samples, speech).await;
@@ -355,11 +367,42 @@ impl Pipeline {
         if !self.current(press) {
             return; // un nouvel appui a pris la main
         }
-        let r = match self.turns.run(text).await {
+        // « Stop », « tais-toi », « ok merci » (après « Dis Iris » pendant qu'elle parlait, ou en conversation) : silence.
+        if stt::stop_word(&text) {
+            return tracing::info!("voix : mot d'arrêt");
+        }
+        let conf = (self.conf)();
+        let stream = conf.stream && conf.tts;
+        let (ev, mut flow) = mpsc::unbounded_channel();
+        let tap: Tap = Arc::new(move |e: &IrisEventKind| {
+            let f = match e {
+                IrisEventKind::Reply { segments, done: false } => Flow::Partial(segments.clone()),
+                IrisEventKind::Pending { .. } => Flow::Pending,
+                _ => return,
+            };
+            let _ = ev.send(f);
+        });
+        let mut live = Live::default();
+        let run = self.turns.run(text, tap);
+        tokio::pin!(run);
+        let r = loop {
+            tokio::select! {
+                r = &mut run => break r,
+                Some(f) = flow.recv(), if stream => match f {
+                    Flow::Partial(segs) => {
+                        let lines = live.utt.partial(&segs);
+                        self.feed(press, &mut live, lines, conf.volume, t0).await;
+                    }
+                    Flow::Pending => self.hush(press, &mut live),
+                },
+            }
+        };
+        let r = match r {
             Ok(r) => r,
-            Err(TurnError::Aborted) => return, // Échap du panneau ou demande tapée : silence
-            Err(TurnError::Failed) => {
-                if self.current(press) {
+            Err(e) => {
+                self.hush(press, &mut live);
+                // Abandon (Échap du panneau, demande tapée) : silence.
+                if e == TurnError::Failed && self.current(press) {
                     self.toast("Je n'ai pas pu traiter ta demande.");
                 }
                 return;
@@ -372,13 +415,32 @@ impl Pipeline {
         };
         (self.ui)(Ui::Timing(timing));
         if !self.current(press) {
-            return;
+            return self.hush(press, &mut live);
         }
-        let conf = (self.conf)();
         // P6-R7 : jamais de panneau par-dessus un jeu plein écran.
         let to_panel = || if conf.fullscreen { self.toast("Réponse prête dans le panneau") } else { (self.ui)(Ui::OpenPanel) };
         if r.pending {
+            self.hush(press, &mut live);
             return to_panel();
+        }
+        if stream {
+            let rest = live.utt.finish(&r.shown);
+            if live.utt.over() {
+                // Déjà commencée : elle le dit ; sinon, comme sans flux, le panneau seul.
+                if live.utt.started() {
+                    let name = if conf.user_name.is_empty() { String::new() } else { format!(", {}", conf.user_name) };
+                    self.feed(press, &mut live, vec![format!("{REST_TO_PANEL}{name}.")], conf.volume, t0).await;
+                }
+                to_panel();
+            } else if live.utt.started() {
+                self.toast(toast_text(&r.shown));
+                self.feed(press, &mut live, rest, conf.volume, t0).await;
+            }
+            live.tx = None; // file fermée : la voix finit après la dernière phrase
+            if let Some(h) = live.h.take() {
+                self.after_voice(press, h, &conf, turn).await;
+            }
+            return;
         }
         let Some(say) = speakable(&r.shown, &conf.user_name) else { return }; // réponse vide : rien à montrer
         if say.starts_with(TO_PANEL) {
@@ -394,17 +456,106 @@ impl Pipeline {
                 if !self.current(press) {
                     return h.stop();
                 }
+                tracing::info!(first_speech_ms = ms(t0.elapsed()), streamed = false, "voix : première parole");
+                self.self_named.store(say.contains("Irisse"), Ordering::SeqCst);
                 self.phase(press, VoicePhase::Speaking);
-                h.done().await;
-                self.phase(press, VoicePhase::Idle);
-                // Conversation : le micro se rouvre pour une suite ou une réponse ; un silence le referme.
-                if conf.follow_up && self.current(press) && !conf.fullscreen {
-                    drop(_turn);
-                    self.start_with(true).await;
-                }
+                self.after_voice(press, h, &conf, turn).await;
             }
             Err(e) => self.toast(format!("IRIS ne peut pas parler : {e}.")),
         }
+    }
+
+    /// Envoie des phrases à la voix en flux, ouverte à la première ; rien après une coupure (Échap, nouvel appui).
+    async fn feed(&self, press: u64, live: &mut Live, lines: Vec<String>, volume: u8, t0: Instant) {
+        if lines.is_empty() || live.cut {
+            return;
+        }
+        if !self.current(press) || live.h.as_ref().is_some_and(SpeakHandle::stopped) {
+            return self.hush(press, live);
+        }
+        if live.tx.is_none() {
+            let (tx, rx) = mpsc::unbounded_channel();
+            self.self_named.store(false, Ordering::SeqCst);
+            match self.speaker.speak_stream(rx, volume).await {
+                Ok(h) => {
+                    live.tx = Some(tx);
+                    live.h = Some(h);
+                    // Un appui arrivé pendant l'ouverture de la sortie : IRIS ne parle pas par-dessus l'écoute.
+                    if !self.current(press) {
+                        return self.hush(press, live);
+                    }
+                    tracing::info!(first_speech_ms = ms(t0.elapsed()), streamed = true, "voix : première parole");
+                    self.phase(press, VoicePhase::Speaking);
+                }
+                Err(e) => {
+                    live.cut = true;
+                    return self.toast(format!("IRIS ne peut pas parler : {e}."));
+                }
+            }
+        }
+        if let Some(tx) = &live.tx {
+            for l in lines {
+                if l.contains("Irisse") {
+                    self.self_named.store(true, Ordering::SeqCst);
+                }
+                let _ = tx.send(l);
+            }
+        }
+    }
+
+    /// Coupe la voix en flux et jette sa file ; la pilule quitte Speaking.
+    fn hush(&self, press: u64, live: &mut Live) {
+        live.cut = true;
+        live.tx = None;
+        if let Some(h) = live.h.take() {
+            h.stop();
+            self.phase(press, VoicePhase::Idle);
+        }
+    }
+
+    /// Fin de la voix ; en conversation, le micro se rouvre pour une suite (un silence le referme), sauf après Échap.
+    async fn after_voice(self: &Arc<Self>, press: u64, h: SpeakHandle, conf: &Conf, turn: TurnGuard) {
+        h.done().await;
+        self.phase(press, VoicePhase::Idle);
+        if conf.follow_up && self.current(press) && !conf.fullscreen && !h.stopped() {
+            drop(turn);
+            self.start_with(true).await;
+        }
+    }
+
+    /// Briefing du matin, dit sans demande : refusé (faux) si la voix est en pause, non installée, muette, en plein
+    /// écran, ou si un tour est en cours. Échap, un appui ou « Dis Iris » le coupent comme une réponse.
+    pub fn announce(self: &Arc<Self>, shown: &[Segment]) -> bool {
+        let conf = (self.conf)();
+        if conf.paused || !conf.installed || !conf.tts || conf.fullscreen {
+            return false;
+        }
+        let Some(say) = speakable(shown, &conf.user_name).filter(|s| !s.starts_with(TO_PANEL)) else { return false };
+        let press = {
+            let mut s = self.state.lock();
+            if s.busy {
+                return false;
+            }
+            s.busy = true;
+            s.press += 1;
+            s.rec = None;
+            s.press
+        };
+        let p = self.clone();
+        tokio::spawn(async move {
+            let _turn = TurnGuard(p.clone(), press);
+            match p.speaker.speak(&say, conf.volume).await {
+                Ok(h) if p.current(press) => {
+                    p.self_named.store(say.contains("Irisse"), Ordering::SeqCst);
+                    p.phase(press, VoicePhase::Speaking);
+                    h.done().await;
+                    p.phase(press, VoicePhase::Idle);
+                }
+                Ok(h) => h.stop(),
+                Err(e) => tracing::warn!("voix : briefing non dit ({e})"),
+            }
+        });
+        true
     }
 }
 
@@ -430,6 +581,9 @@ pub(super) fn voice() -> Option<&'static Voice> { VOICE.get() }
 pub fn voice_busy() -> bool {
     SPEAKING.load(Ordering::SeqCst) || VOICE.get().is_some_and(|(_, p)| p.snapshot().1)
 }
+
+/// Briefing du matin : vrai s'il est dit (voir `Pipeline::announce`).
+pub fn speak_briefing(shown: &[Segment]) -> bool { VOICE.get().is_some_and(|(_, p)| p.announce(shown)) }
 
 /// Sans attente : appelable depuis le crochet clavier.
 pub fn send(i: Input) {
@@ -521,8 +675,12 @@ struct VoiceTurns(AppHandle);
 
 #[async_trait]
 impl Turns for VoiceTurns {
-    async fn run(&self, text: String) -> Result<TurnResult, TurnError> {
-        crate::modules::iris::voice_turn(&self.0, text).await
+    async fn run(&self, text: String, tap: Tap) -> Result<TurnResult, TurnError> {
+        // « Fais-moi le briefing » : le briefing du jour, lu sans passer par le modèle.
+        if oniris_core::iris::briefing::asked(&text) {
+            return Ok(TurnResult { shown: crate::modules::iris_briefing::spoken(&self.0, false), pending: false, first_tool: None });
+        }
+        crate::modules::iris::voice_turn(&self.0, text, tap).await
     }
 }
 
@@ -596,6 +754,7 @@ pub fn start(app: &AppHandle) {
             wake: s.voice_wake,
             learning: s.voice_wake_learning,
             follow_up: s.voice_follow_up,
+            stream: s.voice_stream,
         }
     });
     let h = app.clone();
@@ -612,6 +771,7 @@ pub fn start(app: &AppHandle) {
         ui: Arc::new(move |u| emit_ui(&h, u)),
         speaking: &SPEAKING,
         wake_open: Arc::default(),
+        self_named: AtomicBool::new(false),
         max_hold: MAX_HOLD,
         state: Mutex::default(),
         marks: Mutex::default(),
@@ -631,7 +791,7 @@ pub fn start(app: &AppHandle) {
 pub(super) mod tests {
     use super::*;
     use crate::modules::voice::capture::MicError;
-    use crate::modules::voice::piper::{SpeakHandle, TtsError};
+    use crate::modules::voice::piper::{Lines, TtsError};
     use oniris_core::iris::{Agent, BrainError, ChatReply, ChatRequest, Executor, LocalBrain, PromptCtx, ToolCallMsg, TurnInput};
     use oniris_core::tools::helpers::{low, spec};
     use oniris_core::tools::{Brain, ConfirmationText, Origin, Permission, Provenance, Tool, ToolBroker, ToolError, ToolResult, ToolSpec};
@@ -680,10 +840,33 @@ pub(super) mod tests {
         }
     }
 
-    /// Voix qui ne finit que sur `stop()` (`long`) ou aussitôt.
-    struct FakeSpeaker { log: Log, long: bool, playing: Mutex<Option<tokio::sync::watch::Sender<bool>>> }
+    /// Voix qui ne finit que sur `stop()` (`long`) ou aussitôt ; en flux, chaque phrase reçue est notée `say:…`.
+    struct FakeSpeaker { log: Log, long: bool, playing: Mutex<Option<tokio::sync::watch::Sender<bool>>>, stream: Mutex<Option<SpeakHandle>> }
     #[async_trait::async_trait]
     impl Speaker for FakeSpeaker {
+        async fn speak_stream(&self, mut lines: Lines, _: u8) -> Result<SpeakHandle, TtsError> {
+            self.log.lock().push("stream".into());
+            let (h, done) = SpeakHandle::new();
+            *self.stream.lock() = Some(h.clone());
+            let (log, mut cancel) = (self.log.clone(), h.cancel_rx());
+            tokio::spawn(async move {
+                loop {
+                    tokio::select! {
+                        l = lines.recv() => match l {
+                            Some(l) => log.lock().push(format!("say:{l}")),
+                            None => break,
+                        },
+                        _ = cancel.wait_for(|c| *c) => break,
+                    }
+                }
+                if *cancel.borrow() {
+                    log.lock().push("stop".into());
+                }
+                log.lock().push("voice-end".into());
+                let _ = done.send(true);
+            });
+            Ok(h)
+        }
         async fn speak(&self, _: &str, _: u8) -> Result<SpeakHandle, TtsError> {
             self.log.lock().push("speak".into());
             let (h, done) = SpeakHandle::new();
@@ -697,13 +880,16 @@ pub(super) mod tests {
                 self.log.lock().push("stop".into());
                 let _ = done.send(true);
             }
+            if let Some(h) = self.stream.lock().take() {
+                h.stop();
+            }
         }
     }
 
     struct FakeTurns { log: Log, reply: &'static str, pending: bool }
     #[async_trait]
     impl Turns for FakeTurns {
-        async fn run(&self, text: String) -> Result<TurnResult, TurnError> {
+        async fn run(&self, text: String, _: Tap) -> Result<TurnResult, TurnError> {
             self.log.lock().push(format!("turn:{text}"));
             Ok(TurnResult { shown: vec![Segment::Text { text: self.reply.into() }], pending: self.pending, first_tool: None })
         }
@@ -761,12 +947,13 @@ pub(super) mod tests {
         let p = Arc::new(Pipeline {
             mic: Arc::new(FakeMic { log: log.clone(), secs: o.secs, fail: o.mic_fails, levels: o.levels }),
             stt: Arc::new(FakeStt { log: log.clone(), text: o.heard.into() }),
-            speaker: Arc::new(FakeSpeaker { log: log.clone(), long: o.long_speech, playing: Mutex::default() }),
+            speaker: Arc::new(FakeSpeaker { log: log.clone(), long: o.long_speech, playing: Mutex::default(), stream: Mutex::default() }),
             turns,
             conf: Arc::new(move || conf.clone()),
             ui: Arc::new(move |x| u.lock().push(x)),
             speaking,
             wake_open: Arc::default(),
+            self_named: AtomicBool::new(false),
             max_hold: o.max_hold,
             state: Mutex::default(),
             marks: Mutex::default(),
@@ -964,7 +1151,7 @@ pub(super) mod tests {
     struct NoTurn(fn() -> TurnError);
     #[async_trait]
     impl Turns for NoTurn {
-        async fn run(&self, _: String) -> Result<TurnResult, TurnError> { Err(self.0()) }
+        async fn run(&self, _: String, _: Tap) -> Result<TurnResult, TurnError> { Err(self.0()) }
     }
 
     #[tokio::test]
@@ -1042,6 +1229,7 @@ pub(super) mod tests {
             *self.handle.lock() = Some(h.clone());
             Ok(h)
         }
+        async fn speak_stream(&self, _: Lines, v: u8) -> Result<SpeakHandle, TtsError> { self.speak("", v).await }
         fn stop(&self) {}
     }
 
@@ -1072,6 +1260,199 @@ pub(super) mod tests {
         f.press().await;
         assert!(f.ui.lock().contains(&Ui::OpenPanel));
         assert!(!f.has("speak"));
+    }
+
+    // --- Voix en flux, barge-in, briefing ---
+
+    /// Tour qui écrit sa réponse en flux : `parts` (cumulés), attente de la première phrase dite, puis, s'il y en a,
+    /// attente d'une coupure et `late`.
+    struct StreamTurns { log: Log, parts: Vec<&'static str>, late: Vec<&'static str>, pending: bool }
+    #[async_trait]
+    impl Turns for StreamTurns {
+        async fn run(&self, text: String, tap: Tap) -> Result<TurnResult, TurnError> {
+            self.log.lock().push(format!("turn:{text}"));
+            let mut acc = String::new();
+            let emit = |p: &str, acc: &mut String| {
+                acc.push_str(p);
+                tap(&IrisEventKind::Reply { segments: vec![Segment::Text { text: acc.clone() }], done: false });
+            };
+            for p in &self.parts {
+                emit(p, &mut acc);
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+            if self.pending {
+                tap(&IrisEventKind::Pending { action_id: 1 });
+            } else {
+                wait(&self.log, |l| l.starts_with("say:")).await;
+            }
+            if !self.late.is_empty() {
+                wait(&self.log, |l| l == "stop").await;
+                for p in &self.late {
+                    emit(p, &mut acc);
+                    tokio::time::sleep(Duration::from_millis(5)).await;
+                }
+            }
+            self.log.lock().push("turn-end".into());
+            Ok(TurnResult { shown: vec![Segment::Text { text: acc }], pending: self.pending, first_tool: None })
+        }
+    }
+
+    /// Attend (2 s au plus) une entrée du journal.
+    async fn wait(log: &Log, f: impl Fn(&str) -> bool) {
+        for _ in 0..200 {
+            if log.lock().iter().any(|l| f(l)) {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    }
+
+    fn streamed(parts: Vec<&'static str>, late: Vec<&'static str>, pending: bool, conf: Conf) -> Fx {
+        let log = Log::default();
+        let turns = Arc::new(StreamTurns { log: log.clone(), parts, late, pending });
+        fx(Opts { turns: Some(turns), conf, ..Opts::default() }, log)
+    }
+
+    fn stream_conf() -> Conf { Conf { stream: true, ..Opts::default().conf } }
+
+    impl Fx {
+        fn said(&self) -> Vec<String> { self.log.lock().iter().filter_map(|l| l.strip_prefix("say:").map(str::to_string)).collect() }
+        fn at(&self, entry: &str) -> usize { self.log.lock().iter().position(|l| l == entry).unwrap_or_else(|| panic!("{entry} absent : {:?}", self.log.lock())) }
+    }
+
+    #[tokio::test]
+    async fn en_flux_la_premiere_phrase_est_dite_avant_la_fin_du_tour_et_dans_l_ordre() {
+        let f = streamed(vec!["Il fait beau. ", "Prends ", "un pull. ", "Bonne journée, IRIS"], vec![], false, stream_conf());
+        f.press().await;
+        assert_eq!(f.said(), ["Il fait beau.", "Prends un pull.", "Bonne journée, Irisse"]);
+        assert!(f.at("say:Il fait beau.") < f.at("turn-end"), "{:?}", f.log.lock());
+        assert!(f.at("say:Bonne journée, Irisse") < f.at("voice-end"));
+        assert_eq!(f.toasts(), ["Il fait beau. Prends un pull. Bonne journée, IRIS"], "le toast reste le texte rendu");
+        assert!(!f.has("speak"), "une seule voix, en flux");
+        assert_eq!(f.last_phase(), Some(VoicePhase::Idle));
+        assert!(f.ui.lock().contains(&Ui::Phase(VoicePhase::Speaking, None)));
+        assert!(f.p.self_named.load(Ordering::SeqCst), "son nom : pas de « Dis Iris » par-dessus sa voix");
+    }
+
+    #[tokio::test]
+    async fn en_flux_echap_coupe_et_vide_la_file_sans_rouvrir_le_micro() {
+        let f = streamed(vec!["Première phrase. ", "Deu"], vec!["xième phrase. ", "Troisième."], false, Conf { follow_up: true, ..stream_conf() });
+        f.p.start().await;
+        let rec = f.p.end().await.unwrap();
+        let task = tokio::spawn(f.p.clone().process(rec));
+        wait(&f.log, |l| l.starts_with("say:")).await;
+        f.p.handle(Input::Escape).await;
+        tokio::time::timeout(Duration::from_secs(3), task).await.unwrap().unwrap();
+        assert_eq!(f.said(), ["Première phrase."]);
+        assert!(f.has("stop") && f.has("turn-end"));
+        assert_eq!(f.log.lock().iter().filter(|l| *l == "mic").count(), 1, "pas de conversation après Échap : {:?}", f.log.lock());
+        assert_eq!(f.last_phase(), Some(VoicePhase::Idle));
+        assert!(!f.speaking.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn en_flux_reponse_longue_s_arrete_et_renvoie_au_panneau() {
+        let long: &'static str = "a ".repeat(200).leak();
+        let f = streamed(vec!["Première phrase. ", "Deuxième ", long], vec![], false, stream_conf());
+        f.press().await;
+        assert_eq!(f.said(), ["Première phrase.", "Je t'ai mis la suite dans le panneau, Nathan."]);
+        assert!(f.ui.lock().contains(&Ui::OpenPanel));
+        assert!(f.toasts().is_empty());
+        let f = streamed(vec![long], vec![], false, stream_conf());
+        f.press().await;
+        assert!(f.said().is_empty() && !f.has("stream"), "rien de commencé : le panneau seul, comme avant");
+        assert!(f.ui.lock().contains(&Ui::OpenPanel));
+    }
+
+    #[tokio::test]
+    async fn en_flux_confirmation_en_attente_coupe_la_voix() {
+        let f = streamed(vec!["Je prépare le mail. ", "Voilà"], vec![], true, stream_conf());
+        f.press().await;
+        wait(&f.log, |l| l == "voice-end").await;
+        assert!(f.has("stop"), "{:?}", f.log.lock());
+        assert!(f.ui.lock().contains(&Ui::OpenPanel));
+        assert!(f.toasts().is_empty());
+        assert_eq!(f.last_phase(), Some(VoicePhase::Idle));
+        assert!(!f.speaking.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn en_flux_la_conversation_reprend_apres_la_derniere_phrase() {
+        let f = streamed(vec!["Il fait beau. ", "Bonne journée !"], vec![], false, Conf { follow_up: true, ..stream_conf() });
+        f.press().await;
+        let mics: Vec<usize> = f.log.lock().iter().enumerate().filter(|(_, l)| *l == "mic").map(|(i, _)| i).collect();
+        assert_eq!(mics.len(), 2, "{:?}", f.log.lock());
+        assert!(mics[1] > f.at("voice-end") && f.at("voice-end") > f.at("say:Bonne journée !"));
+        assert_eq!(f.last_phase(), Some(VoicePhase::Listening));
+    }
+
+    #[tokio::test]
+    async fn reglage_coupe_comportement_d_avant() {
+        let f = streamed(vec!["Il fait beau. ", "Bonne journée !"], vec![], true, Opts::default().conf);
+        f.press().await;
+        assert!(!f.has("stream") && !f.has("stop"));
+        let log = Log::default();
+        let turns = Arc::new(FakeTurns { log: log.clone(), reply: "Il fait beau.", pending: false });
+        let f = fx(Opts { turns: Some(turns), conf: Conf { stream: true, tts: false, ..Opts::default().conf }, ..Opts::default() }, log);
+        f.press().await;
+        assert!(!f.has("stream") && !f.has("speak"), "voix coupée : rien");
+        assert_eq!(f.toasts(), ["Il fait beau."]);
+    }
+
+    #[tokio::test]
+    async fn sans_flux_la_voix_part_apres_le_tour() {
+        let log = Log::default();
+        let turns = Arc::new(StreamTurns { log: log.clone(), parts: vec!["Il fait beau. ", "Bonne journée !"], late: vec![], pending: false });
+        let f = fx(Opts { turns: Some(turns), ..Opts::default() }, log);
+        tokio::time::timeout(Duration::from_secs(5), f.press()).await.unwrap();
+        assert!(f.at("speak") > f.at("turn-end") && f.said().is_empty());
+    }
+
+    #[tokio::test]
+    async fn mot_d_arret_aucun_tour() {
+        for heard in ["Ok, merci.", "Tais-toi !", "Stop."] {
+            let f = simple(Opts { heard, ..Opts::default() });
+            f.press().await;
+            assert!(f.has("stt") && !f.log.lock().iter().any(|l| l.starts_with("turn:")), "{heard}");
+            assert!(f.toasts().is_empty());
+        }
+    }
+
+    #[tokio::test]
+    async fn dis_iris_pendant_qu_elle_parle_la_coupe_et_ecoute() {
+        let f = simple(Opts { long_speech: true, ..Opts::default() });
+        let task = f.speaking_press().await;
+        let press = f.p.wake_begin().expect("barge-in accepté pendant la voix");
+        tokio::time::timeout(Duration::from_secs(2), task).await.unwrap().unwrap();
+        assert!(f.has("stop"));
+        assert_eq!(f.last_phase(), Some(VoicePhase::Listening));
+        assert_eq!(f.p.snapshot(), (press, true));
+        assert!(f.p.wake_begin().is_none(), "écoute en cours : pas un second réveil");
+    }
+
+    #[tokio::test]
+    async fn briefing_dit_seulement_voix_prete_et_libre() {
+        let segs = [Segment::Text { text: "Bonjour Nathan ! 2 mails à traiter.".into() }];
+        let f = simple(Opts::default());
+        assert!(f.p.announce(&segs));
+        assert!(!f.p.announce(&segs), "déjà en train de parler");
+        wait(&f.log, |l| l == "speak").await;
+        for _ in 0..100 {
+            if !f.p.snapshot().1 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert_eq!(f.last_phase(), Some(VoicePhase::Idle));
+        assert!(!f.p.snapshot().1, "tour fini");
+        for conf in [Conf { paused: true, ..Opts::default().conf }, Conf { installed: false, ..Opts::default().conf }, Conf { tts: false, ..Opts::default().conf }, Conf { fullscreen: true, ..Opts::default().conf }] {
+            let f = simple(Opts { conf, ..Opts::default() });
+            assert!(!f.p.announce(&segs));
+            assert!(!f.has("speak"));
+        }
+        let f = simple(Opts::default());
+        f.p.start().await; // l'utilisateur parle déjà à IRIS
+        assert!(!f.p.announce(&segs));
     }
 
     #[test]
@@ -1109,7 +1490,7 @@ pub(super) mod tests {
     struct AgentTurns { log: Log, agent: Agent, exec: Arc<Executor> }
     #[async_trait]
     impl Turns for AgentTurns {
-        async fn run(&self, text: String) -> Result<TurnResult, TurnError> {
+        async fn run(&self, text: String, _: Tap) -> Result<TurnResult, TurnError> {
             self.log.lock().push(format!("turn:{text}"));
             let ctx = PromptCtx { system: String::new(), claude_system: String::new(), history: vec![] };
             let input = TurnInput { text, force_claude: false, local_only: false };

@@ -9,16 +9,12 @@ pub const TO_PANEL: &str = "Je t'ai mis la réponse dans le panneau";
 /// Abréviations après lesquelles un point ne finit pas la phrase (minuscules, sans le point).
 const ABBREVIATIONS: [&str; 10] = ["m", "mm", "mme", "mlle", "dr", "pr", "st", "etc", "cf", "ex"];
 
+/// Phrase dite quand une réponse en flux dépasse la limite après ses premières phrases.
+pub const REST_TO_PANEL: &str = "Je t'ai mis la suite dans le panneau";
+
 /// Texte à dire à partir de la réponse rendue ; `None` si rien à dire.
 pub fn speakable(segments: &[Segment], user_name: &str) -> Option<String> {
-    let raw: String = segments
-        .iter()
-        .map(|s| match s {
-            Segment::Text { text } | Segment::Untrusted { text, .. } => text.as_str(),
-        })
-        .collect::<Vec<_>>()
-        .join(" ");
-    let text = strip_markup(&raw);
+    let text = oral(segments);
     if text.is_empty() {
         return None;
     }
@@ -26,6 +22,64 @@ pub fn speakable(segments: &[Segment], user_name: &str) -> Option<String> {
         return Some(format!("{TO_PANEL}, {user_name}."));
     }
     Some(text)
+}
+
+/// Réponse rendue nettoyée pour l'oral, sans limite de longueur.
+fn oral(segments: &[Segment]) -> String {
+    let raw: String = segments
+        .iter()
+        .map(|s| match s {
+            Segment::Text { text } | Segment::Untrusted { text, .. } => text.as_str(),
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+    strip_markup(&raw)
+}
+
+/// Réponse en flux dite phrase par phrase : chaque phrase complète part dès qu'elle arrive, une seule fois.
+/// Au-delà de `MAX_CHARS`, plus rien ne part (`over`) : le reste est pour le panneau.
+#[derive(Debug, Default)]
+pub struct Utterance {
+    /// Phrases déjà parties du flux en cours (un nouveau flux, après un outil, repart de zéro).
+    said: Vec<String>,
+    total: usize,
+    over: bool,
+}
+
+impl Utterance {
+    /// Réponse partielle (cumulée) : ses phrases complètes pas encore dites ; la dernière attend la suite.
+    pub fn partial(&mut self, segments: &[Segment]) -> Vec<String> { self.next(segments, false) }
+
+    /// Réponse finale : tout ce qui n'a pas encore été dit.
+    pub fn finish(&mut self, segments: &[Segment]) -> Vec<String> { self.next(segments, true) }
+
+    pub fn over(&self) -> bool { self.over }
+
+    /// Au moins une phrase est partie.
+    pub fn started(&self) -> bool { self.total > 0 }
+
+    fn next(&mut self, segments: &[Segment], all: bool) -> Vec<String> {
+        if self.over {
+            return Vec::new();
+        }
+        let text = oral(segments);
+        if text.chars().count() > MAX_CHARS {
+            self.over = true;
+            return Vec::new();
+        }
+        let mut s = sentences(&text);
+        if !all {
+            s.pop();
+        }
+        // Texte qui ne prolonge pas ce qui a été dit : nouvelle étape du tour (après un outil).
+        if self.said.iter().zip(&s).any(|(a, b)| a != b) {
+            self.said.clear();
+        }
+        let new: Vec<String> = s.into_iter().skip(self.said.len()).collect();
+        self.said.extend(new.iter().cloned());
+        self.total += new.len();
+        new
+    }
 }
 
 /// Retire blocs de code, liens (garde le libellé), URL nues et marques Markdown.
@@ -176,6 +230,33 @@ mod tests {
         assert_eq!(speakable(&segs, "N").unwrap(), "Objet du mail");
         assert_eq!(speakable(&t(" ** \n```x```"), "N"), None);
         assert_eq!(speakable(&[], "N"), None);
+    }
+
+    #[test]
+    fn le_flux_dit_chaque_phrase_complete_une_fois() {
+        let mut u = Utterance::default();
+        assert!(u.partial(&t("Bonjour")).is_empty(), "phrase pas finie");
+        assert!(u.partial(&t("Bonjour **Nathan**.")).is_empty(), "rien après le point : peut-être pas finie");
+        assert_eq!(u.partial(&t("Bonjour **Nathan**. Il est 14:30")), ["Bonjour Nathan."]);
+        assert!(u.partial(&t("Bonjour **Nathan**. Il est 14:30, ")).is_empty());
+        assert_eq!(u.finish(&t("Bonjour **Nathan**. Il est 14:30, IRIS.")), ["Il est 14 h 30, Irisse."]);
+        assert!(u.started() && !u.over());
+        assert!(u.finish(&t("Bonjour **Nathan**. Il est 14:30, IRIS.")).is_empty(), "rien deux fois");
+    }
+
+    #[test]
+    fn le_flux_suit_une_nouvelle_etape_et_s_arrete_au_dela_de_la_limite() {
+        let mut u = Utterance::default();
+        assert_eq!(u.partial(&t("Je regarde. ")), Vec::<String>::new());
+        assert_eq!(u.partial(&t("Je regarde. Ton")), ["Je regarde."]);
+        assert_eq!(u.finish(&t("Tu as deux mails. Voilà.")), ["Tu as deux mails.", "Voilà."], "réponse après un outil");
+        let mut u = Utterance::default();
+        let long = format!("Première phrase. {}", "mot ".repeat(80));
+        assert_eq!(u.partial(&t(&long[..30])), ["Première phrase."]);
+        assert!(u.partial(&t(&long)).is_empty() && u.over());
+        assert!(u.finish(&t(&long)).is_empty());
+        let mut quiet = Utterance::default();
+        assert!(quiet.finish(&t(" ** ")).is_empty() && !quiet.started());
     }
 
     #[test]

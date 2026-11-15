@@ -1,8 +1,10 @@
 //! Voix Azure AI Speech (voix neurales de Microsoft) : la réponse part en SSML vers la région choisie, le PCM 24 kHz
 //! revient et se joue sur la même sortie que Piper. Sans clé, hors ligne ou refusée : Piper prend le relais.
+//! En flux : une requête par phrase, la suivante part dès que la précédente est reçue (elle se charge pendant que
+//! l'autre joue), toutes dans la même file de sortie.
 //! Journal : longueurs, durées et statut HTTP, jamais le texte ni la clé.
-use super::piper::{SpeakHandle, Speaker, TtsError};
-use super::playback::AudioOut;
+use super::piper::{drain, Lines, SpeakHandle, Speaker, TtsError};
+use super::playback::{AudioOut, Sink};
 use parking_lot::Mutex;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -84,6 +86,59 @@ impl Speaker for AzureSpeaker {
         *self.current.lock() = Some(handle.clone());
         Ok(handle)
     }
+
+    async fn speak_stream(&self, lines: Lines, volume: u8) -> Result<SpeakHandle, TtsError> {
+        self.stop();
+        let Some(c) = (self.conf)() else { return self.fallback.speak_stream(lines, volume).await };
+        let out = self.out.clone();
+        let sink = tokio::task::spawn_blocking(move || out.open(RATE)).await.map_err(|e| TtsError::Start(e.to_string()))??;
+        let (handle, done_tx) = SpeakHandle::new();
+        let mut cancel = handle.cancel_rx();
+        *self.current.lock() = Some(handle.clone());
+        let (http, fallback) = (self.http.clone(), self.fallback.clone());
+        tokio::spawn(async move {
+            tokio::select! {
+                _ = cancel.wait_for(|c| *c) => fallback.stop(), // la file et le son restant partent avec `stream`
+                _ = stream(http, c, sink, lines, volume, fallback.clone()) => {}
+            }
+            let _ = done_tx.send(true);
+        });
+        Ok(handle)
+    }
+}
+
+/// Synthétise et joue chaque phrase à son tour ; au premier échec, le reste (phrase comprise) part vers Piper une fois
+/// la sortie d'Azure vidée, sans chevauchement.
+async fn stream(http: reqwest::Client, c: AzureConf, mut sink: Box<dyn Sink>, mut lines: Lines, volume: u8, fallback: Arc<dyn Speaker>) {
+    let v = volume.min(100) as i32;
+    while let Some(line) = lines.recv().await {
+        let t = Instant::now();
+        match synthesize(&http, &c, &line).await {
+            Ok(pcm) => {
+                tracing::info!(chars = line.chars().count(), ms = t.elapsed().as_millis() as u64, "voix Azure reçue");
+                sink.push(&pcm.iter().map(|&s| (s as i32 * v / 100) as i16).collect::<Vec<_>>());
+            }
+            Err(e) => {
+                tracing::warn!("voix Azure : {e}, repli sur Piper");
+                drain(sink.as_mut(), RATE).await;
+                let (tx, rest) = tokio::sync::mpsc::unbounded_channel();
+                let _ = tx.send(line);
+                let Ok(h) = fallback.speak_stream(rest, volume).await else { return };
+                let forward = async move {
+                    while let Some(l) = lines.recv().await {
+                        if tx.send(l).is_err() {
+                            break;
+                        }
+                    }
+                    drop(tx);
+                    std::future::pending::<()>().await
+                };
+                tokio::select! { _ = h.done() => {}, _ = forward => {} }
+                return;
+            }
+        }
+    }
+    drain(sink.as_mut(), RATE).await;
 }
 
 /// Joue le PCM 24 kHz ; `stop()` sur la poignée coupe le son restant.
@@ -177,7 +232,9 @@ mod tests {
         assert!(!ssml("x", "a'b").contains("a'b"));
     }
 
-    struct Fallback(Mutex<u32>);
+    /// Repli : compte les `speak` et garde les phrases reçues en flux.
+    #[derive(Default)]
+    struct Fallback(Mutex<u32>, Arc<Mutex<Vec<String>>>);
     #[async_trait::async_trait]
     impl Speaker for Fallback {
         fn stop(&self) {}
@@ -187,6 +244,46 @@ mod tests {
             let _ = done.send(true);
             Ok(h)
         }
+        async fn speak_stream(&self, mut lines: Lines, _: u8) -> Result<SpeakHandle, TtsError> {
+            let (h, done) = SpeakHandle::new();
+            let said = self.1.clone();
+            tokio::spawn(async move {
+                while let Some(l) = lines.recv().await {
+                    said.lock().push(l);
+                }
+                let _ = done.send(true);
+            });
+            Ok(h)
+        }
+    }
+    struct OkOut;
+    struct NullSink;
+    impl Sink for NullSink {
+        fn push(&mut self, _: &[i16]) {}
+        fn pending(&self) -> usize { 0 }
+    }
+    impl AudioOut for OkOut {
+        fn open(&self, _: u32) -> Result<Box<dyn Sink>, TtsError> { Ok(Box::new(NullSink)) }
+    }
+
+    #[tokio::test]
+    async fn en_flux_azure_injoignable_toutes_les_phrases_passent_a_piper_dans_l_ordre() {
+        let fb = Arc::new(Fallback::default());
+        let bad = AzureSpeaker::new(fb.clone(), Arc::new(OkOut), Box::new(|| Some(AzureConf { key: "k".into(), region: "pas une région".into(), voice: "v".into() })));
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        tx.send("Un.".to_string()).unwrap();
+        let h = bad.speak_stream(rx, 80).await.unwrap();
+        tx.send("Deux.".to_string()).unwrap();
+        tx.send("Trois.".to_string()).unwrap();
+        drop(tx);
+        tokio::time::timeout(Duration::from_secs(5), h.done()).await.expect("fin du flux");
+        assert_eq!(*fb.1.lock(), ["Un.", "Deux.", "Trois."]);
+        let off = AzureSpeaker::new(fb.clone(), Arc::new(OkOut), Box::new(|| None));
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        tx.send("Quatre.".to_string()).unwrap();
+        drop(tx);
+        off.speak_stream(rx, 80).await.unwrap().done().await;
+        assert_eq!(fb.1.lock().last().map(String::as_str), Some("Quatre."));
     }
     struct NoOut;
     impl AudioOut for NoOut {
@@ -195,7 +292,7 @@ mod tests {
 
     #[tokio::test]
     async fn sans_cle_ou_injoignable_piper_prend_le_relais() {
-        let fb = Arc::new(Fallback(Mutex::new(0)));
+        let fb = Arc::new(Fallback::default());
         let off = AzureSpeaker::new(fb.clone(), Arc::new(NoOut), Box::new(|| None));
         off.speak("Bonjour", 80).await.unwrap();
         // Région qui rend l'URL invalide : échec avant tout accès réseau.

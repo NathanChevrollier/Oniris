@@ -1,5 +1,7 @@
 //! Voix d'IRIS : `piper.exe --output-raw` (une phrase par ligne sur stdin, PCM 16 bits mono sur stdout) joué par une
-//! sortie injectable. Une seule voix à la fois ; `stop()` coupe en quelques ms. Journal : longueurs et durées, jamais le texte.
+//! sortie injectable. Une seule voix à la fois ; `stop()` coupe en quelques ms. En flux, les phrases rejoignent le même
+//! processus au fil de leur arrivée : ni rechargement du modèle, ni trou entre deux phrases.
+//! Journal : longueurs et durées, jamais le texte.
 use super::playback::{AudioOut, Sink};
 use crate::job;
 use oniris_core::voice::speech::sentences;
@@ -9,7 +11,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::Command;
-use tokio::sync::watch;
+use tokio::sync::{mpsc, watch};
 
 #[derive(Debug)]
 pub enum TtsError {
@@ -51,7 +53,7 @@ impl SpeakHandle {
         self.cancel.subscribe()
     }
 
-    #[cfg(test)]
+    /// Coupée par `stop()` (Échap, nouvel appui) : la suite ne doit plus rien dire.
     pub fn stopped(&self) -> bool {
         *self.cancel.borrow()
     }
@@ -61,9 +63,14 @@ impl SpeakHandle {
     }
 }
 
+/// Phrases à dire, dans l'ordre ; la file fermée, la voix finit après la dernière.
+pub type Lines = mpsc::UnboundedReceiver<String>;
+
 #[async_trait::async_trait]
 pub trait Speaker: Send + Sync {
     async fn speak(&self, text: &str, volume: u8) -> Result<SpeakHandle, TtsError>;
+    /// Dit les phrases au fil de leur arrivée, sans chevauchement ; `stop()` jette aussi celles en attente.
+    async fn speak_stream(&self, lines: Lines, volume: u8) -> Result<SpeakHandle, TtsError>;
     /// Coupe la voix en cours, s'il y en a une.
     fn stop(&self);
 }
@@ -106,13 +113,20 @@ impl Speaker for PiperSpeaker {
     }
 
     async fn speak(&self, text: &str, volume: u8) -> Result<SpeakHandle, TtsError> {
+        let (tx, lines) = mpsc::unbounded_channel();
+        for l in sentences(text) {
+            let _ = tx.send(l);
+        }
+        self.speak_stream(lines, volume).await
+    }
+
+    async fn speak_stream(&self, lines: Lines, volume: u8) -> Result<SpeakHandle, TtsError> {
         self.stop();
         let exe = self.dir.join("piper").join("piper.exe");
         let model = self.dir.join("models").join(MODEL);
         if !exe.is_file() || !model.is_file() {
             return Err(TtsError::NotInstalled);
         }
-        let lines = sentences(text);
         let rate = sample_rate(&self.dir.join("models").join(format!("{MODEL}.json")));
         // L'ouverture du périphérique peut bloquer (pilote lent) : hors des fils du runtime.
         let out = self.out.clone();
@@ -127,13 +141,12 @@ impl Speaker for PiperSpeaker {
         let (handle, done_tx) = SpeakHandle::new();
         let mut cancel_rx = handle.cancel.subscribe();
         *self.current.lock() = Some(handle.clone());
-        let chars = text.chars().count();
         tokio::spawn(async move {
             let t = Instant::now();
             // Annulé par `select!`, `play` est lâché : le Sink se ferme, puis le Job tue Piper.
             tokio::select! {
                 _ = cancel_rx.wait_for(|c| *c) => tracing::info!(ms = t.elapsed().as_millis() as u64, "voix coupée"),
-                _ = play(child, sink, lines, volume, rate) => tracing::info!(chars, ms = t.elapsed().as_millis() as u64, "voix terminée"),
+                n = play(child, sink, lines, volume, rate) => tracing::info!(sentences = n, ms = t.elapsed().as_millis() as u64, "voix terminée"),
             }
             drop(job);
             let _ = done_tx.send(true);
@@ -142,36 +155,46 @@ impl Speaker for PiperSpeaker {
     }
 }
 
-/// Écrit les phrases, lit le PCM, le joue, puis attend que la file soit vidée (durée du son + 2 s au plus).
-async fn play(mut child: tokio::process::Child, mut sink: Box<dyn Sink>, lines: Vec<String>, volume: u8, rate: u32) {
-    let (Some(mut stdin), Some(mut stdout)) = (child.stdin.take(), child.stdout.take()) else { return };
-    tokio::spawn(async move {
-        for l in lines {
-            if stdin.write_all(format!("{l}\n").as_bytes()).await.is_err() {
-                return;
+/// Écrit les phrases à leur arrivée, lit le PCM, le joue, puis attend que la file soit vidée (durée du reste + 2 s au
+/// plus) ; rend le nombre de phrases. Lâché (coupure), il lâche aussi la file : les phrases en attente sont jetées.
+async fn play(mut child: tokio::process::Child, mut sink: Box<dyn Sink>, mut lines: Lines, volume: u8, rate: u32) -> usize {
+    let (Some(mut stdin), Some(mut stdout)) = (child.stdin.take(), child.stdout.take()) else { return 0 };
+    let write = async move {
+        let mut n = 0;
+        while let Some(l) = lines.recv().await {
+            if stdin.write_all(format!("{l}
+").as_bytes()).await.is_err() {
+                break;
             }
+            n += 1;
         }
-        // stdin fermé au drop : Piper finit sa dernière phrase puis s'arrête
-    });
-    let mut buf = [0u8; 8192];
-    let mut odd: Option<u8> = None; // octet de poids faible en attente d'un échantillon complet
-    let mut pushed: u64 = 0;
-    while let Ok(n) = stdout.read(&mut buf).await {
-        if n == 0 {
-            break;
+        n // stdin fermé au retour : Piper finit sa dernière phrase puis s'arrête
+    };
+    let read = async {
+        let mut buf = [0u8; 8192];
+        let mut odd: Option<u8> = None; // octet de poids faible en attente d'un échantillon complet
+        while let Ok(n) = stdout.read(&mut buf).await {
+            if n == 0 {
+                break;
+            }
+            let mut bytes = Vec::with_capacity(n + 1);
+            bytes.extend(odd.take());
+            bytes.extend_from_slice(&buf[..n]);
+            if bytes.len() % 2 == 1 {
+                odd = bytes.pop();
+            }
+            let pcm: Vec<i16> = bytes.as_chunks::<2>().0.iter().map(|&b| scale(i16::from_le_bytes(b), volume)).collect();
+            sink.push(&pcm);
         }
-        let mut bytes = Vec::with_capacity(n + 1);
-        bytes.extend(odd.take());
-        bytes.extend_from_slice(&buf[..n]);
-        if bytes.len() % 2 == 1 {
-            odd = bytes.pop();
-        }
-        let pcm: Vec<i16> = bytes.as_chunks::<2>().0.iter().map(|&b| scale(i16::from_le_bytes(b), volume)).collect();
-        sink.push(&pcm);
-        pushed += pcm.len() as u64;
-    }
-    // Une sortie disparue ne se vide jamais : IRIS ne reste pas bloquée en Speaking.
-    let deadline = Instant::now() + Duration::from_millis(pushed * 1000 / rate.max(1) as u64) + Duration::from_secs(2);
+    };
+    let (n, ()) = tokio::join!(write, read);
+    drain(sink.as_mut(), rate).await;
+    n
+}
+
+/// Attend que la sortie ait joué sa file : une sortie disparue ne se vide jamais, IRIS ne reste pas bloquée en Speaking.
+pub(super) async fn drain(sink: &mut dyn Sink, rate: u32) {
+    let deadline = Instant::now() + Duration::from_millis(sink.pending() as u64 * 1000 / rate.max(1) as u64) + Duration::from_secs(2);
     while sink.pending() > 0 {
         if Instant::now() >= deadline {
             tracing::warn!("voix : la sortie audio ne se vide pas, lecture abandonnée");
@@ -321,6 +344,26 @@ mod tests {
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
         panic!("piper tourne encore");
+    }
+
+    #[tokio::test]
+    async fn en_flux_la_premiere_phrase_sonne_avant_la_suivante() {
+        let (_d, s, out, _pid) = setup();
+        let (tx, rx) = mpsc::unbounded_channel();
+        tx.send("Bonjour.".to_string()).unwrap();
+        let h = s.speak_stream(rx, 80).await.unwrap();
+        for _ in 0..200 {
+            if out.samples.load(SeqCst) == 500 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert_eq!(out.samples.load(SeqCst), 500, "première phrase jouée, file encore ouverte");
+        tx.send("Salut !".to_string()).unwrap();
+        drop(tx);
+        tokio::time::timeout(Duration::from_secs(10), h.done()).await.expect("fin après la dernière phrase");
+        assert_eq!(out.samples.load(SeqCst), 1000);
+        assert_eq!(out.closed.load(SeqCst), 1, "une seule sortie pour tout le flux");
     }
 
     #[tokio::test]

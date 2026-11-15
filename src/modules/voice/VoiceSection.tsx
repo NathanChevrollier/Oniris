@@ -134,10 +134,14 @@ export function VoiceSection() {
       <Group title="Réponse">
         <Toggle k="voice_tts" label="IRIS répond à voix haute" />
         <Slider k="voice_volume" label="Volume" unit=" %" />
+        <Toggle k="voice_stream" label="Parler pendant la réflexion" disabled={!s.voice_tts}
+          desc="IRIS dit chaque phrase dès qu'elle l'a écrite, sans attendre la fin de sa réponse." />
+        <Toggle k="voice_briefing_auto" label="Briefing du matin" disabled={!s.voice_tts}
+          desc="À la première ouverture du panneau de la journée (après 5 h), IRIS te dit ton briefing. Jamais en plein écran." />
       </Group>
       <Group title="Mot d'activation">
         <Toggle k="voice_wake" label="Mot d'activation « Dis Iris »" disabled={!status?.installed}
-          desc="Oniris écoute en continu et réagit quand tu dis « Dis Iris » ou « Hé Iris ». Avant ça, rien n'est transcrit, enregistré ni envoyé. Windows affiche l'icône du micro tant que l'écoute est active.">
+          desc="Oniris écoute en continu et réagit quand tu dis « Dis Iris » ou « Hé Iris », même pendant qu'IRIS parle (pour l'interrompre). Avant ça, rien n'est transcrit, enregistré ni envoyé. Windows affiche l'icône du micro tant que l'écoute est active.">
           {wakeState && <span className="set-chip">{wakeState}</span>}
         </Toggle>
         <Toggle k="voice_wake_learning" label="Mode apprentissage" disabled={!s.voice_wake}

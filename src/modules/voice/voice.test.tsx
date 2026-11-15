@@ -110,7 +110,7 @@ it("le mot d'activation est décoché par défaut et s'enregistre", async () => 
   render(<SettingsSheet open section="voice" onClose={() => {}} onAccounts={() => {}} />);
   const box = (await screen.findByLabelText(WAKE)) as HTMLInputElement;
   expect(box.checked).toBe(false);
-  expect(screen.getByText(/Oniris écoute en continu et réagit quand tu dis « Dis Iris » ou « Hé Iris »\. Avant ça, rien n'est transcrit, enregistré ni envoyé\. Windows affiche l'icône du micro tant que l'écoute est active\./)).toBeTruthy();
+  expect(screen.getByText(/Oniris écoute en continu et réagit quand tu dis « Dis Iris » ou « Hé Iris », même pendant qu'IRIS parle \(pour l'interrompre\)\. Avant ça, rien n'est transcrit, enregistré ni envoyé\. Windows affiche l'icône du micro tant que l'écoute est active\./)).toBeTruthy();
   await waitFor(() => expect(box.disabled).toBe(false));
   await userEvent.click(box);
   await waitFor(() => expect(save).toHaveBeenCalledWith({ ...fresh, voice_wake: true }));
@@ -127,6 +127,20 @@ it("affiche l'état de l'écoute", async () => {
   vi.mocked(voiceIpc.wakeState).mockResolvedValue("à l'écoute");
   render(<SettingsSheet open section="voice" onClose={() => {}} onAccounts={() => {}} />);
   expect(await screen.findByText("à l'écoute")).toBeTruthy();
+});
+
+it("parler pendant la réflexion et briefing du matin : cochés par défaut, décochables", async () => {
+  const fresh = { ...DEFAULT_SETTINGS };
+  vi.spyOn(ipc, "getSettings").mockResolvedValue(fresh);
+  const save = vi.spyOn(ipc, "saveSettings").mockResolvedValue(undefined);
+  render(<SettingsSheet open section="voice" onClose={() => {}} onAccounts={() => {}} />);
+  const stream = (await screen.findByLabelText(/Parler pendant la réflexion/)) as HTMLInputElement;
+  const briefing = screen.getByLabelText(/Briefing du matin/) as HTMLInputElement;
+  expect(stream.checked && briefing.checked).toBe(true);
+  await userEvent.click(stream);
+  await waitFor(() => expect(save).toHaveBeenCalledWith({ ...fresh, voice_stream: false }));
+  await userEvent.click(briefing);
+  await waitFor(() => expect(save).toHaveBeenCalledWith({ ...fresh, voice_briefing_auto: false }));
 });
 
 const LEARN = /Mode apprentissage/;

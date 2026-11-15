@@ -55,6 +55,18 @@ pub fn clean(text: &str) -> Option<String> {
     (out.chars().filter(|c| c.is_alphanumeric()).count() >= 2 && !bad).then_some(out)
 }
 
+/// Phrases qui font taire IRIS sans rien lui demander (après « Dis Iris » pendant qu'elle parle, ou en conversation).
+const STOP_WORDS: [&str; 16] = [
+    "stop", "arrete", "arrete toi", "tais toi", "attends", "attend", "chut", "silence", "ca suffit", "c'est bon",
+    "ok c'est bon", "merci", "ok merci", "non merci", "merci iris", "laisse tomber",
+];
+
+/// Le texte entendu n'est qu'un mot d'arrêt (« stop », « tais-toi », « ok merci »…).
+pub fn stop_word(text: &str) -> bool {
+    let key: String = crate::when::norm(text).chars().map(|c| if c.is_alphanumeric() || c == '\'' { c } else { ' ' }).collect();
+    STOP_WORDS.contains(&key.split_whitespace().collect::<Vec<_>>().join(" ").as_str())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -82,6 +94,16 @@ mod tests {
         Mock::given(method("POST")).respond_with(ResponseTemplate::new(200).set_delay(Duration::from_secs(20))).mount(&s).await;
         let r = transcribe_within(&reqwest::Client::new(), &s.uri(), vec![0], Duration::from_millis(200)).await;
         assert!(matches!(r, Err(SttError::Timeout)));
+    }
+
+    #[test]
+    fn mots_d_arret_seuls() {
+        for w in ["Stop.", "Arrête !", "Tais-toi.", "Attends…", "OK, merci.", "Ok merci", "C'est bon.", "Merci Iris."] {
+            assert!(stop_word(w), "{w}");
+        }
+        for w in ["Arrête la musique", "Stop le minuteur", "Merci de m'ajouter un rappel", "Attends 5 minutes puis rappelle-moi"] {
+            assert!(!stop_word(w), "{w}");
+        }
     }
 
     #[test]

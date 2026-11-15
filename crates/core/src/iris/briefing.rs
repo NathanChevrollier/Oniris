@@ -231,6 +231,32 @@ pub fn due(last: Option<(i64, u64)>, hash: u64, now: i64) -> bool {
     }
 }
 
+/// Clé `kv` du jour (début de journée locale, ms) du dernier briefing dit à l'ouverture du panneau.
+pub const SPOKEN_KEY: &str = "briefing_spoken_day";
+/// Avant cette heure, le briefing n'est pas dit à l'ouverture du panneau.
+const SPEAK_FROM_HOUR: u32 = 5;
+
+/// Briefing dit à l'ouverture du panneau : réglage actif, après 5 h, pas en plein écran, et pas encore dit
+/// aujourd'hui (`last_day` : jour du dernier). La voix (pause, installation, voix haute, conversation) est vérifiée
+/// par le pipeline.
+pub fn speak_on_open(auto: bool, fullscreen: bool, last_day: Option<i64>, now: i64) -> bool {
+    let hour = Local.timestamp_millis_opt(now).earliest().map_or(0, |t| t.hour());
+    auto && !fullscreen && hour >= SPEAK_FROM_HOUR && last_day != Some(day(now))
+}
+
+/// Jour local de `now`, à garder sous `SPOKEN_KEY` une fois le briefing dit.
+pub fn spoken_day(now: i64) -> i64 { day(now) }
+
+/// Demande de briefing à la voix (« fais-moi le briefing », « qu'est-ce que j'ai aujourd'hui »).
+pub fn asked(text: &str) -> bool {
+    let t = crate::when::norm(text).replace(['?', '!', '.', ',', '-'], " ");
+    let t = t.split_whitespace().collect::<Vec<_>>().join(" ");
+    let today = ["aujourd'hui", "ce matin", "ma journee", "au programme", "de prevu"].iter().any(|w| t.contains(w));
+    let ask = ["qu'est ce que j'ai", "qu'ai je", "quoi de prevu", "c'est quoi mon programme", "quel est mon programme", "ma journee"]
+        .iter().any(|w| t.contains(w));
+    t.contains("briefing") || (ask && today)
+}
+
 /// Lit le briefing gardé (`None` si absent ou illisible).
 pub fn load(c: &Connection) -> Option<Stored> {
     let (json, _) = crate::kv::get(c, KEY).ok().flatten()?;
@@ -346,6 +372,29 @@ mod tests {
         assert!(!due(Some((now - 20 * 60_000, 7)), 7, now), "faits inchangés");
         assert!(!due(Some((now - 5 * 60_000, 1)), 2, now), "moins de 15 min");
         assert!(due(Some((now - 24 * H, 7)), 7, now), "nouveau jour, mêmes faits");
+    }
+
+    #[test]
+    fn briefing_dit_une_fois_par_jour_apres_5_h_hors_plein_ecran() {
+        let now = at(8, 0);
+        assert!(speak_on_open(true, false, None, now));
+        assert!(speak_on_open(true, false, Some(spoken_day(now - 24 * H)), now), "dit hier");
+        assert!(!speak_on_open(true, false, Some(spoken_day(at(6, 0))), now), "déjà dit aujourd'hui");
+        assert!(!speak_on_open(false, false, None, now), "réglage coupé");
+        assert!(!speak_on_open(true, true, None, now), "plein écran");
+        assert!(!speak_on_open(true, false, None, at(4, 59)), "avant 5 h");
+        assert!(speak_on_open(true, false, None, at(5, 0)));
+    }
+
+    #[test]
+    fn demande_de_briefing_a_la_voix() {
+        for t in ["Fais-moi le briefing.", "Mon briefing ?", "Qu'est-ce que j'ai aujourd'hui ?", "Qu'est ce que j'ai au programme ?",
+            "C'est quoi mon programme aujourd'hui ?", "Quoi de prévu aujourd'hui ?", "Raconte-moi ma journée"] {
+            assert!(asked(t), "{t}");
+        }
+        for t in ["Qu'est-ce que j'ai comme mails ?", "Quel temps fait-il aujourd'hui ?", "Ajoute un rappel aujourd'hui"] {
+            assert!(!asked(t), "{t}");
+        }
     }
 
     #[test]

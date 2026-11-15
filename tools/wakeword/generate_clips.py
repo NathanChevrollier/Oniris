@@ -18,8 +18,6 @@ from pathlib import Path
 
 import numpy as np
 import soundfile as sf
-from scipy.signal import resample_poly
-
 SR = 16000
 TARGET = "iris"
 # Phrases positives, enregistrements personnels et durée maximale d'un positif (s, marges comprises) par modèle.
@@ -64,6 +62,8 @@ def to_16k(x: np.ndarray, sr: int) -> np.ndarray:
     if x.ndim > 1:
         x = x.mean(axis=1)
     if sr != SR:
+        from scipy.signal import resample_poly  # importé ici : clean_data.py et ses tests s'en passent en 16 kHz
+
         g = gcd(sr, SR)
         x = resample_poly(x, SR // g, sr // g)
     return np.clip(x, -1.0, 1.0).astype(np.float32)
@@ -155,12 +155,16 @@ def add_own(recordings: Path, out: Path, n_pos: int, globs: list) -> None:
     # (arrivé le 12/11 : 20 des 22 clips de test de ta voix avaient aussi servi à l'entraînement).
     for f in [f for d in ("positive_train", "positive_test") for f in (out / d).glob("own_*.wav")]:
         f.unlink()
-    if not own and not learned:
+    if not own and not learned and not (recordings and (recordings / "test").is_dir()):
         print(f"Aucun enregistrement personnel ({', '.join(globs)}) : positifs 100 % synthétiques.")
         return
-    random.Random(0).shuffle(own)  # même partage à chaque génération
-    cut = max(1, len(own) // 5) if own else 0
-    test, train = own[:cut], own[cut:]
+    if (recordings / "test").is_dir():
+        # Découpage figé par clean_data.py : guidés de test dans test/, ceux d'entraînement à la racine.
+        test, train = sorted(f for g in globs for f in (recordings / "test").glob(g)), own
+    else:
+        random.Random(0).shuffle(own)  # même partage à chaque génération
+        cut = max(1, len(own) // 5) if own else 0
+        test, train = own[:cut], own[cut:]
     dup = max(1, round(0.1 * n_pos / max(1, len(train) + len(learned))))
     for split, files, copies in (("positive_train", [(f, f.stem) for f in train] + [(f, f"learn_{f.stem}") for f in learned], dup),
                                  ("positive_test", [(f, f.stem) for f in test], 1)):
@@ -178,6 +182,9 @@ def add_hard_negatives(recordings: Path, out: Path, copies: int = 20) -> None:
     """Extraits captés par listen_live.py (faux et quasi-déclenchements) et par le mode apprentissage : négatifs les plus utiles."""
     found = [(f, f.stem) for d in ("false_triggers", "near_misses") for f in sorted((recordings / d).glob("*.wav"))] if recordings else []
     found += [(f, f"learn_{f.stem}") for f in sorted((recordings / "learn" / "neg").glob("*.wav"))] if recordings else []
+    # Copies d'un tirage précédent : un extrait écarté depuis (nettoyage, exclusion) ne doit pas rester en négatif.
+    for f in (out / "negative_train").glob("live_*.wav"):
+        f.unlink()
     for f, name in found:
         x, sr = sf.read(f, dtype="float32", always_2d=False)
         x = to_16k(x, sr)

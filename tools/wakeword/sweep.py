@@ -20,10 +20,12 @@ peu optimiste, d'où l'écoute en direct ensuite.
 """
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import numpy as np
@@ -33,7 +35,8 @@ KIT = Path(__file__).resolve().parent
 sys.path.insert(0, str(KIT))
 import evaluate  # noqa: E402  (fond sonore et lecture en flux, partagés avec l'évaluation)
 
-THRESHOLDS = [round(t, 2) for t in np.arange(0.2, 0.96, 0.05)] + [0.97, 0.99]
+# Pas fins près de 1 : les scores de ces modèles saturent (WAKE_THRESHOLD = 0.998 au 12/11).
+THRESHOLDS = [round(t, 2) for t in np.arange(0.2, 0.96, 0.05)] + [0.97, 0.99, 0.995, 0.998, 0.999, 0.9995, 0.9999]
 VAL_HOURS = 11.3  # durée du jeu de validation d'openWakeWord (train.py)
 REFRACTORY = 25  # pas de 80 ms : 2 s
 # (largeur des couches, poids maximal des négatifs, positifs par lot). Les séries du 11/11 (rappel plafonné à
@@ -82,20 +85,30 @@ def own_recall(path: Path, ww: Path, model: str) -> list:
     return [evaluate.clip_max(m, f) for f in files]
 
 
-def train(ww: Path, base: dict, model: str, layer: int, neg: int, pos: int, steps: int, out: Path) -> Path:
+def train(ww: Path, base: dict, model: str, layer: int, neg: int, pos: int, steps: int, out: Path, threads: int = 0) -> Path:
     batch = dict(base["batch_n_per_class"], positive=pos, adversarial_negative=max(50, pos // 3))
-    cfg = dict(base, layer_size=layer, max_negative_weight=neg, steps=steps, batch_n_per_class=batch)
     name = f"{model}_L{layer}_N{neg}_P{pos}"
+    # Dossier de sortie propre à la variante (caractéristiques et clips liés, pas copiés ; train.py lit aussi
+    # positive_test/*.wav) : plusieurs entraînements peuvent tourner en même temps sans écrire le même output/<model>.onnx.
+    work = out / f"{name}_work"
+    (work / model).mkdir(parents=True, exist_ok=True)
+    for f in (ww / "output" / model).iterdir():
+        link = work / model / f.name
+        if not link.exists():
+            link.symlink_to(f.resolve())
+    cfg = dict(base, layer_size=layer, max_negative_weight=neg, steps=steps, batch_n_per_class=batch, output_dir=str(work))
     ypath = out / f"{name}.yml"
     ypath.write_text(yaml.safe_dump(cfg, allow_unicode=True), encoding="utf-8")
     log = out / f"{name}.log"
+    env = dict(os.environ, **({"OMP_NUM_THREADS": str(threads), "MKL_NUM_THREADS": str(threads)} if threads else {}))
     with open(log, "w") as f:
         r = subprocess.run([sys.executable, "openWakeWord/openwakeword/train.py", "--training_config", str(ypath), "--train_model"],
-                           cwd=ww, stdout=f, stderr=subprocess.STDOUT)
+                           cwd=ww, stdout=f, stderr=subprocess.STDOUT, env=env)
     if r.returncode != 0:
         raise RuntimeError(f"entraînement en échec, voir {log}")
     dst = out / f"{name}.onnx"
-    shutil.move(str(ww / "output" / f"{model}.onnx"), dst)
+    shutil.move(str(work / f"{model}.onnx"), dst)
+    shutil.rmtree(work, ignore_errors=True)
     return dst
 
 
@@ -106,6 +119,7 @@ def main() -> None:
     ap.add_argument("--target-fph", type=float, default=0.5)
     ap.add_argument("--steps", type=int, default=60000)
     ap.add_argument("--grid", default=None, help="variantes largeur:poids:positifs, séparées par des virgules")
+    ap.add_argument("--jobs", type=int, default=1, help="variantes entraînées en même temps (processeur partagé)")
     a = ap.parse_args()
     grid = [tuple(int(v) for v in g.split(":")) for g in a.grid.split(",")] if a.grid else GRID
     assert all(len(g) == 3 for g in grid), "--grid attend largeur:poids:positifs"
@@ -118,14 +132,23 @@ def main() -> None:
     val = np.asarray(val.reshape(-1, val.shape[-1]) if val.ndim > 2 else val, dtype=np.float32)
     evaluate.load_bed(a.ww)
 
+    # Entraînements d'abord (en parallèle si --jobs), mesures ensuite. Une variante déjà là est reprise telle quelle.
+    todo = [g for g in grid if not (out / f"{a.model}_L{g[0]}_N{g[1]}_P{g[2]}.onnx").exists()]
+    threads = max(1, (os.cpu_count() or 2) // a.jobs) if a.jobs > 1 else 0
+
+    def run(g):
+        print(f"[{time.strftime('%H:%M')}] {a.model} L{g[0]}_N{g[1]}_P{g[2]} : entraînement…", flush=True)
+        train(a.ww, base, a.model, *g, a.steps, out, threads)
+        print(f"[{time.strftime('%H:%M')}] {a.model} L{g[0]}_N{g[1]}_P{g[2]} : fini", flush=True)
+
+    with ThreadPoolExecutor(max(1, a.jobs)) as ex:
+        list(ex.map(run, todo))
+
     results = []
     for layer, neg, posb in grid:
         name = f"L{layer}_N{neg}_P{posb}"
         t0 = time.time()
         cand = out / f"{a.model}_{name}.onnx"
-        if not cand.exists():
-            print(f"[{time.strftime('%H:%M')}] {a.model} {name} : entraînement…", flush=True)
-            cand = train(a.ww, base, a.model, layer, neg, posb, a.steps, out)
         synth = feature_scores(cand, pos)
         own = np.array(own_recall(cand, a.ww, a.model))
         fph = val_fph(cand, val)

@@ -102,15 +102,58 @@ Objectif du plan 8 :
 
 Le seuil par défaut est 0,5 (`--threshold`). `train.sh eval` en conseille un d'après les tests synthétiques et ta voix. Le seuil retenu devient la constante `WAKE_THRESHOLD` de la partie B.
 
-### 3 bis. Réentraîner avec le mode apprentissage
+### 3 bis. Réentraîner avec toutes les données (recommandé)
 
-Quand : après une centaine de nouveaux extraits (compte dans les réglages d'Oniris, section « Voix »). Les extraits positifs vont en entraînement seulement, jamais en test : tes enregistrements guidés restent la référence, comparable d'un entraînement à l'autre. Les négatifs rejoignent les faux déclenchements.
+Quand : après une centaine de nouveaux extraits du mode apprentissage (compte dans les réglages d'Oniris, section « Voix »), une nouvelle prise guidée ou des sessions `listen_live.py`. Dans WSL :
 
 ```bash
-bash /mnt/c/Users/natha/Desktop/Utilitaires/Projets/Oniris/tools/wakeword/retrain.sh
+K=/mnt/c/Users/natha/Desktop/Utilitaires/Projets/Oniris/tools/wakeword
+bash $K/retrain_all.sh --check     # 10 s : WSL, venv, données téléchargées, disque, dossier Windows, SHA256SUMS
+bash $K/retrain_all.sh --dry-run   # 1 min : collecte + nettoyage + rapport, sans entraîner
+bash $K/retrain_all.sh             # 1 à 1 h 30 sans surveillance (estimation affichée au départ)
 ```
 
-Seul le modèle principal (« Dis Iris ») est réentraîné, 3 variantes, à partir de zéro. Avant de garder le nouveau modèle, compare ses scores dans `~/oniris-wakeword/output/sweep_*.md` à ceux d'avant : ne garde le nouveau modèle que s'il n'est pas moins bon que l'actuel, à la fois en faux déclenchements par heure et en rappel sur ta voix ; vise ≤ 0,1 par heure et ≥ 90 %. Sinon, remets l'ancien modèle (`git checkout src-tauri/resources/wake`).
+Relancer la même commande reprend après une interruption : les caractéristiques ne sont refaites que si les données retenues ont changé (`FRESH=1` pour forcer), et les variantes déjà entraînées sont gardées.
+
+Les étapes :
+1. **Collecte** dans `%USERPROFILE%\oniris-wakeword\recordings` : prises guidées (`dis_*`, `he_*`), mode apprentissage (`learn/pos`, `learn/neg`), `false_triggers`, `near_misses`, ambiance. Tes musiques vont, comme avant, dans `~/oniris-wakeword/data/extra_src/`.
+2. **Nettoyage** (`clean_data.py`). Tes fichiers ne sont que **lus** : rien n'y est modifié ni supprimé. Les fichiers retenus sont copiés en WAV 16 kHz mono dans `~/oniris-wakeword/clean/dis_iris/recordings`.
+   - **Rejetés (ignorés) :** illisibles, trop courts ou trop longs, silencieux, saturés, doublons. Un doublon se repère à son contenu audio, pas à son nom.
+   - **En quarantaine** (copiés dans `clean/dis_iris/quarantaine/<raison>/`, à écouter) :
+     - un positif sans pic de parole, ou dont la parole dure trop longtemps ;
+     - un positif appris que le modèle actuel ne voit pas du tout ;
+     - un négatif qui déclenche le modèle **et** ressemble fortement à tes « Dis Iris » enregistrés : il contient sans doute vraiment le mot.
+   - **Ta décision :** pour garder un fichier mis en quarantaine, mets son nom dans `clean/dis_iris/garder.txt`. Pour écarter un fichier, mets-le dans `exclure.txt`. Puis relance.
+3. **Découpage figé** (`~/oniris-wakeword/split_dis_iris.json`, par empreinte audio).
+   - Un fichier déjà classé ne change jamais de côté.
+   - Au premier passage, le test du dernier entraînement est repris tel quel.
+   - Une nouvelle prise guidée va **entière** en entraînement ou en test (20 % des prises vont en test).
+   - Les positifs appris vont en entraînement seulement. Les négatifs deviennent des négatifs durs.
+   - Ta voix pèse environ 10 % des positifs, contre 20 000 synthétiques. Bruit, réverbération et volume viennent de l'augmentation du kit.
+4. **Entraînement :** clips manquants, caractéristiques, puis 4 variantes (`GRID`, 2 à la fois avec `JOBS=2`, 60 000 pas).
+5. **Garde-fou** (`gate.py`). Le modèle livré et chaque variante sont mesurés **exactement pareil** : même test figé de ta voix (même mélange d'ambiance), mêmes clips synthétiques, mêmes 11,3 h de négatifs. Pour chaque objectif, 0,5 puis 0,1 faux déclenchement par heure, on prend le seuil le plus bas qui le tient. Une variante n'est promue que si, aux deux objectifs, elle respecte ces trois conditions :
+   - elle tient l'objectif si le modèle livré le tient ;
+   - elle ne fait pas plus de faux déclenchements ;
+   - elle ne reconnaît pas moins ta voix.
+
+   L'ancien modèle est d'abord sauvegardé dans `~/oniris-wakeword/output/backups/` (modèle, `SHA256SUMS`, fixture). Le gagnant est copié dans `src-tauri/resources/wake` avec `SHA256SUMS` et la fixture (`make_fixture.py`). Si la fixture échoue, l'ancien modèle est remis. Sinon, l'ancien modèle reste en place.
+
+Le rapport est dans `~/oniris-wakeword/output/rapport_dis_iris_<date>.md`. Il donne :
+- les données gardées, rejetées et en quarantaine ;
+- les scores de l'ancien modèle et des variantes ;
+- la décision et le seuil conseillé.
+
+`WAKE_THRESHOLD` (`src-tauri/src/modules/voice/wake.rs`) n'est **jamais** modifié automatiquement : le rapport donne la ligne à changer.
+
+Options :
+- `NO_PROMOTE=1` : mesurer sans rien remplacer.
+- `GRID=128:1000:300,128:2500:300` : autres variantes.
+- `JOBS=1` : si la mémoire manque.
+- `LONG="/mnt/c/.../soiree.wav"` : audio long sans « Iris », ajouté aux négatifs de mesure.
+
+Tests des parties sans données lourdes : `py -3.12 tools\wakeword\test_retrain.py`.
+
+L'ancien `retrain.sh` remplace le modèle sans garde-fou : préfère `retrain_all.sh`.
 
 ### 4. Passage à la partie B
 

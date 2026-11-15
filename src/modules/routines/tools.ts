@@ -12,11 +12,14 @@ export type ArgField = {
 };
 
 const app: ArgField = { key: "key", title: "Application", kind: "text", required: true, placeholder: "Steam" };
+const screens: [string, string][] = [["gauche", "Gauche"], ["droite", "Droite"], ["principal", "Principal"], ["secondaire", "Secondaire"], ["1", "Écran 1"], ["2", "Écran 2"], ["3", "Écran 3"]];
+const layout: ArgField = { key: "layout", title: "Disposition", kind: "choice", choices: [["plein", "Plein écran"], ["gauche", "Moitié gauche"], ["droite", "Moitié droite"], ["centre", "Centrée"]] };
 
 export const TOOLS: Record<string, { label: string; fields: ArgField[]; confirm?: boolean }> = {
-  "apps.launch": { label: "Lancer une application", fields: [app] },
+  "apps.launch": { label: "Lancer une application", fields: [app, { key: "screen", title: "Écran", kind: "choice", choices: screens }, layout, { key: "keep_focus", title: "Garder le focus", kind: "bool" }] },
   "apps.focus": { label: "Mettre une application au premier plan", fields: [app] },
   "apps.close": { label: "Fermer une application", fields: [app], confirm: true },
+  "apps.move": { label: "Déplacer une application sur un écran", fields: [app, { key: "screen", title: "Écran", kind: "choice", required: true, choices: screens }, layout] },
   "pc.volume": { label: "Régler le son du PC", fields: [{ key: "percent", title: "Volume", kind: "number", min: 0, max: 100 }, { key: "muted", title: "Couper le son", kind: "bool" }] },
   "pc.bluetooth": { label: "Activer ou couper le Bluetooth", fields: [{ key: "on", title: "Bluetooth activé", kind: "bool", required: true }] },
   "music.play_playlist": { label: "Lancer une playlist Spotify", fields: [{ key: "name", title: "Playlist", kind: "text", required: true, placeholder: "Focus" }] },
@@ -33,11 +36,11 @@ export const TOOLS: Record<string, { label: string; fields: ArgField[]; confirm?
   "reminders.create": { label: "Créer un rappel", fields: [{ key: "text", title: "Rappel", kind: "text", required: true, placeholder: "dans 1 h faire une pause" }] },
 };
 
-/** Arguments par défaut d'un outil (choix : la première option ; interrupteur obligatoire : vrai). */
+/** Arguments par défaut d'un outil (choix obligatoire : la première option ; interrupteur obligatoire : vrai). */
 export function defaultArgs(tool: string): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const f of TOOLS[tool]?.fields ?? []) {
-    if (f.kind === "choice" && f.choices) out[f.key] = f.choices[0][0];
+    if (f.kind === "choice" && f.choices && f.required) out[f.key] = f.choices[0][0];
     if (f.kind === "bool" && f.required) out[f.key] = true;
   }
   return out;

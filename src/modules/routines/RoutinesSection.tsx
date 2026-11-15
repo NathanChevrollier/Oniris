@@ -23,8 +23,9 @@ function ArgInput({ f, value, onChange, favorites }: { f: ArgField; value: unkno
     return (
       <label className="rt-arg">{label}
         <select className="set-select" value={value === undefined ? "" : String(value)}
-          onChange={(e) => onChange(f.kind === "favorite" ? (e.target.value ? Number(e.target.value) : undefined) : e.target.value)}>
+          onChange={(e) => onChange(!e.target.value ? undefined : f.kind === "favorite" ? Number(e.target.value) : e.target.value)}>
           {f.kind === "favorite" && <option value="">Choisir…</option>}
+          {f.kind === "choice" && !f.required && <option value="">—</option>}
           {opts.map(([o, l]) => <option key={o} value={o}>{l}</option>)}
         </select>
       </label>

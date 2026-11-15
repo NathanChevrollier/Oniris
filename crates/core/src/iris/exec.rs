@@ -248,7 +248,7 @@ mod tests {
     #[test]
     fn wire_aller_retour_sur_tous_les_noms() {
         let names = [
-            "accounts.list", "agenda.create_event", "agenda.delete_event", "agenda.list", "agenda.move_event", "apps.launch",
+            "accounts.list", "agenda.create_event", "agenda.delete_event", "agenda.list", "agenda.move_event", "apps.launch", "apps.move",
             "calendar.list", "clipboard.search", "favorites.add", "favorites.delete", "favorites.open", "files.open", "files.run",
             "focus.start", "iris.ask_claude", "iris.digest", "iris.inspect", "mail.archive", "mail.delete", "mail.list", "mail.mark_read", "mail.open_link", "mail.open_web",
             "mail.read", "mail.send", "music.devices", "music.next", "music.play_playlist", "music.play_search", "music.previous",

@@ -3,7 +3,8 @@ use async_trait::async_trait;
 use base64::Engine;
 use oniris_core::general::recycle::{restore_from, Recycler};
 use oniris_core::general::shell::{ShellExec, ShellOutput, MAX_OUTPUT};
-use oniris_core::general::windows::WindowControl;
+use oniris_core::general::windows::{choose_window, pick_monitor, target_rect, Before, Layout, Monitor, Placement, Rect, WindowControl, POLL_MS, WAIT_MS};
+use windows::Win32::Foundation::HWND;
 use std::os::windows::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -188,7 +189,6 @@ fn image(pid: u32) -> Option<String> {
     }
 }
 
-/// Fenêtres principales visibles (sans propriétaire) des processus dont l'image est `exe` (casse ignorée).
 /// Fenêtres principales de l'application : par l'exécutable de son raccourci `.lnk`, sinon (jeu `.url`, appli du
 /// Store) par son nom dans le titre de la fenêtre.
 fn app_windows(app_key: &str, title: &str) -> Result<Vec<windows::Win32::Foundation::HWND>, String> {
@@ -239,7 +239,146 @@ fn main_windows(keep: impl Fn(windows::Win32::Foundation::HWND, u32) -> bool) ->
         .collect()
 }
 
+fn hwnd(id: isize) -> HWND {
+    HWND(id as *mut _)
+}
+
+/// Fenêtre au premier plan, sauf si c'est Oniris (le panneau d'où part la demande ne reprend pas la main).
+fn foreground_other() -> Option<isize> {
+    use windows::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowThreadProcessId};
+    let mut pid = 0;
+    // SAFETY: simples lectures ; aucune fenêtre au premier plan : poignée nulle, pid 0.
+    let h = unsafe { GetForegroundWindow() };
+    unsafe { GetWindowThreadProcessId(h, Some(&mut pid)) };
+    (!h.is_invalid() && pid != 0 && pid != std::process::id()).then_some(h.0 as isize)
+}
+
+fn monitors() -> Vec<Monitor> {
+    use windows::core::BOOL;
+    use windows::Win32::Foundation::{LPARAM, RECT};
+    use windows::Win32::Graphics::Gdi::{EnumDisplayMonitors, GetMonitorInfoW, HDC, HMONITOR, MONITORINFO};
+    let rect = |r: RECT| Rect { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
+    unsafe extern "system" fn push(m: HMONITOR, _: HDC, _: *mut RECT, l: LPARAM) -> BOOL {
+        // SAFETY: `l` pointe le Vec ci-dessous, vivant pendant `EnumDisplayMonitors`.
+        unsafe { (*(l.0 as *mut Vec<HMONITOR>)).push(m) };
+        true.into()
+    }
+    let mut hs: Vec<HMONITOR> = vec![];
+    // SAFETY: rappel synchrone ; `hs` survit à l'appel.
+    let _ = unsafe { EnumDisplayMonitors(None, None, Some(push), LPARAM(&mut hs as *mut _ as isize)) };
+    hs.into_iter()
+        .filter_map(|m| {
+            let mut info = MONITORINFO { cbSize: size_of::<MONITORINFO>() as u32, ..Default::default() };
+            // SAFETY: `info` local, taille renseignée.
+            unsafe { GetMonitorInfoW(m, &mut info) }.as_bool().then(|| Monitor { area: rect(info.rcMonitor), work: rect(info.rcWork) })
+        })
+        .collect()
+}
+
+/// Nouvelle fenêtre de l'application (ou, instance unique, sa fenêtre existante), sondée jusqu'à `WAIT_MS`.
+fn wait_window(app_key: &str, title: &str, before: &Before) -> Result<HWND, String> {
+    let start = std::time::Instant::now();
+    loop {
+        let now: Vec<isize> = app_windows(app_key, title)?.into_iter().map(|h| h.0 as isize).collect();
+        let waited = start.elapsed().as_millis() as u64;
+        if let Some(h) = choose_window(&before.windows, &now, waited) {
+            return Ok(hwnd(h));
+        }
+        if waited >= WAIT_MS {
+            return Err("sa fenêtre n'est pas apparue à temps".into());
+        }
+        std::thread::sleep(Duration::from_millis(POLL_MS));
+    }
+}
+
+// shortcut: les bordures invisibles de Windows 10/11 laissent ~7 px de marge aux moitiés ; passer par DWM si ça gêne.
+fn move_window(h: HWND, p: Placement, keep_focus: bool) -> Result<(), String> {
+    use windows::Win32::Foundation::RECT;
+    use windows::Win32::UI::WindowsAndMessaging::{GetWindowRect, IsIconic, IsZoomed, SetWindowPos, ShowWindow, SET_WINDOW_POS_FLAGS, SWP_NOACTIVATE, SWP_NOZORDER, SW_MAXIMIZE, SW_RESTORE, SW_SHOW, SW_SHOWNOACTIVATE};
+    let m = pick_monitor(&monitors(), p.screen)?;
+    // SAFETY: appels sur une fenêtre existante (au pire fermée entre-temps : échec sans effet).
+    unsafe {
+        if IsIconic(h).as_bool() || IsZoomed(h).as_bool() {
+            // Une fenêtre maximisée ne se déplace pas : on la restaure d'abord.
+            let _ = ShowWindow(h, if keep_focus { SW_SHOWNOACTIVATE } else { SW_RESTORE });
+        }
+        let mut cur = RECT::default();
+        GetWindowRect(h, &mut cur).map_err(|e| format!("fenêtre illisible : {e}"))?;
+        let t = target_rect(m.work, p.layout, (cur.right - cur.left, cur.bottom - cur.top));
+        let flags = SWP_NOZORDER | if keep_focus { SWP_NOACTIVATE } else { SET_WINDOW_POS_FLAGS(0) };
+        // Deux fois : en changeant d'écran, la fenêtre peut se redimensionner pour le DPI du nouvel écran.
+        for _ in 0..2 {
+            SetWindowPos(h, None, t.left, t.top, t.right - t.left, t.bottom - t.top, flags).map_err(|e| format!("Windows a refusé de déplacer la fenêtre : {e}"))?;
+        }
+        let _ = ShowWindow(h, match (p.layout, keep_focus) {
+            (Layout::Full, _) => SW_MAXIMIZE,
+            (_, true) => SW_SHOWNOACTIVATE,
+            _ => SW_SHOW,
+        });
+    }
+    Ok(())
+}
+
+/// Rend le premier plan à `target`. Windows le refuse à un processus qui n'a pas reçu la dernière entrée : notre
+/// frappe neutre (0xE8, marquée donc ignorée par notre crochet, sans effet dans les applications) lève ce verrou ;
+/// repli : partager un instant la file d'entrée du premier plan actuel.
+fn give_foreground(target: HWND) -> bool {
+    use windows::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
+    use windows::Win32::UI::Input::KeyboardAndMouse::{SendInput, INPUT, KEYBD_EVENT_FLAGS, KEYEVENTF_KEYUP};
+    use windows::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowThreadProcessId, IsWindow, SetForegroundWindow};
+    // SAFETY: appels sur des fenêtres existantes ; l'attache des files est toujours défaite.
+    unsafe {
+        if !IsWindow(Some(target)).as_bool() {
+            return false;
+        }
+        if GetForegroundWindow() == target {
+            return true;
+        }
+        let keys = [crate::hotkey::marked_key(0xE8, KEYBD_EVENT_FLAGS(0)), crate::hotkey::marked_key(0xE8, KEYEVENTF_KEYUP)];
+        SendInput(&keys, size_of::<INPUT>() as i32);
+        if !SetForegroundWindow(target).as_bool() {
+            let (fg, me) = (GetWindowThreadProcessId(GetForegroundWindow(), None), GetCurrentThreadId());
+            if fg != 0 && fg != me && AttachThreadInput(fg, me, true).as_bool() {
+                let _ = SetForegroundWindow(target);
+                let _ = AttachThreadInput(fg, me, false);
+            }
+        }
+        GetForegroundWindow() == target
+    }
+}
+
 impl WindowControl for Win32Windows {
+    fn before(&self, app_key: &str, title: &str) -> Before {
+        Before { windows: app_windows(app_key, title).unwrap_or_default().into_iter().map(|h| h.0 as isize).collect(), foreground: foreground_other() }
+    }
+    fn place(&self, app_key: &str, title: &str, placement: Option<Placement>, before: Option<&Before>, keep_focus: bool) -> Result<bool, String> {
+        use windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
+        let fg = match before {
+            Some(b) => b.foreground,
+            None => foreground_other(),
+        };
+        let h = match before {
+            Some(b) => wait_window(app_key, title, b)?,
+            None => *app_windows(app_key, title)?.first().ok_or("aucune fenêtre ouverte pour cette application")?,
+        };
+        if let Some(p) = placement {
+            move_window(h, p, keep_focus)?;
+        }
+        let Some(f) = fg.map(hwnd).filter(|_| keep_focus) else { return Ok(true) };
+        let mut ok = give_foreground(f);
+        if before.is_some() {
+            // L'application qui finit de démarrer peut reprendre le premier plan juste après : on veille une seconde.
+            for _ in 0..4 {
+                std::thread::sleep(Duration::from_millis(250));
+                // SAFETY: simple lecture.
+                if unsafe { GetForegroundWindow() } == h && h != f {
+                    ok = give_foreground(f);
+                }
+            }
+        }
+        Ok(ok)
+    }
+
     fn focus(&self, app_key: &str, title: &str) -> Result<(), String> {
         use windows::Win32::UI::WindowsAndMessaging::{IsIconic, SetForegroundWindow, ShowWindow, SW_RESTORE};
         let h = *app_windows(app_key, title)?.first().ok_or("aucune fenêtre ouverte pour cette application")?;

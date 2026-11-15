@@ -40,5 +40,7 @@ it("création : champ obligatoire vérifié avant l'enregistrement", async () =>
 it("arguments par défaut", () => {
   expect(defaultArgs("projects.resume")).toEqual({ mode: "normal" });
   expect(defaultArgs("pc.bluetooth")).toEqual({ on: true });
+  expect(defaultArgs("apps.move")).toEqual({ screen: "gauche" });
+  expect(defaultArgs("apps.launch")).toEqual({});
   expect(missingField("music.toggle", {})).toBeNull();
 });

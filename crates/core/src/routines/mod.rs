@@ -20,10 +20,11 @@ const KEY: &str = "routines";
 
 /// Seuls outils permis dans une étape, avec leur libellé (miroir de `src/modules/routines/tools.ts`).
 /// Jamais `files.run`, le shell, les mails ni l'alimentation.
-pub const ALLOWED: [(&str, &str); 17] = [
+pub const ALLOWED: [(&str, &str); 18] = [
     ("apps.launch", "Lancer une application"),
     ("apps.focus", "Mettre une application au premier plan"),
     ("apps.close", "Fermer une application"),
+    ("apps.move", "Déplacer une application sur un écran"),
     ("pc.volume", "Régler le son du PC"),
     ("pc.bluetooth", "Activer ou couper le Bluetooth"),
     ("music.play_playlist", "Lancer une playlist Spotify"),

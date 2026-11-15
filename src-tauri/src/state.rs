@@ -181,7 +181,8 @@ pub fn tools(d: ToolDeps) -> Vec<Arc<dyn Tool>> {
     let snapshot: oniris_core::system::tools::Snapshot = Arc::new(crate::modules::system::snapshot);
     tools.extend(oniris_core::system::tools::all(&snapshot));
     tools.extend(oniris_core::weather::tools::all(&db));
-    tools.extend(oniris_core::apps::tools::all(&opener, roots, &apps));
+    let win: Arc<dyn oniris_core::general::windows::WindowControl> = Arc::new(crate::modules::general::Win32Windows);
+    tools.extend(oniris_core::apps::tools::all(&opener, roots, &apps, &win));
     tools.extend(oniris_core::favorites::tools::all(&db, &events, &opener));
     tools.extend(oniris_core::iris::memory::all(&db, &events));
     tools.extend(oniris_core::projects::tools::all(&projects));
@@ -199,7 +200,6 @@ pub fn tools(d: ToolDeps) -> Vec<Arc<dyn Tool>> {
     tools.extend(oniris_core::general::shell::all(&shell, allowlist, home, Arc::new(move || elevated)));
     let recycler: Arc<dyn oniris_core::general::recycle::Recycler> = Arc::new(crate::modules::general::ShellRecycler);
     tools.extend(oniris_core::general::files::all(&recycler, work_dirs, oniris_core::general::files::protected_dirs()));
-    let win: Arc<dyn oniris_core::general::windows::WindowControl> = Arc::new(crate::modules::general::Win32Windows);
     tools.extend(oniris_core::general::windows::all(&win, &apps));
     let pc: Arc<dyn oniris_core::general::pc::PcControl> = Arc::new(crate::modules::pc::Win32Pc);
     tools.extend(oniris_core::general::pc::all(&pc));

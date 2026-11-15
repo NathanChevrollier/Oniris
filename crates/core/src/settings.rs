@@ -110,6 +110,8 @@ pub struct Settings {
     pub hide_pill_in_fullscreen: bool,
     /// Veille : la pilule se cache et réapparaît quand le curseur touche le haut de l'écran, au milieu.
     pub pill_sleep: bool,
+    /// Le panneau reste ouvert quand on clique ou travaille sur un autre écran que le sien.
+    pub panel_keep_on_other_screen: bool,
     /// La pilule affiche le titre en cours et le nombre de mails à traiter.
     pub pill_extras: bool,
     /// Moteur de « Rechercher sur le web » de la palette : `google`, `duckduckgo` ou `bing`.
@@ -210,6 +212,7 @@ impl Default for Settings {
             auto_update: true,
             hide_pill_in_fullscreen: true,
             pill_sleep: false,
+            panel_keep_on_other_screen: false,
             pill_extras: true,
             web_search_engine: "google".into(),
             timeline_start_hour: 8,

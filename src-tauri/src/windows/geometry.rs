@@ -14,6 +14,11 @@ pub fn pill_rect(monitor: Rect, scale: f64, content_width_logical: f64, asleep: 
     Rect { x: monitor.x + (monitor.w as i32 - w as i32) / 2, y: monitor.y, w, h }
 }
 
+/// Le point (pixels physiques) est-il sur cet écran ? Bords droit et bas exclus, comme Windows.
+pub fn contains(r: Rect, (x, y): (i32, i32)) -> bool {
+    x >= r.x && y >= r.y && (x as i64) < r.x as i64 + r.w as i64 && (y as i64) < r.y as i64 + r.h as i64
+}
+
 pub fn panel_rect(monitor: Rect) -> Rect {
     monitor
 }
@@ -42,6 +47,12 @@ mod tests {
     fn pill_en_veille_bande_fine_en_haut() {
         let m = Rect { x: 0, y: 0, w: 2560, h: 1440 };
         assert_eq!(pill_rect(m, 1.5, 400.0, true), Rect { x: 980, y: 0, w: 600, h: 3 });
+    }
+    #[test]
+    fn point_sur_l_ecran_ou_a_cote() {
+        let m = Rect { x: 0, y: 0, w: 2560, h: 1440 };
+        assert!(contains(m, (0, 0)) && contains(m, (2559, 1439)));
+        assert!(!contains(m, (2560, 10)) && !contains(m, (-1920, 300)) && !contains(m, (100, 1440)));
     }
     #[test]
     fn panel_couvre_l_ecran() {

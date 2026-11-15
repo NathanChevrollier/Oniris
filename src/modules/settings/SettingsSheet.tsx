@@ -123,6 +123,7 @@ const CATS: { id: SettingsCat; icon: LucideIcon; title: string; intro: string; p
       <Toggle k="hover_open" label="Ouvrir au survol" desc="Le panneau s'ouvre quand le curseur reste sur la pilule." />
       <Field k="hover_delay_ms" label="Délai de survol" unit="ms" />
       <Toggle k="hide_pill_in_fullscreen" label="Masquer en plein écran" desc="Pendant un jeu ou une vidéo en plein écran." />
+      <Toggle k="panel_keep_on_other_screen" label="Rester ouvert sur les autres écrans" desc="Le panneau ne se replie pas quand tu cliques ou travailles sur un autre écran. Un clic à côté sur son écran le ferme toujours." />
       <Toggle k="pill_sleep" label="Pilule en veille" desc="Cachée, elle réapparaît quand le curseur touche le haut de l'écran, au milieu." />
       <Toggle k="pill_extras" label="Afficher la musique et les mails dans la pilule" desc="Le titre en cours pendant la lecture et le nombre de mails à traiter. Un clic ouvre le panneau." />
     </Group>

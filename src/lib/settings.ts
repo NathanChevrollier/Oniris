@@ -29,6 +29,7 @@ export type Settings = {
   auto_update: boolean;
   hide_pill_in_fullscreen: boolean;
   pill_sleep: boolean;
+  panel_keep_on_other_screen: boolean;
   /** La pilule affiche le titre en cours et le nombre de mails à traiter. */
   pill_extras: boolean;
   /** Moteur de « Rechercher sur le web » de la palette. */
@@ -121,6 +122,7 @@ export const DEFAULT_SETTINGS: Settings = {
   auto_update: true,
   hide_pill_in_fullscreen: true,
   pill_sleep: false,
+  panel_keep_on_other_screen: false,
   pill_extras: true,
   web_search_engine: "google",
   timeline_start_hour: 8,

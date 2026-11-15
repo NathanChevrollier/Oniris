@@ -159,12 +159,22 @@ pub fn close_on_blur(app: AppHandle) {
     std::thread::spawn(move || {
         std::thread::sleep(BLUR_DEBOUNCE);
         let refocused = window(&app, "panel").and_then(|w| w.is_focused()).unwrap_or(false);
-        if !refocused && app.state::<AppState>().panel_open.load(Ordering::SeqCst) {
+        let keep = app.state::<AppState>().settings.read().panel_keep_on_other_screen
+            && cursor().is_some_and(|c| primary(&app).is_ok_and(|(m, _)| !geometry::contains(m, c)));
+        if !refocused && !keep && app.state::<AppState>().panel_open.load(Ordering::SeqCst) {
             if let Err(e) = close_panel(&app) {
                 tracing::error!("oniris: fermeture du panneau sur perte de focus : {e}");
             }
         }
     });
+}
+
+/// Position du curseur (pixels physiques du bureau virtuel).
+fn cursor() -> Option<(i32, i32)> {
+    let mut p = ::windows::Win32::Foundation::POINT::default();
+    // SAFETY: simple lecture dans une structure locale.
+    unsafe { ::windows::Win32::UI::WindowsAndMessaging::GetCursorPos(&mut p) }.ok()?;
+    Some((p.x, p.y))
 }
 
 #[cfg(test)]

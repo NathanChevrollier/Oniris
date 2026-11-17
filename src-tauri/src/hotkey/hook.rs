@@ -72,6 +72,10 @@ struct Chord {
 struct Decision {
     swallow: bool,
     inject_mask: bool,
+    /// Relâchement d'Alt/Win retenu puis rejoué APRÈS le masque : une frappe injectée depuis le crochet n'est
+    /// traitée qu'après l'événement en cours, donc laisser passer le vrai relâchement arrivait parfois avant
+    /// le masque, et Windows ouvrait le menu Démarrer (ou la barre de menu pour Alt).
+    replay_up: Option<u16>,
     key_event: Option<KeyEvent>,
     /// Win relâchée seule (option `win_alone`) : basculer le panneau.
     toggle: bool,
@@ -122,6 +126,8 @@ fn decide(
         // Le masque précède le relâchement de Win : le menu Démarrer ne s'ouvre pas.
         d.toggle = true;
         d.inject_mask = true;
+        d.swallow = true;
+        d.replay_up = Some(vk);
     }
     if chord.held_vk == Some(vk) {
         // Répétition automatique avalée ; relâchement (quels que soient les modificateurs) : fin du raccourci.
@@ -131,9 +137,11 @@ fn decide(
             d.key_event = Some(KeyEvent::ChordUp { at_ms });
         }
     } else if !down && chord.mask_pending && is_alt_or_win(vk) {
-        // Le modificateur n'est jamais avalé : le masque passe juste avant lui.
+        // Le relâchement du modificateur est rejoué juste après le masque, jamais perdu.
         chord.mask_pending = false;
         d.inject_mask = true;
+        d.swallow = true;
+        d.replay_up = Some(vk);
     } else if down && vk == cfg.vk && mods == Modifiers::of(cfg) {
         chord.held_vk = Some(vk);
         chord.mask_pending |= cfg.alt || cfg.win;
@@ -190,12 +198,14 @@ pub(crate) fn key(vk: u16, flags: KEYBD_EVENT_FLAGS) -> INPUT {
 }
 
 /// Frappe factice glissée avant le relâchement d'Alt/Win : l'application au premier plan n'active pas sa
-/// barre de menu (ni le menu Démarrer pour Win).
-fn mask_menu() {
-    let inputs = [
-        key(MENU_MASK_VK, KEYBD_EVENT_FLAGS(0)),
-        key(MENU_MASK_VK, KEYEVENTF_KEYUP),
-    ];
+/// barre de menu (ni le menu Démarrer pour Win). `up` : relâchement retenu, rejoué dans le même lot, après.
+fn mask_menu(up: Option<u16>) {
+    let mut inputs = vec![key(MENU_MASK_VK, KEYBD_EVENT_FLAGS(0)), key(MENU_MASK_VK, KEYEVENTF_KEYUP)];
+    if let Some(vk) = up {
+        // Win et Alt droite sont des touches étendues : sans ce drapeau, Windows les prendrait pour d'autres.
+        let ext = [VK_LWIN.0, VK_RWIN.0, VK_RMENU.0].contains(&vk);
+        inputs.push(key(vk, if ext { KEYEVENTF_KEYUP | windows::Win32::UI::Input::KeyboardAndMouse::KEYEVENTF_EXTENDEDKEY } else { KEYEVENTF_KEYUP }));
+    }
     unsafe { SendInput(&inputs, std::mem::size_of::<INPUT>() as i32) };
 }
 
@@ -257,7 +267,7 @@ unsafe extern "system" fn keyboard_proc(code: i32, wparam: WPARAM, lparam: LPARA
             if let Some(d) = d {
                 // Hors de l'emprunt : SendInput rappelle ce crochet (frappes marquées, donc ignorées).
                 if d.inject_mask {
-                    mask_menu();
+                    mask_menu(d.replay_up);
                 }
                 if d.swallow {
                     return LRESULT(1);
@@ -418,13 +428,15 @@ mod tests {
     }
 
     #[test]
-    fn modificateurs_jamais_avales() {
+    fn modificateurs_jamais_perdus() {
         let mut c = Chord::default();
         assert!(!run(&mut c, VK_LMENU.0, true, NONE).swallow);
         run(&mut c, SPACE, true, ALT);
         for vk in [VK_LMENU.0, VK_RMENU.0, VK_CONTROL.0, VK_SHIFT.0, VK_LWIN.0] {
             assert!(!run(&mut c, vk, true, ALT).swallow);
-            assert!(!run(&mut c, vk, false, ALT).swallow);
+            // Un relâchement retenu est toujours rejoué (après le masque).
+            let up = run(&mut c, vk, false, ALT);
+            assert!(!up.swallow || up.replay_up == Some(vk), "{vk}");
         }
     }
 
@@ -437,6 +449,8 @@ mod tests {
             run(&mut c, VK_LMENU.0, false, ALT),
             Decision {
                 inject_mask: true,
+                swallow: true,
+                replay_up: Some(VK_LMENU.0),
                 ..Default::default()
             }
         );
@@ -484,7 +498,8 @@ mod tests {
             assert_eq!(win(&mut c, vk, true, NONE), Decision::default());
             assert_eq!(win(&mut c, vk, true, NONE), Decision::default()); // répétition
             let d = win(&mut c, vk, false, NONE);
-            assert!(d.toggle && d.inject_mask && !d.swallow);
+            // Relâchement retenu puis rejoué après le masque : le menu Démarrer ne peut plus passer avant.
+            assert!(d.toggle && d.inject_mask && d.swallow && d.replay_up == Some(vk));
         }
     }
 

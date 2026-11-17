@@ -1,6 +1,6 @@
 [package]
 name = "oniris"
-version = "1.2.4"
+version = "1.2.5"
 license = "LicenseRef-Proprietary"
 description = "Tableau de bord personnel pour Windows"
 edition = "2021"

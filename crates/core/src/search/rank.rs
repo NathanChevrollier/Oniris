@@ -17,6 +17,8 @@ const NAME_WEIGHT: u32 = 2;
 const PREFIX_BONUS: u32 = 100;
 /// Comme Windows : une application dont le nom correspond passe devant les fichiers et dossiers homonymes.
 const APP_BONUS: u32 = 150;
+/// Appli dont le nom contient la requête : au-dessus de tout score de fichier (nom + chemin restent sous ~2 000).
+const APP_NAMED_BONUS: u32 = 10_000;
 /// Score d'une note trouvée par son corps seul (tous les mots présents) : sous un titre bien noté.
 const NOTE_BODY_SCORE: u32 = 50;
 /// Sous ce nombre d'entrées par fil, le parallélisme ne rapporte rien.
@@ -85,9 +87,9 @@ pub fn query_at(index: &FileIndex, sources: &[&[Item]], usage: &UsageMap, q: &st
     // Mots négatifs (!foo) : jugés sur le chemin complet (ils excluent). Mots positifs : le reste.
     let (neg_words, pos_words): (Vec<&str>, Vec<&str>) = q.split_whitespace().partition(|w| w.starts_with('!'));
     let pos_q = pos_words.join(" ");
-    let pattern = Pattern::parse(&pos_q, CaseMatching::Smart, Normalization::Smart);
+    let pattern = Pattern::parse(&pos_q, CaseMatching::Ignore, Normalization::Smart);
     let neg = (!neg_words.is_empty())
-        .then(|| Pattern::parse(&neg_words.join(" "), CaseMatching::Smart, Normalization::Smart));
+        .then(|| Pattern::parse(&neg_words.join(" "), CaseMatching::Ignore, Normalization::Smart));
     let mut matcher = Matcher::new(Config::DEFAULT.match_paths());
     let mut buf = Vec::new();
     let mut heap = Heap::with_capacity(limit + 1);
@@ -174,7 +176,14 @@ pub fn query_at(index: &FileIndex, sources: &[&[Item]], usage: &UsageMap, q: &st
                 continue;
             }
         }
-        let app = if it.kind == ItemKind::App && t.is_some() { APP_BONUS } else { 0 };
+        // Une appli dont le nom contient tous les mots tapés passe devant tout fichier : sinon, plus le nom est complet,
+        // plus les chemins qui le répètent (« …\Obsidian\.obsidian\… ») la dépassent et la sortent de la liste.
+        let named = !note_words.is_empty() && { let t = fold(&it.title); note_words.iter().all(|w| t.contains(w.as_str())) };
+        let app = match (it.kind == ItemKind::App, named, t.is_some()) {
+            (true, true, _) => APP_NAMED_BONUS,
+            (true, false, true) => APP_BONUS,
+            _ => 0,
+        };
         let total = t.map_or(0, |t| t * NAME_WEIGHT + prefix(&it.title)) + s.unwrap_or(0) + app + extra_bonus(it.kind, &it.key);
         push(&mut heap, limit, total, base + j);
     }
@@ -336,6 +345,19 @@ mod tests {
         let h = query_at(&i, &[&extra], &u, "  ", 10, NOW);
         assert_eq!(keys(&h), ["app1", "C:\\a\\recent", "C:\\a\\vieux"]);
         assert_eq!(query_at(&i, &[&extra], &u, "", 2, NOW).len(), 2);
+    }
+
+    #[test]
+    fn le_nom_complet_d_une_appli_la_garde_en_tete_malgre_un_coffre_homonyme() {
+        // Coffre Obsidian : des dizaines de chemins contenant « obsidian » plusieurs fois.
+        let paths: Vec<String> = (0..60).map(|n| format!(r"C:\Users\n\Documents\Obsidian\Coffre\.obsidian\plugins\obsidian-p{n}\obsidian.json")).collect();
+        let refs: Vec<(&str, bool)> = paths.iter().map(|p| (p.as_str(), false)).collect();
+        let i = idx(&refs);
+        let apps = vec![Item { kind: ItemKind::App, key: r"C:\m\Obsidian.lnk".into(), title: "Obsidian".into(), subtitle: "Application".into() }];
+        for q in ["obsi", "obsidian", "Obsidian", "OBSIDIAN"] {
+            let h = query_at(&i, &[&apps], &UsageMap::new(), q, 30, NOW);
+            assert_eq!(h[0].item.kind, ItemKind::App, "{q}");
+        }
     }
 
     #[test]

@@ -1,11 +1,26 @@
-import { useRef, type MouseEvent, type PointerEvent } from "react";
+import { useRef, useSyncExternalStore, type MouseEvent, type PointerEvent } from "react";
 import { ipc } from "../lib/ipc";
 import type { Settings } from "../lib/settings";
 
-/** Opacité du verre (0..1) : réglage manuel, ou intensité mesurée derrière le panneau (`oniris://glass`) en automatique. */
-export function glassAlpha(mode: Settings["glass_mode"], opacity: number, measured: number | null): number {
-  return mode === "auto" && measured != null ? 0.4 + 0.48 * Math.min(Math.max(measured, 0), 1) : opacity / 100;
+/** Mesure de Rust (`oniris://glass`, backdrop.rs) : opacité lisible, part couverte par une application, et pourquoi. */
+export type GlassMeasure = { base: number; app: number; tone: "sombre" | "chargé" | "clair" };
+
+/**
+ * Opacité du verre (0..1) : réglage manuel, ou mesure en automatique. Une application derrière renforce le verre
+ * (`boost`) ; `opacity` y reste la préférence de l'utilisateur, en décalage autour de 58.
+ */
+export function glassAlpha(mode: Settings["glass_mode"], opacity: number, m: GlassMeasure | null, boost = true): number {
+  if (mode !== "auto" || !m) return opacity / 100;
+  let a = m.base;
+  if (boost && m.app > 0) a = Math.max(a + 0.3 * m.app, 0.55 + 0.3 * m.app);
+  return Math.min(Math.max(a + ((opacity - 58) / 100) * 0.6, 0.25), 0.96);
 }
+
+let measure: GlassMeasure | null = null;
+const subs = new Set<() => void>();
+export const setGlassMeasure = (m: GlassMeasure) => { measure = m; subs.forEach((f) => f()); };
+/** Dernière mesure (panneau et aperçu des Réglages). */
+export const useGlassMeasure = () => useSyncExternalStore((f) => { subs.add(f); return () => void subs.delete(f); }, () => measure);
 
 /** Variable lue par le panneau et les feuilles (fond et flou) : posée sur <html>, aucun rendu React. */
 export const applyGlass = (a: number) => document.documentElement.style.setProperty("--glass-a", a.toFixed(3));

@@ -6,6 +6,9 @@
   --acc:#ff7448; --acc2:#ff3d7f; --blue:#0a84ff; --green:#30d158; --yellow:#ffd60a; --purple:#bf5af2; --teal:#64d2ff;
   --ease:cubic-bezier(.2,.9,.25,1);
 }
+/* Variable typée : le verre automatique change en douceur au lieu de sauter. */
+@property --glass-a{syntax:"<number>";inherits:true;initial-value:.58}
+html{transition:--glass-a .7s ease}
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%;overflow:hidden;background:transparent}
 body{font-family:var(--font);color:var(--txt);-webkit-font-smoothing:antialiased;font-feature-settings:"tnum" 1}

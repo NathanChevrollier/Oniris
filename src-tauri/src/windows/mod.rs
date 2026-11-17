@@ -80,11 +80,14 @@ pub fn open_panel(app: &AppHandle) -> tauri::Result<()> {
         state.prev_foreground.store(foreign_foreground(), Ordering::SeqCst);
     }
     PANEL_GEN.fetch_add(1, Ordering::SeqCst);
-    let m = primary(app)?.0;
-    // Fenêtre déjà visible (fermeture en cours) : la capture verrait le panneau, la valeur précédente reste.
-    if state.settings.read().glass_mode == "auto" && !win.is_visible().unwrap_or(true) {
-        backdrop::sample(app, m);
+    let (m, scale) = primary(app)?;
+    // Fenêtre encore cachée : exclue des captures avant `show`, la première mesure part sans attendre.
+    let (auto, pct) = { let s = state.settings.read(); (s.glass_mode == "auto", s.panel_height_pct) };
+    let first = auto && !win.is_visible().unwrap_or(true);
+    if first {
+        backdrop::exclude(app, true);
     }
+    backdrop::start(app, backdrop::region(m, scale, pct), first);
     apply(&win, panel_rect(m))?;
     win.show()?;
     win.set_focus()?;
@@ -112,6 +115,7 @@ fn motion_reduced(app: &AppHandle) -> bool {
 /// État « fermé » émis tout de suite (le panneau joue sa remontée), fenêtre masquée après `CLOSE_ANIM`
 /// sauf réouverture entre-temps.
 pub fn close_panel(app: &AppHandle) -> tauri::Result<()> {
+    backdrop::stop();
     crate::modules::system::set_sampling(app, false);
     // La pilule affiche le titre en cours : l'écoute SMTC (locale, par événements) reste active si elle le montre.
     let extras = app.state::<AppState>().settings.read().pill_extras;

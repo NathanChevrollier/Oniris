@@ -26,7 +26,7 @@ import { CardGrid } from "./CardGrid";
 import { CommandPalette } from "./CommandPalette";
 import { ConfirmQueue } from "./ConfirmQueue";
 import { Handle } from "./Handle";
-import { applyGlass, glassAlpha, useVoidClick } from "./surface";
+import { applyGlass, glassAlpha, setGlassMeasure, useGlassMeasure, useVoidClick, type GlassMeasure } from "./surface";
 import "../ui/tokens.css";
 import "../ui/glass.css";
 import "../ui/motion.css";
@@ -91,10 +91,11 @@ export function Panel() {
   // Rouvert : le panneau repart de sa place même s'il avait été « tiré » vers le haut par la poignée.
   const panel = useRef<HTMLElement>(null);
   useEffect(() => { document.body.classList.toggle("closed", !open); if (open) panel.current?.style.removeProperty("--pull"); }, [open]);
-  // Verre automatique : intensité du fond mesurée par Rust juste avant chaque ouverture.
-  const [measured, setMeasured] = useState<number | null>(null);
-  useEffect(() => { const un = listen<number>("oniris://glass", (e) => setMeasured(e.payload)); return () => { un.then((f) => f()); }; }, []);
-  useEffect(() => applyGlass(glassAlpha(settings.glass_mode, settings.glass_opacity, measured)), [settings.glass_mode, settings.glass_opacity, measured]);
+  // Verre automatique : fond mesuré par Rust à l'ouverture puis en continu, panneau ouvert.
+  const measured = useGlassMeasure();
+  useEffect(() => { const un = listen<GlassMeasure>("oniris://glass", (e) => setGlassMeasure(e.payload)); return () => { un.then((f) => f()); }; }, []);
+  useEffect(() => applyGlass(glassAlpha(settings.glass_mode, settings.glass_opacity, measured, settings.glass_app_boost)),
+    [settings.glass_mode, settings.glass_opacity, settings.glass_app_boost, measured]);
   const scrim = useVoidClick(() => void ipc.panelClose());
   const pct = settings.panel_height_pct;
   const covered = welcome || accountsOpen || journalOpen || settingsAt !== null;

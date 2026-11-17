@@ -16,11 +16,18 @@ it("poignée : hauteur bornée, fermeture seulement au-delà du seuil", () => {
 });
 
 it("verre : manuel, ou mesuré en automatique (repli sur le manuel avant la première mesure)", () => {
-  expect(glassAlpha("manual", 58, 1)).toBe(0.58);
+  const m = (base: number, app = 0) => ({ base, app, tone: "sombre" as const });
+  expect(glassAlpha("manual", 58, m(0.9))).toBe(0.58);
   expect(glassAlpha("auto", 58, null)).toBe(0.58);
-  expect(glassAlpha("auto", 58, 0)).toBeCloseTo(0.4);
-  expect(glassAlpha("auto", 58, 1)).toBeCloseTo(0.88);
-  expect(glassAlpha("auto", 58, 7)).toBeCloseTo(0.88);
+  expect(glassAlpha("auto", 58, m(0.3))).toBeCloseTo(0.3);
+  // préférence : décalage autour de 58, borné
+  expect(glassAlpha("auto", 95, m(0.3))).toBeCloseTo(0.522);
+  expect(glassAlpha("auto", 20, m(0.3))).toBe(0.25);
+  // application derrière (VS Code mesuré à 0,55) : nettement plus opaque, sauf réglage coupé
+  expect(glassAlpha("auto", 58, m(0.55, 1))).toBeCloseTo(0.85);
+  expect(glassAlpha("auto", 58, m(0.3, 0.5))).toBeCloseTo(0.7);
+  expect(glassAlpha("auto", 58, m(0.55, 1), false)).toBeCloseTo(0.55);
+  expect(glassAlpha("auto", 58, m(0.94, 1))).toBe(0.96);
 });
 
 it("feuille : un clic dans le vide la ferme, jamais un clic dans le contenu ni un glissé parti du contenu", async () => {

@@ -39,6 +39,12 @@ pub fn start(app: &AppHandle) {
 
 pub fn wake() { WAKE.notify_one(); }
 
+/// Relève tout de suite, même si rien n'est dû (un agenda Google vient d'être réaffiché).
+pub fn sync_now() {
+    FORCE.store(true, Ordering::SeqCst);
+    WAKE.notify_one();
+}
+
 /// Une seule passe de tri à la fois.
 static TRIAGING: AtomicBool = AtomicBool::new(false);
 

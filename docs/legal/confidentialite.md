@@ -4,7 +4,7 @@ Version 11 — 13 novembre 2026. Ce document décrit simplement ce qu'Oniris fai
 
 ## En bref
 
-Oniris range tout chez toi, sur ton PC. Il n'envoie aucune statistique d'usage, et il n'y a aucun compte à créer pour l'utiliser. Oniris ne contacte Internet que pour ce que tu as choisi d'activer : la météo (si tu as choisi une ville), les taux de change (quand tu tapes une conversion de devise), les icônes de tes favoris, les sondes de tes sites, le téléchargement de la voix (sur ton clic), la recherche de mises à jour sur GitHub (activée par défaut et désactivable), la voix naturelle Azure (si tu ajoutes ta clé et l'actives) et, si tu connectes tes comptes, Google (Gmail et Agenda) et Spotify. Les comptes ne sont jamais obligatoires : sans eux, rien de tout cela n'est contacté. IRIS, l'assistante, réfléchit d'abord **sur ton PC** ; elle ne passe par Claude (donc par Anthropic) que dans les cas décrits plus bas.
+Oniris range tout chez toi, sur ton PC. Il n'envoie aucune statistique d'usage, et il n'y a aucun compte à créer pour l'utiliser. Oniris ne contacte Internet que pour ce que tu as choisi d'activer : la météo (si tu as choisi une ville), les taux de change (quand tu tapes une conversion de devise), les icônes de tes favoris, les sondes de tes sites, les calendriers en ligne auxquels tu t'abonnes, le téléchargement de la voix (sur ton clic), la recherche de mises à jour sur GitHub (activée par défaut et désactivable), la voix naturelle Azure (si tu ajoutes ta clé et l'actives) et, si tu connectes tes comptes, Google (Gmail et Agenda) et Spotify. Les comptes ne sont jamais obligatoires : sans eux, rien de tout cela n'est contacté. IRIS, l'assistante, réfléchit d'abord **sur ton PC** ; elle ne passe par Claude (donc par Anthropic) que dans les cas décrits plus bas.
 
 ## Où sont tes données
 
@@ -36,7 +36,9 @@ Oniris ne mesure pas ton usage et n'envoie ni rapport de plantage, ni statistiqu
 
 ## Apparence
 
-Avec le verre « Automatique », Oniris regarde l'écran sous le panneau à chaque ouverture, réduit à une image de 32 × 18 points gardée en mémoire le temps d'en calculer la luminosité : cette image n'est jamais enregistrée ni envoyée.
+Avec le verre « Automatique », Oniris regarde l'écran sous le panneau à l'ouverture puis environ toutes les 1,5 seconde tant que le panneau reste ouvert (et dès qu'une fenêtre apparaît, bouge ou disparaît derrière lui). Chaque fois, la zone est réduite à une image de 64 × 36 points, gardée en mémoire le temps d'en calculer la luminosité, les détails et les couleurs, puis effacée : elle n'est jamais enregistrée ni envoyée. Les fenêtres d'Oniris sont retirées de cette capture pendant la mesure. Panneau fermé, plus rien n'est mesuré.
+
+Pour savoir si une application est derrière le panneau, Oniris lit la liste des fenêtres ouvertes en ne regardant que leur position, leur taille, leur type (classe) et leur état (visible, réduite, masquée) : jamais leur titre ni leur contenu. Rien de cette liste n'est conservé.
 
 ## Météo
 
@@ -133,6 +135,12 @@ Si tu as autorisé l'agenda, Oniris lit tes agendas Google **en lecture seule** 
 - Gardés en local, dans `oniris.db` : le **titre**, les horaires, le lieu éventuel et l'agenda d'origine de chaque événement proche. Les invités, les descriptions et les pièces jointes ne sont pas gardés.
 - Ils s'affichent dans la frise et dans la carte Agenda. Retirer le compte efface ces lignes.
 - Les titres d'événements Google ne sont pas gardés dans le journal des actions (seulement le nombre d'événements lus).
+- Oniris garde aussi la **liste de tes agendas** (nom, couleur, principal ou non) et ton choix de les afficher ou non. Un agenda masqué n'est plus relu chez Google et ses événements sont effacés du cache. L'identifiant iCalendar de chaque événement est gardé pour n'afficher qu'une fois un même événement présent dans plusieurs comptes.
+
+## Calendriers importés et en ligne
+
+- **Fichier .ics importé** : lu sur ton PC (5 Mo au maximum) ; ses événements (titre, horaires, lieu, description) sont gardés dans `oniris.db` comme un calendrier local. Rien n'est envoyé à Google ni ailleurs. Supprimer le calendrier efface ses événements.
+- **Calendrier en ligne** (lien `https://` ou `webcal://` que tu colles) : la seule requête envoyée est un téléchargement de **l'adresse que tu as donnée** (et de ses redirections, en https seulement), sans cookie, en s'identifiant « Oniris/0.1 ». Le site qui l'héberge voit, comme tout site web, l'adresse IP de ta connexion, et ton résolveur DNS voit ce nom de domaine. Oniris refuse les adresses de ton réseau local et les fichiers de plus de 5 Mo. Le calendrier est relu au plus toutes les 6 h, seulement quand le panneau est ouvert, et plus du tout s'il est masqué ou supprimé. L'adresse et les événements sont gardés dans `oniris.db` ; le journal ne garde que le nombre d'événements, jamais l'adresse.
 
 ## Musique : lecture Windows et Spotify
 

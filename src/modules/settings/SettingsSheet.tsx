@@ -14,7 +14,8 @@ import { onUpdate, restartText, updateIpc, type UpdateStatus } from "./update";
 import { Appearance } from "./Appearance";
 import { Diagnostics } from "./Diagnostics";
 import { Choice } from "./controls";
-import { Stethoscope } from "lucide-react";
+import { CalendarDays, Stethoscope } from "lucide-react";
+import { AgendaPane } from "../agenda/Calendars";
 import { useVoidClick } from "../../panel/surface";
 import "../accounts/accounts.css";
 import "./settings.css";
@@ -101,7 +102,7 @@ function UpdateInfo() {
   );
 }
 
-export type SettingsCat = "general" | "pill" | "day" | "iris" | "routines" | "voice" | "memory" | "clipboard" | "search" | "updates" | "diagnostic";
+export type SettingsCat = "general" | "pill" | "day" | "agenda" | "iris" | "routines" | "voice" | "memory" | "clipboard" | "search" | "updates" | "diagnostic";
 /** Navigation offerte aux catégories (le diagnostic renvoie vers Comptes ou une autre catégorie). */
 type Nav = { onAccounts: () => void; go: (c: SettingsCat) => void };
 
@@ -143,6 +144,7 @@ const CATS: { id: SettingsCat; icon: LucideIcon; title: string; intro: string; p
       <Field k="mail_poll_minutes" label="Relève des mails" unit="min" min={2} max={5} desc="Toutes les 2 à 5 minutes." />
     </Group>
   </> },
+  { id: "agenda", icon: CalendarDays, title: "Agenda", intro: "Les calendriers affichés dans la carte Agenda, les fichiers .ics importés et les calendriers en ligne.", pane: () => <AgendaPane /> },
   { id: "iris", icon: Sparkles, title: "IRIS", intro: "Les cerveaux d'IRIS, sa personnalité et ce qu'elle peut faire sans te demander.", pane: () => <><IrisBrains /><VisionSection /><IrisPersonality /><IrisSecurity /></> },
   { id: "routines", icon: ListChecks, title: "Routines", intro: "Une phrase, plusieurs actions : « lance le mode jeu » règle le son, coupe le Bluetooth et ouvre Steam.", pane: () => <RoutinesSection /> },
   { id: "voice", icon: Mic, title: "Voix", intro: "Parler à IRIS et l'entendre répondre, avec ou sans la voix naturelle d'Azure.", pane: () => <VoiceSection /> },
@@ -158,6 +160,9 @@ const CATS: { id: SettingsCat; icon: LucideIcon; title: string; intro: string; p
       <Area k="resume_prompt_orchestrator" label="Invite « Reprendre » (orchestrateur)" />
     </Group>
     <section className="set-group"><HiddenProjects /></section>
+    <Group title="Filtres">
+      <Toggle k="search_filters" label="Afficher les filtres de type dans la recherche" desc="Des puces sous la barre (Applis, Fichiers, Notes, Web…) pour limiter la recherche ; aucune cochée = tout. Ctrl+1 à 7 les bascule, Ctrl+0 les efface." />
+    </Group>
     <Group title="Recherche sur le web" note="Rien n'est envoyé tant que tu ne choisis pas « Rechercher sur le web » dans la barre.">
       <Choice k="web_search_engine" label="Moteur" options={[["google", "Google"], ["duckduckgo", "DuckDuckGo"], ["bing", "Bing"]]} />
     </Group>

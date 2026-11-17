@@ -116,6 +116,8 @@ pub struct Settings {
     pub pill_extras: bool,
     /// Moteur de « Rechercher sur le web » de la palette : `google`, `duckduckgo` ou `bing`.
     pub web_search_engine: String,
+    /// Puces de filtre par type sous la barre de recherche.
+    pub search_filters: bool,
     pub timeline_start_hour: u8,
     pub timeline_end_hour: u8,
     pub reduce_motion: bool,
@@ -194,10 +196,12 @@ pub struct Settings {
     pub voice_azure_voice: String,
     /// Hauteur du panneau en % de l'écran : 0 = automatique, sinon 40..=100.
     pub panel_height_pct: u8,
-    /// Verre : `auto` (adapté au fond d'écran, mesuré à l'ouverture) ou `manual` (`glass_opacity`).
+    /// Verre : `auto` (adapté à ce qu'il y a derrière, mesuré panneau ouvert) ou `manual` (`glass_opacity`).
     pub glass_mode: String,
-    /// Opacité du verre en mode manuel, 20..=95 %.
+    /// Opacité du verre, 20..=95 % : valeur en manuel, préférence (décalage autour de 58) en automatique.
     pub glass_opacity: u8,
+    /// Automatique : verre nettement plus opaque quand une application occupe la zone derrière le panneau.
+    pub glass_app_boost: bool,
 }
 
 /// Commandes en lecture seule (aucun de leurs arguments sûrs n'écrit).
@@ -219,6 +223,7 @@ impl Default for Settings {
             panel_keep_on_other_screen: false,
             pill_extras: true,
             web_search_engine: "google".into(),
+            search_filters: true,
             timeline_start_hour: 8,
             timeline_end_hour: 23,
             reduce_motion: false,
@@ -264,6 +269,7 @@ impl Default for Settings {
             panel_height_pct: 0,
             glass_mode: "manual".into(),
             glass_opacity: 58,
+            glass_app_boost: true,
         }
     }
 }

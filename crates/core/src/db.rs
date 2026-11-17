@@ -270,6 +270,38 @@ Migration {
         next_ms INTEGER NOT NULL,
         created_ms INTEGER NOT NULL
     ) STRICT;",
+},
+Migration {
+    version: 20,
+    // Calendriers : Google (un par compte et par agenda), fichier .ics importé ou abonnement (`url`).
+    // `hidden` vide : choix par défaut (coché chez Google, un seul exemplaire d'un agenda partagé par plusieurs comptes).
+    sql: "CREATE TABLE calendars (
+        id INTEGER PRIMARY KEY,
+        kind TEXT NOT NULL CHECK (kind IN ('google', 'file', 'url')),
+        account_id INTEGER,
+        remote_id TEXT,
+        url TEXT,
+        name TEXT NOT NULL,
+        color TEXT,
+        is_primary INTEGER NOT NULL DEFAULT 0,
+        selected INTEGER NOT NULL DEFAULT 1,
+        hidden INTEGER,
+        fetched_ms INTEGER,
+        fetch_error TEXT
+    ) STRICT;
+    CREATE UNIQUE INDEX calendars_google ON calendars(account_id, remote_id) WHERE kind = 'google';
+    CREATE TABLE ics_events (
+        calendar_id INTEGER NOT NULL REFERENCES calendars(id) ON DELETE CASCADE,
+        uid TEXT,
+        title TEXT NOT NULL,
+        start_ms INTEGER NOT NULL,
+        end_ms INTEGER NOT NULL,
+        all_day INTEGER NOT NULL,
+        location TEXT,
+        notes TEXT
+    ) STRICT;
+    CREATE INDEX ics_events_start ON ics_events(start_ms);
+    ALTER TABLE external_events ADD COLUMN ical_uid TEXT;",
 }];
 
 pub fn open_db(path: &Path) -> Result<Connection, CoreError> {

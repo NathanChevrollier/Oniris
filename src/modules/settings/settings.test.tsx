@@ -27,6 +27,8 @@ it("la barre latérale change de catégorie au clic et aux flèches", async () =
   expect(screen.getByLabelText("Ville de la météo")).toBeTruthy();
   expect(screen.queryByLabelText("Prénom")).toBeNull();
   fireEvent.keyDown(screen.getByRole("tab", { name: "Journée" }), { key: "ArrowDown" });
+  expect(screen.getByRole("tab", { name: "Agenda" })).toHaveFocus();
+  fireEvent.keyDown(screen.getByRole("tab", { name: "Agenda" }), { key: "ArrowDown" });
   expect(screen.getByRole("tab", { name: "IRIS" })).toHaveFocus();
   expect(screen.getByRole("heading", { name: "IRIS" })).toBeTruthy();
   fireEvent.keyDown(screen.getByRole("tab", { name: "IRIS" }), { key: "Home" });

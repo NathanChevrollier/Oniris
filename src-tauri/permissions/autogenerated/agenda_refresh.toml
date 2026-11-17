@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-agenda-refresh"
+description = "Enables the agenda_refresh command without any pre-configured scope."
+commands.allow = ["agenda_refresh"]
+
+[[permission]]
+identifier = "deny-agenda-refresh"
+description = "Denies the agenda_refresh command without any pre-configured scope."
+commands.deny = ["agenda_refresh"]

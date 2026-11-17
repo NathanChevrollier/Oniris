@@ -89,6 +89,20 @@ function KindLabel({ kind, path }: { kind: Kind; path: string }) {
   const label = info?.type_name ?? (ext ? `Fichier ${ext.toUpperCase()}` : KIND_LABEL[kind] ?? "");
   return label ? <span className="pal-kind">{label}</span> : null;
 }
+/** Puces de filtre : `kinds` = types envoyés à Rust (« Fichiers » couvre aussi les dossiers) ; « Web » n'a pas de type, c'est la ligne web. */
+export const CHIPS = [
+  { id: "app", label: "Applis", Icon: AppWindow, kinds: ["app"] },
+  { id: "file", label: "Fichiers", Icon: FileText, kinds: ["file", "dir"] },
+  { id: "note", label: "Notes", Icon: StickyNote, kinds: ["note"] },
+  { id: "project", label: "Projets", Icon: FolderGit2, kinds: ["project"] },
+  { id: "favorite", label: "Favoris", Icon: Star, kinds: ["favorite"] },
+  { id: "command", label: "Commandes", Icon: Slash, kinds: ["command", "routine"] },
+  { id: "web", label: "Web", Icon: Globe, kinds: [] },
+] as const satisfies readonly { id: string; label: string; Icon: LucideIcon; kinds: readonly ItemKind[] }[];
+export type ChipId = (typeof CHIPS)[number]["id"];
+/** Types Rust des puces cochées (sans « Web »). */
+const chipKinds = (on: ChipId[]): ItemKind[] => CHIPS.filter((c) => on.includes(c.id)).flatMap((c) => c.kinds as readonly ItemKind[]);
+
 const ENGINES: Record<Settings["web_search_engine"], string> = { google: "Google", duckduckgo: "DuckDuckGo", bing: "Bing" };
 const SCOPES: Record<string, ItemKind> = { p: "project", f: "file", a: "app", b: "favorite", n: "note" };
 
@@ -205,11 +219,12 @@ const FAKE: Hit[] = ([
 ] as const).map(([kind, key, title, subtitle]) => ({ item: { kind, key, title, subtitle }, score: 0 }));
 
 export const searchIpc = {
-  query: (q: string, scope: ItemKind | null, req: number): Promise<SearchResult> => isTauri
-    ? invoke("search_query", { q, scope, req })
-    : Promise.resolve({ req, indexing: true, hits: q.trim()
+  /** `kinds` : types demandés (puces) ; absent ou vide = tout. */
+  query: (q: string, scope: ItemKind | null, req: number, kinds?: ItemKind[]): Promise<SearchResult> => isTauri
+    ? invoke("search_query", { q, scope, req, kinds })
+    : Promise.resolve({ req, indexing: true, hits: (q.trim()
       ? FAKE.filter((h) => (!scope || h.item.kind === scope) && highlight(`${h.item.title} ${h.item.subtitle}`, q).length > 0)
-      : FAKE.slice(3, 7) }),
+      : FAKE.slice(3, 7)).filter((h) => !kinds?.length || kinds.includes(h.item.kind)) }),
   open: (kind: ItemKind, key: string): Promise<Opened> => isTauri ? invoke("search_open", { kind, key }) : Promise.resolve("done"),
   /** « Reprendre » un projet (VS Code + Claude) ; renvoie un message si Claude doit être lancé à la main. */
   resume: (path: string, mode: "normal" | "orchestrator"): Promise<string | null> =>
@@ -224,14 +239,14 @@ export const paletteIpc = {
 };
 
 /** Calcul, conversion d'unités ou de devise en tête ; « Rechercher sur le web » en dernier. Texte libre seulement. */
-export function withExtras(text: string, hits: Hit[], rates: Rates, engine: Settings["web_search_engine"]): Row[] {
+export function withExtras(text: string, hits: Hit[], rates: Rates, engine: Settings["web_search_engine"], chips: ChipId[] = []): Row[] {
   const { q, scope } = parseQuery(text);
   if (scope !== null || !q.trim()) return hits;
   const money = parseMoney(q);
-  const r = convertUnits(q) ?? calc(q) ?? (money && rates && typeof rates === "object" ? convertMoney(money, rates) : null);
+  const r = chips.length ? null : convertUnits(q) ?? calc(q) ?? (money && rates && typeof rates === "object" ? convertMoney(money, rates) : null);
   const top: Row[] = r ? [{ item: { kind: "calc", key: r.copy, title: r.title, subtitle: r.subtitle }, score: 0 }] : [];
   const web: Row = { item: { kind: "web", key: q.trim(), title: `Rechercher « ${q.trim()} » sur ${ENGINES[engine] ?? "Google"}`, subtitle: "Ouvre ton navigateur" }, score: 0 };
-  return [...top, ...hits, web];
+  return [...top, ...hits, ...(!chips.length || chips.includes("web") ? [web] : [])];
 }
 
 /** Numéro de requête, croissant pour toute la vie de la page ; seules les requêtes Rust le consomment : la première
@@ -251,7 +266,10 @@ export function CommandPalette() {
   /** Les lignes ajoutées (calcul, web) suivent la liste : repliées avec elle. */
   const [shown, setShown] = useState(false);
   const [rates, setRates] = useState<Rates>(null);
-  const engine = useSettings().web_search_engine;
+  const { web_search_engine: engine, search_filters: filters } = useSettings();
+  /** Puces cochées, gardées pendant la session du panneau (vidées à sa fermeture) ; sans le réglage, rien ne filtre. */
+  const [picked, setPicked] = useState<ChipId[]>([]);
+  const chips = filters ? picked : [];
   const [sel, setSel] = useState(0);
   const [indexing, setIndexing] = useState(false);
   const [indexed, setIndexed] = useState<number | null>(null);
@@ -270,26 +288,32 @@ export function CommandPalette() {
     setText(""); setHits([]); setShown(false); setSel(0); setMsg(null); setRates(null); clear();
   };
 
-  const search = (t: string) => {
+  const search = (t: string, on: ChipId[] = chips) => {
     setMsg(null); clear();
     queued.current = null; // une Entrée en attente visait l'ancien texte
     const { q, scope } = parseQuery(t);
     setShown(true); setSel(0);
     if (scope === "command") { latest.current = 0; inflight.current = false; queued.current = null; setHits(commandHits(q)); setSel(0); return; }
+    const kinds = scope ? [] : chipKinds(on);
+    // « Web » seul : rien à chercher côté Rust, seule la ligne web reste.
+    if (!scope && on.length && !kinds.length) { latest.current = 0; inflight.current = false; setHits([]); return; }
     const req = ++seq;
     latest.current = req;
     inflight.current = true;
-    searchIpc.query(q, scope, req).then((r) => {
+    (kinds.length ? searchIpc.query(q, scope, req, kinds) : searchIpc.query(q, scope, req)).then((r) => {
       if (r.req !== latest.current) return;
       inflight.current = false;
       setHits(r.hits); setSel(0); setIndexing(r.indexing);
       const e = queued.current;
       queued.current = null;
-      if (e) submit(e.text, withExtras(e.text, r.hits, rates, engine), 0, e.ctrl, e.shift);
+      if (e) submit(e.text, withExtras(e.text, r.hits, rates, engine, on), 0, e.ctrl, e.shift);
     }, () => { if (req === latest.current) { inflight.current = false; queued.current = null; setHits([]); } });
   };
 
   const edit = (t: string) => { setText(t); search(t); };
+
+  const pick = (next: ChipId[]) => { setPicked(next); if (text.trim() || shown) search(text, next); };
+  const toggle = (id: ChipId) => pick(chips.includes(id) ? chips.filter((c) => c !== id) : [...chips, id]);
 
   const runCommand = async (key: string, t: string) => {
     const c = COMMANDS.find((x) => x.key === key);
@@ -334,7 +358,7 @@ export function CommandPalette() {
 
   const submit = (t: string, list: Row[], i: number, ctrl: boolean, shift = false) => {
     // Seule ligne, la recherche web ne prend pas Entrée : le texte libre reste pour IRIS (clic pour le web).
-    const h = list[i]?.item.kind === "web" && i === 0 ? undefined : list[i];
+    const h = list[i]?.item.kind === "web" && i === 0 && !chips.includes("web") ? undefined : list[i];
     // Ctrl+↵ garde son sens sur fichiers, dossiers, projets et commandes ; ailleurs il interroge IRIS (Ctrl+Maj+↵ : Claude).
     if (h && !(shift || (ctrl && !["file", "dir", "project", "command"].includes(h.item.kind)))) return activate(h, ctrl, t);
     if (!t.trim()) return;
@@ -343,7 +367,10 @@ export function CommandPalette() {
 
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.nativeEvent.isComposing) return;
-    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    if (filters && e.ctrlKey && !e.altKey && !e.shiftKey && /^[0-7]$/.test(e.key)) {
+      e.preventDefault(); // Ctrl+1..7 bascule une puce, Ctrl+0 les efface
+      if (e.key === "0") pick([]); else toggle(CHIPS[Number(e.key) - 1].id);
+    } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       e.preventDefault();
       if (!list.length) { search(text); return; } // récents au premier geste, ou liste repliée par un clic ailleurs
       setSel((s) => Math.min(Math.max(s + (e.key === "ArrowDown" ? 1 : -1), 0), list.length - 1));
@@ -366,7 +393,7 @@ export function CommandPalette() {
   useEffect(() => { handlers.current = { reset, edit, collapse }; });
 
   // Ouverture : focus dans la barre, sans recherche ; fermeture : on repart d'une barre vide.
-  useEffect(() => { if (open) input.current?.focus(); else handlers.current.reset(); }, [open]);
+  useEffect(() => { if (open) input.current?.focus(); else { handlers.current.reset(); setPicked([]); } }, [open]);
 
   useEffect(() => {
     const onKey = (e: globalThis.KeyboardEvent) => {
@@ -384,7 +411,7 @@ export function CommandPalette() {
 
   useEffect(() => { document.getElementById(`pal-opt-${sel}`)?.scrollIntoView?.({ block: "nearest" }); }, [sel, hits, shown]);
 
-  const list = shown ? withExtras(text, hits, rates, engine) : hits;
+  const list = shown ? withExtras(text, hits, rates, engine, chips) : hits;
   const wantsRates = shown && parseQuery(text).scope === null && parseMoney(text) !== null;
   // Taux demandés une fois par ouverture (Rust les garde 12 h) ; un échec n'est pas retenté avant la fermeture.
   useEffect(() => {
@@ -448,6 +475,20 @@ export function CommandPalette() {
         aria-autocomplete="list" aria-activedescendant={list.length ? `pal-opt-${sel}` : undefined}
         onChange={(e) => edit(e.target.value)} onKeyDown={onKeyDown}
         onMouseDown={() => { if (!list.length) search(text); }} />
+      {filters && (
+        <div className="pal-chips" role="group" aria-label="Filtrer par type">
+          {CHIPS.map((c, i) => {
+            const on = chips.includes(c.id);
+            const n = shown && text.trim() && (on || !chips.length) ? hits.filter((h) => (c.kinds as readonly string[]).includes(h.item.kind)).length : 0;
+            return (
+              <button key={c.id} type="button" className="pal-chip" aria-pressed={on} title={`${c.label} · Ctrl+${i + 1} · Alt+clic ou double-clic : seulement celle-ci`}
+                onMouseDown={(e) => e.preventDefault()} onClick={(e) => (e.altKey ? pick([c.id]) : toggle(c.id))} onDoubleClick={() => pick([c.id])}>
+                <c.Icon size={13} aria-hidden />{c.label}{n > 0 && <span className="pal-n" aria-label={`${n} résultats`}>{n}</span>}
+              </button>
+            );
+          })}
+        </div>
+      )}
       {!text && !exchanging && (
         <div className="pal-try" role="group" aria-label="Exemples de demandes à IRIS">
           <span>Essaie :</span>

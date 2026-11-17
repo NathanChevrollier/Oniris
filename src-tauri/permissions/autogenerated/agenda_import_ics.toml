@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-agenda-import-ics"
+description = "Enables the agenda_import_ics command without any pre-configured scope."
+commands.allow = ["agenda_import_ics"]
+
+[[permission]]
+identifier = "deny-agenda-import-ics"
+description = "Denies the agenda_import_ics command without any pre-configured scope."
+commands.deny = ["agenda_import_ics"]

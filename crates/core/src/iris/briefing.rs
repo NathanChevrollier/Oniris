@@ -295,7 +295,7 @@ mod tests {
             c.execute("INSERT INTO mails VALUES (1, ?1, 't', ?2, 'x@y.fr', 's', 'e', ?3, 1, '[]', ?4, 'h', NULL, NULL, 0)", params![id, from, date, bucket]).unwrap();
         }
         let acct = crate::accounts::add(&c, crate::oauth::Provider::Google, "moi@gmail.com", 1).unwrap();
-        c.execute("INSERT INTO external_events VALUES (?1, 'e', 'cal', 'Dentiste', ?2, ?3, 0, NULL)", params![acct, at(14, 0), at(15, 0)]).unwrap();
+        c.execute("INSERT INTO external_events VALUES (?1, 'e', 'cal', 'Dentiste', ?2, ?3, 0, NULL, NULL)", params![acct, at(14, 0), at(15, 0)]).unwrap();
         crate::agenda::insert(&c, &crate::agenda::NewEvent { title: "Passé".into(), start_ms: at(8, 0), end_ms: Some(at(9, 0)), ..Default::default() }).unwrap();
         crate::reminders::insert(&c, "dû", Some(at(16, 0))).unwrap();
         crate::reminders::insert(&c, "demain", Some(at(16, 0) + 24 * H)).unwrap();

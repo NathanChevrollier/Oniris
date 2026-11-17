@@ -237,6 +237,24 @@
           "markdownDescription": "Enables the agenda_between command without any pre-configured scope."
         },
         {
+          "description": "Enables the agenda_calendar_delete command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-agenda-calendar-delete",
+          "markdownDescription": "Enables the agenda_calendar_delete command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the agenda_calendar_set_visible command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-agenda-calendar-set-visible",
+          "markdownDescription": "Enables the agenda_calendar_set_visible command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the agenda_calendars command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-agenda-calendars",
+          "markdownDescription": "Enables the agenda_calendars command without any pre-configured scope."
+        },
+        {
           "description": "Enables the agenda_create command without any pre-configured scope.",
           "type": "string",
           "const": "allow-agenda-create",
@@ -249,10 +267,28 @@
           "markdownDescription": "Enables the agenda_delete command without any pre-configured scope."
         },
         {
+          "description": "Enables the agenda_import_ics command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-agenda-import-ics",
+          "markdownDescription": "Enables the agenda_import_ics command without any pre-configured scope."
+        },
+        {
           "description": "Enables the agenda_month_days command without any pre-configured scope.",
           "type": "string",
           "const": "allow-agenda-month-days",
           "markdownDescription": "Enables the agenda_month_days command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the agenda_refresh command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-agenda-refresh",
+          "markdownDescription": "Enables the agenda_refresh command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the agenda_subscribe command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-agenda-subscribe",
+          "markdownDescription": "Enables the agenda_subscribe command without any pre-configured scope."
         },
         {
           "description": "Enables the alarms_cancel command without any pre-configured scope.",
@@ -1107,6 +1143,24 @@
           "markdownDescription": "Denies the agenda_between command without any pre-configured scope."
         },
         {
+          "description": "Denies the agenda_calendar_delete command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-agenda-calendar-delete",
+          "markdownDescription": "Denies the agenda_calendar_delete command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the agenda_calendar_set_visible command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-agenda-calendar-set-visible",
+          "markdownDescription": "Denies the agenda_calendar_set_visible command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the agenda_calendars command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-agenda-calendars",
+          "markdownDescription": "Denies the agenda_calendars command without any pre-configured scope."
+        },
+        {
           "description": "Denies the agenda_create command without any pre-configured scope.",
           "type": "string",
           "const": "deny-agenda-create",
@@ -1119,10 +1173,28 @@
           "markdownDescription": "Denies the agenda_delete command without any pre-configured scope."
         },
         {
+          "description": "Denies the agenda_import_ics command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-agenda-import-ics",
+          "markdownDescription": "Denies the agenda_import_ics command without any pre-configured scope."
+        },
+        {
           "description": "Denies the agenda_month_days command without any pre-configured scope.",
           "type": "string",
           "const": "deny-agenda-month-days",
           "markdownDescription": "Denies the agenda_month_days command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the agenda_refresh command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-agenda-refresh",
+          "markdownDescription": "Denies the agenda_refresh command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the agenda_subscribe command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-agenda-subscribe",
+          "markdownDescription": "Denies the agenda_subscribe command without any pre-configured scope."
         },
         {
           "description": "Denies the alarms_cancel command without any pre-configured scope.",

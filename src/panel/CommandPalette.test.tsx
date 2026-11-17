@@ -1,4 +1,4 @@
-import { render, screen, cleanup, act, fireEvent } from "@testing-library/react";
+import { render, screen, cleanup, act, fireEvent, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { it, expect, vi, afterEach, beforeEach } from "vitest";
 import { CommandPalette, highlight, iconIpc, paletteIpc, parseQuery, searchIpc, shortPath, type Hit, type SearchResult } from "./CommandPalette";
@@ -8,6 +8,7 @@ import { ipc, invoke } from "../lib/ipc";
 import { timersIpc } from "../modules/timers/api";
 import { irisIpc } from "../modules/iris/api";
 import { useIris } from "../modules/iris/store";
+import { DEFAULT_SETTINGS } from "../lib/settings";
 
 // Comme dans Panel.test : « dans Tauri », `invoke` ne répond jamais (les cartes restent vides).
 vi.mock("../lib/ipc", async (orig) => ({
@@ -375,4 +376,67 @@ it("vraies icônes chargées après l'affichage, une demande par appli ou par ex
   expect(dir).toHaveTextContent("Dossier");
   expect(get.mock.calls.filter(([k]) => k === "file")).toHaveLength(1); // deux .odt : une seule demande
   expect(get).not.toHaveBeenCalledWith("dir", expect.anything());
+});
+
+const chip = (name: string) => screen.getByRole("button", { name: new RegExp(`^${name}`) });
+
+it("puces : bascule, plusieurs types, seulement-celle-ci, effacement", async () => {
+  const q = answer();
+  render(<CommandPalette />);
+  expect(screen.getByRole("group", { name: "Filtrer par type" })).toBeInTheDocument();
+  expect(chip("Applis")).toHaveAttribute("aria-pressed", "false");
+  await userEvent.type(bar(), "rapport");
+  expect(q).toHaveBeenLastCalledWith("rapport", null, expect.any(Number)); // aucune cochée = tout
+  await userEvent.click(chip("Applis"));
+  expect(chip("Applis")).toHaveAttribute("aria-pressed", "true");
+  expect(q).toHaveBeenLastCalledWith("rapport", null, expect.any(Number), ["app"]);
+  await userEvent.click(chip("Fichiers"));
+  expect(q).toHaveBeenLastCalledWith("rapport", null, expect.any(Number), ["app", "file", "dir"]);
+  await userEvent.click(chip("Applis")); // décochée
+  expect(q).toHaveBeenLastCalledWith("rapport", null, expect.any(Number), ["file", "dir"]);
+  fireEvent.click(chip("Notes"), { altKey: true });
+  expect(q).toHaveBeenLastCalledWith("rapport", null, expect.any(Number), ["note"]);
+  expect(chip("Fichiers")).toHaveAttribute("aria-pressed", "false");
+  await userEvent.dblClick(chip("Projets"));
+  expect(q).toHaveBeenLastCalledWith("rapport", null, expect.any(Number), ["project"]);
+  expect(chip("Notes")).toHaveAttribute("aria-pressed", "false");
+  expect(bar()).toHaveFocus(); // le clic ne vole pas le focus
+});
+
+it("puces : Ctrl+1..7 bascule, Ctrl+0 efface, vidées à la fermeture du panneau", async () => {
+  const q = answer();
+  render(<CommandPalette />);
+  await userEvent.type(bar(), "rapport");
+  await userEvent.keyboard("{Control>}1{/Control}");
+  expect(q).toHaveBeenLastCalledWith("rapport", null, expect.any(Number), ["app"]);
+  await userEvent.keyboard("{Control>}6{/Control}");
+  expect(q).toHaveBeenLastCalledWith("rapport", null, expect.any(Number), ["app", "command", "routine"]);
+  await userEvent.keyboard("{Control>}0{/Control}");
+  expect(q).toHaveBeenLastCalledWith("rapport", null, expect.any(Number));
+  await userEvent.keyboard("{Control>}2{/Control}");
+  expect(chip("Fichiers")).toHaveAttribute("aria-pressed", "true");
+  act(() => usePanelStore.setState({ open: false }));
+  expect(chip("Fichiers")).toHaveAttribute("aria-pressed", "false");
+});
+
+it("puces : Web coché seul, pas de requête Rust et Entrée lance la recherche web", async () => {
+  const q = answer();
+  const web = vi.spyOn(paletteIpc, "webSearch").mockResolvedValue();
+  render(<CommandPalette />);
+  await userEvent.click(chip("Web"));
+  await userEvent.type(bar(), "chats mignons");
+  expect(q).not.toHaveBeenCalled();
+  expect(screen.getAllByRole("option")).toHaveLength(1);
+  await userEvent.keyboard("{Enter}");
+  expect(web).toHaveBeenCalledWith("chats mignons");
+});
+
+it("réglage coupé : pas de puces, aucun filtre, Ctrl+1 sans effet", async () => {
+  vi.spyOn(ipc, "getSettings").mockResolvedValue({ ...DEFAULT_SETTINGS, search_filters: false });
+  const q = answer();
+  render(<CommandPalette />);
+  await waitFor(() => expect(screen.queryByRole("group", { name: "Filtrer par type" })).toBeNull());
+  await userEvent.type(bar(), "rapport");
+  await userEvent.keyboard("{Control>}1{/Control}");
+  expect(q).toHaveBeenLastCalledWith("rapport", null, expect.any(Number));
 });

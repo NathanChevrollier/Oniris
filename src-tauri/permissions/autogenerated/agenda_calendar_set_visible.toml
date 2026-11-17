@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-agenda-calendar-set-visible"
+description = "Enables the agenda_calendar_set_visible command without any pre-configured scope."
+commands.allow = ["agenda_calendar_set_visible"]
+
+[[permission]]
+identifier = "deny-agenda-calendar-set-visible"
+description = "Denies the agenda_calendar_set_visible command without any pre-configured scope."
+commands.deny = ["agenda_calendar_set_visible"]

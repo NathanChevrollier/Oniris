@@ -42,3 +42,12 @@
 .pal-ico img{width:20px;height:20px;object-fit:contain}
 .pal-ico.k-routine{color:var(--teal)}
 .pal-kind{position:relative;flex:none;max-width:120px;font-size:11px;color:var(--txt3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* Puces de filtre par type : sous la barre, aucune cochée = tout. */
+.pal-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.pal-chip{display:inline-flex;align-items:center;gap:5px;height:26px;padding:0 10px;border-radius:13px;font:500 12px var(--font);color:var(--txt2);
+  background:rgba(255,255,255,.06);border:1px solid var(--line2);cursor:pointer;transition:transform .12s var(--ease),opacity .12s}
+.pal-chip:hover{color:var(--txt)}
+.pal-chip:active{transform:scale(.96)}
+.pal-chip[aria-pressed="true"]{color:var(--txt);background:rgba(255,140,100,.16);border-color:rgba(255,140,100,.5)}
+.pal-chip:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.pal-n{font-size:11px;color:var(--txt3);font-feature-settings:"tnum" 1}

@@ -1,7 +1,7 @@
 import { render, screen, cleanup, act } from "@testing-library/react";
 import { it, expect, vi, afterEach, beforeEach } from "vitest";
 import { PillTimer } from "./PillTimer";
-import { timersIpc, type Timer } from "./api";
+import { alarmsIpc, timersIpc, type Timer } from "./api";
 
 let changed: (e: { payload: { topic: string } }) => void = () => {};
 vi.mock("../../lib/ipc", async (orig) => ({
@@ -55,4 +55,17 @@ it("un autre sujet ne recharge pas la liste", async () => {
   await flush();
   act(() => changed({ payload: { topic: "notes" } }));
   expect(list).toHaveBeenCalledTimes(1);
+});
+
+it("une alarme qui sonne passe devant le minuteur ; un clic l'arrête sans ouvrir le panneau", async () => {
+  vi.spyOn(timersIpc, "list").mockResolvedValue([timer(1, "a", Date.now() + 60_000)]);
+  vi.spyOn(alarmsIpc, "state").mockResolvedValue({ alarms: [], ringing: [{ id: 3, label: "Réveil", due_ms: Date.now() }] });
+  const stop = vi.spyOn(alarmsIpc, "stop").mockResolvedValue();
+  const parent = vi.fn();
+  render(<div onClick={parent}><PillTimer /></div>);
+  await flush();
+  expect(screen.queryByText("01:00")).toBeNull();
+  screen.getByText("Réveil").click();
+  expect(stop).toHaveBeenCalledOnce();
+  expect(parent).not.toHaveBeenCalled();
 });

@@ -1,15 +1,24 @@
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from "react";
 import { Activity, Bluetooth, BluetoothOff, Lock, Moon, Power, PowerOff, RotateCcw, SlidersHorizontal, Volume2, VolumeX } from "lucide-react";
 import { invoke } from "../lib/ipc";
 import { usePanelStore } from "./store";
+import { Mixer } from "./Mixer";
 import "./quick.css";
 
-/** Miroirs de `modules::pc::PcState` et `oniris_core::general::pc::Power`. */
-export type PcState = { volume: { percent: number; muted: boolean } | null; bluetooth: boolean | null };
+/** Miroirs de `modules::pc::{Sound, PcState, AppRow}`, `modules::audio::Output` et `oniris_core::general::pc::Power`. */
+export type Sound = { volume: { percent: number; muted: boolean } | null; volume_error?: string | null; output?: string | null };
+export type PcState = Sound & { bluetooth: boolean | null };
+export type AppRow = { key: string; name: string; percent: number; muted: boolean; active: boolean; icon: string | null };
+export type Output = { id: string; name: string; percent: number; muted: boolean; default: boolean };
 export type PowerAction = "lock" | "sleep" | "restart" | "shutdown";
 
 export const pcIpc = {
   state: () => invoke<PcState>("pc_state"),
+  sound: () => invoke<Sound>("pc_sound"),
+  apps: () => invoke<AppRow[]>("pc_apps"),
+  setApp: (key: string, percent: number | null, muted: boolean | null) => invoke<void>("pc_set_app", { key, percent, muted }),
+  outputs: () => invoke<Output[]>("pc_outputs"),
+  setOutput: (id: string, percent: number | null, muted: boolean | null) => invoke<void>("pc_set_output", { id, percent, muted }),
   setVolume: (percent: number) => invoke<void>("pc_set_volume", { percent }),
   setMute: (muted: boolean) => invoke<void>("pc_set_mute", { muted }),
   setBluetooth: (on: boolean) => invoke<void>("pc_set_bluetooth", { on }),
@@ -17,6 +26,54 @@ export const pcIpc = {
   windowsSettings: () => invoke<void>("pc_windows_settings"),
   power: (action: PowerAction) => invoke<void>("pc_power", { action }),
 };
+
+/** Une écriture en vol au plus ; la dernière valeur demandée part à la fin de la précédente (curseur qu'on glisse). */
+export function latest<T>(send: (v: T) => Promise<unknown>, onError: (e: unknown) => void) {
+  let busy = false;
+  let next: { v: T } | null = null;
+  const push = (v: T): void => {
+    if (busy) { next = { v }; return; }
+    busy = true;
+    send(v).catch(onError).finally(() => {
+      busy = false;
+      const n = next;
+      next = null;
+      if (n) push(n.v);
+    });
+  };
+  return { push, busy: () => busy };
+}
+
+/** Molette sur un curseur : ±2 %, sans faire défiler le panneau (écouteur non passif, React les rend passifs). */
+export function useWheelStep(ref: RefObject<HTMLElement | null>, step: (delta: number) => void) {
+  const cb = useRef(step);
+  cb.current = step;
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if ((el as HTMLInputElement).disabled || e.deltaY === 0) return;
+      e.preventDefault();
+      cb.current(e.deltaY < 0 ? 2 : -2);
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [ref]);
+}
+
+/** Relecture toutes les 3 s tant que `on` (le volume a pu changer ailleurs : clavier, Windows, casque). */
+export function usePoll(on: boolean, load: () => void, ms = 3000) {
+  const cb = useRef(load);
+  cb.current = load;
+  useEffect(() => {
+    if (!on) return;
+    cb.current();
+    const t = setInterval(() => cb.current(), ms);
+    return () => clearInterval(t);
+  }, [on, ms]);
+}
+
+export const clamp = (n: number) => Math.max(0, Math.min(100, Math.round(n)));
 
 const POWER: { action: PowerAction; label: string; confirm?: string; Icon: typeof Lock }[] = [
   { action: "lock", label: "Verrouiller", Icon: Lock },
@@ -65,12 +122,18 @@ export function QuickControls() {
   const open = usePanelStore((s) => s.open);
   const [st, setSt] = useState<PcState | null>(null);
   const [err, setErr] = useState("");
-  // Une seule écriture du volume en vol ; la dernière valeur du curseur part à la fin de la précédente.
-  const vol = useRef<{ busy: boolean; next: number | null }>({ busy: false, next: null });
+  const touched = useRef(0);
+  const slider = useRef<HTMLInputElement>(null);
+  const writer = useMemo(() => latest((p: number) => pcIpc.setVolume(p), (e) => setErr(String(e))), []);
 
   useEffect(() => {
     if (open) pcIpc.state().then(setSt).catch(() => {});
   }, [open]);
+  // Pas de relecture pendant un glissé ni juste après : le curseur ne saute pas sous la souris.
+  usePoll(open, () => {
+    if (writer.busy() || Date.now() - touched.current < 1500) return;
+    pcIpc.sound().then((s) => setSt((o) => o && { ...o, ...s })).catch(() => {});
+  });
   useEffect(() => {
     if (!err) return;
     const t = setTimeout(() => setErr(""), 5000);
@@ -78,32 +141,31 @@ export function QuickControls() {
   }, [err]);
 
   const fail = (e: unknown) => setErr(String(e));
-  const pushVolume = (percent: number) => {
-    const v = vol.current;
-    if (v.busy) { v.next = percent; return; }
-    v.busy = true;
-    pcIpc.setVolume(percent).catch(fail).finally(() => {
-      v.busy = false;
-      const n = v.next;
-      v.next = null;
-      if (n !== null && n !== percent) pushVolume(n);
-    });
-  };
-
   const volume = st?.volume;
   const bt = st?.bluetooth;
   const muted = !!volume?.muted;
+  const setPercent = (p: number) => {
+    if (!st || !volume) return;
+    touched.current = Date.now();
+    setSt({ ...st, volume: { percent: p, muted: false } });
+    writer.push(p);
+  };
+  useWheelStep(slider, (d) => { if (volume) setPercent(clamp(volume.percent + d)); });
+  const why = !st ? "Lecture du son…" : volume ? `Sortie : ${st.output ?? "par défaut"}` : `Son indisponible : ${st.volume_error ?? "aucune sortie audio"}`;
   return (
     <div className="qc" role="group" aria-label="Contrôles rapides">
       <div className="qc-row">
-        <button type="button" className="qc-btn" disabled={!volume} aria-pressed={muted} aria-label={muted ? "Rétablir le son" : "Couper le son"} title={muted ? "Rétablir le son" : "Couper le son"}
-          onClick={() => { if (!volume) return; setSt({ ...st!, volume: { ...volume, muted: !muted } }); pcIpc.setMute(!muted).catch(fail); }}>
-          {muted ? <VolumeX size={14} /> : <Volume2 size={14} />}
-        </button>
-        <input type="range" className="qc-vol" min={0} max={100} step={1} disabled={!volume} aria-label="Volume" aria-valuetext={`${volume?.percent ?? 0} %`}
-          value={volume?.percent ?? 0} style={{ "--v": `${volume?.percent ?? 0}%` } as CSSProperties}
-          onChange={(e) => { const p = Number(e.target.value); if (!volume) return; setSt({ ...st!, volume: { percent: p, muted: false } }); pushVolume(p); }} />
-        <span className="qc-pct" aria-hidden="true">{volume ? volume.percent : "–"}</span>
+        <div className="qc-sound" title={why}>
+          <button type="button" className="qc-btn" disabled={!volume} aria-pressed={muted} aria-label={muted ? "Rétablir le son" : "Couper le son"}
+            onClick={() => { if (!volume) return; touched.current = Date.now(); setSt({ ...st!, volume: { ...volume, muted: !muted } }); pcIpc.setMute(!muted).catch(fail); }}>
+            {muted ? <VolumeX size={14} /> : <Volume2 size={14} />}
+          </button>
+          <input ref={slider} type="range" className="qc-vol" min={0} max={100} step={1} disabled={!volume} aria-label="Volume" aria-valuetext={`${volume?.percent ?? 0} %`}
+            aria-description={why} value={volume?.percent ?? 0} style={{ "--v": `${volume?.percent ?? 0}%` } as CSSProperties}
+            onChange={(e) => setPercent(Number(e.target.value))} />
+          <span className="qc-pct" aria-hidden="true">{volume ? volume.percent : "–"}</span>
+        </div>
+        <Mixer open={open} onError={fail} />
         <button type="button" className={`qc-btn${bt ? " on" : ""}`} disabled={bt == null} aria-pressed={!!bt}
           aria-label={bt == null ? "Bluetooth indisponible" : bt ? "Désactiver le Bluetooth" : "Activer le Bluetooth"}
           title={bt == null ? "Aucun adaptateur Bluetooth" : bt ? "Bluetooth activé" : "Bluetooth désactivé"}

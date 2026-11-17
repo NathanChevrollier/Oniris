@@ -1,13 +1,16 @@
-.tring{position:relative;width:66px;height:66px;margin:0 auto 4px}
+/* Anneau, alarme qui sonne et saisie fixes ; seule la liste défile (carte à hauteur bornée). */
+.tc{min-height:100%;display:flex;flex-direction:column}
+.grid .tc{height:100%}
+.tring{flex:none;position:relative;width:58px;height:58px;margin:0 auto 4px}
 .tring svg{width:100%;height:100%;transform:rotate(-90deg)}
 .tring circle{fill:none;stroke-width:5}
 .tring .track{stroke:rgba(255,255,255,.1)}
 .tring .arc{stroke:var(--acc);stroke-linecap:round;transition:stroke-dashoffset 1s linear}
 .tmid{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:0 14px;text-align:center}
-.tmid b{font:600 17px var(--font);font-feature-settings:"tnum" 1}
+.tmid b{font:600 15px var(--font);font-feature-settings:"tnum" 1}
 .tmid small{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10.5px;color:var(--txt3)}
-.tlist{list-style:none;margin:0 0 8px;padding:0;display:flex;flex-direction:column;gap:4px;font-size:12.5px}
-.tlist li{display:flex;align-items:center;gap:8px}
+.tlist{flex:1 1 auto;min-height:40px;list-style:none;margin:0 0 6px;padding:0;display:flex;flex-direction:column;gap:4px;font-size:12.5px}
+.tlist li{flex:none;display:flex;align-items:center;gap:8px}
 .tlist span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .tlist time{color:var(--txt3);font-feature-settings:"tnum" 1}
 .card .tlist button{width:20px;height:20px;padding:0;margin:0;display:grid;place-items:center;background:none;border:0;border-radius:50%;color:var(--txt3);cursor:pointer}
@@ -19,3 +22,11 @@
 .tinput{display:block;width:100%;box-sizing:border-box;padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.06);font:12.5px var(--font);color:var(--txt);outline:0;caret-color:var(--acc)}
 .tinput:focus{border-color:rgba(255,140,100,.35)}
 .tinput::placeholder{color:var(--txt3)}
+.tfoot{flex:none}
+.talarm svg{flex:none;color:var(--txt3)}
+.tring-alarm{flex:none;display:flex;align-items:center;gap:8px;margin-bottom:6px;padding:6px 8px;border-radius:12px;
+  background:color-mix(in srgb,var(--acc) 20%,transparent);color:var(--txt);font-size:12.5px;animation:tring-pulse 1.2s ease-in-out infinite alternate}
+.tring-alarm span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.card .tring-alarm button{margin:0;padding:3px 9px;font-size:11.5px;cursor:pointer}
+@keyframes tring-pulse{to{background:color-mix(in srgb,var(--acc) 34%,transparent)}}
+@media (prefers-reduced-motion:reduce){.tring-alarm{animation:none}}

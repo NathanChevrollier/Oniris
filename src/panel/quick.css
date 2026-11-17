@@ -21,3 +21,15 @@
 .qc-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 .qc-err{min-height:14px;font-size:11px;color:var(--yellow);max-width:320px;text-align:right}
 .qc-err:empty{min-height:0}
+.qc-sound{display:flex;align-items:center;gap:6px}
+/* Mélangeur : même verre que le menu d'alimentation, une ligne par application puis par sortie. */
+.qc-menu.mx{width:330px;max-height:min(420px,60vh);overflow-y:auto;padding:6px 8px 8px;gap:2px}
+.mx h4{margin:6px 4px 2px;font:600 10.5px var(--font);letter-spacing:.06em;text-transform:uppercase;color:var(--txt3)}
+.mx ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
+.mx-row{display:grid;grid-template-columns:18px minmax(0,1fr) 96px 28px;align-items:center;gap:8px;padding:3px 4px;border-radius:9px;color:var(--txt2)}
+.mx-row:hover{background:var(--card-h);color:var(--txt)}
+.mx-row.idle .mx-name{color:var(--txt3)}
+.mx-row img{width:16px;height:16px;object-fit:contain}
+.mx-name{font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mx-row .qc-btn{display:inline-grid;place-items:center;width:26px;height:24px;padding:0;border:1px solid var(--line);border-radius:12px;background:rgba(255,255,255,.06)}
+.mx-empty{margin:4px;font-size:12px;color:var(--txt3)}

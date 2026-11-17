@@ -2,11 +2,14 @@ import { render, screen, cleanup } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { it, expect, vi, afterEach, beforeEach } from "vitest";
 import { TimerCard } from "./TimerCard";
-import { timersIpc, type Timer } from "./api";
+import { alarmsIpc, alarmWhen, isAlarmText, timersIpc, type Alarm, type Timer } from "./api";
 import { usePanelStore } from "../../panel/store";
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
-beforeEach(() => usePanelStore.setState({ open: true }));
+beforeEach(() => {
+  usePanelStore.setState({ open: true });
+  vi.spyOn(alarmsIpc, "state").mockResolvedValue({ alarms: [], ringing: [] });
+});
 
 const ok = { Done: { action_id: 1, output: {} } };
 const timer = (id: number, label: string, min: number): Timer =>
@@ -48,4 +51,42 @@ it("le champ libre lance un minuteur et affiche l'échec", async () => {
   expect(start).toHaveBeenCalledWith("1h30 pâtes");
   await userEvent.type(input, "bientôt{Enter}");
   expect(await screen.findByRole("alert")).toHaveTextContent("Durée introuvable — essaie « 10 min pâtes »");
+});
+
+const alarm = (id: number, label: string, days = 0): Alarm =>
+  ({ id, label, hour: 7, minute: 5, days, next_ms: new Date(2026, 10, 5, 7, 5).getTime(), repeat: days ? "en semaine" : "une fois" });
+
+it("le champ reconnaît une alarme, la liste l'affiche et la supprime", async () => {
+  vi.spyOn(timersIpc, "list").mockResolvedValue([]);
+  vi.spyOn(alarmsIpc, "state").mockResolvedValue({ alarms: [alarm(4, "Réveil", 0x1f)], ringing: [] });
+  const set = vi.spyOn(alarmsIpc, "set").mockResolvedValue(ok);
+  const start = vi.spyOn(timersIpc, "start").mockResolvedValue(ok);
+  const cancel = vi.spyOn(alarmsIpc, "cancel").mockResolvedValue(ok);
+  render(<TimerCard />);
+  expect(await screen.findByText("07:05 · en semaine")).toBeInTheDocument();
+  await userEvent.type(screen.getByRole("textbox", { name: "Nouveau minuteur" }), "réveille-moi à 7 h{Enter}");
+  expect(set).toHaveBeenCalledWith("réveille-moi à 7 h");
+  expect(start).not.toHaveBeenCalled();
+  await userEvent.click(screen.getByRole("button", { name: "Supprimer l'alarme Réveil" }));
+  expect(cancel).toHaveBeenCalledWith(4);
+});
+
+it("alarme qui sonne : Arrêter et +5 min", async () => {
+  vi.spyOn(timersIpc, "list").mockResolvedValue([]);
+  vi.spyOn(alarmsIpc, "state").mockResolvedValue({ alarms: [], ringing: [{ id: 1, label: "Réveil", due_ms: 0 }] });
+  const stop = vi.spyOn(alarmsIpc, "stop").mockResolvedValue();
+  const snooze = vi.spyOn(alarmsIpc, "snooze").mockResolvedValue();
+  render(<TimerCard />);
+  await userEvent.click(await screen.findByRole("button", { name: "Arrêter" }));
+  expect(stop).toHaveBeenCalledOnce();
+  await userEvent.click(screen.getByRole("button", { name: "Répéter dans 5 minutes" }));
+  expect(snooze).toHaveBeenCalledOnce();
+});
+
+it("alarme ou minuteur selon le texte, et libellé de l'échéance", () => {
+  for (const t of ["alarme 7h", "Réveille-moi à 7 h", "à 14h30 sport", "demain 8h"]) expect(isAlarmText(t), t).toBe(true);
+  for (const t of ["10 min pâtes", "1h30 pâtes", "25 minutes"]) expect(isAlarmText(t), t).toBe(false);
+  const now = new Date(2026, 10, 4, 22, 0);
+  expect(alarmWhen(alarm(1, "x"), now)).toBe("07:05 · demain");
+  expect(alarmWhen(alarm(1, "x", 0x1f), now)).toBe("07:05 · en semaine");
 });

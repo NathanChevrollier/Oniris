@@ -27,3 +27,36 @@ export function mmss(ms: number): string {
   const s = Math.max(0, Math.ceil(ms / 1000));
   return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 }
+
+/** Miroirs de `oniris_core::alarms::Alarm` et `modules::alarms::{Rung, AlarmsState}`. */
+export type Alarm = { id: number; label: string; hour: number; minute: number; days: number; next_ms: number; repeat: string };
+export type Rung = { id: number; label: string; due_ms: number };
+export type AlarmsState = { alarms: Alarm[]; ringing: Rung[] };
+
+const fakeAlarms = (): AlarmsState => ({
+  alarms: [{ id: 1, label: "Réveil", hour: 7, minute: 0, days: 0x1f, next_ms: Date.now() + 9 * 3_600_000, repeat: "en semaine" }],
+  ringing: [],
+});
+
+export const alarmsIpc = {
+  state: (): Promise<AlarmsState> => isTauri ? invoke("alarms_state") : Promise.resolve(fakeAlarms()),
+  set: (text: string): Promise<ToolOutcome> => isTauri ? invoke("alarms_set", { text }) : Promise.resolve(fakeDone),
+  cancel: (id: number): Promise<ToolOutcome> => isTauri ? invoke("alarms_cancel", { id }) : Promise.resolve(fakeDone),
+  stop: (): Promise<void> => invoke("alarms_stop"),
+  snooze: (): Promise<void> => invoke("alarms_snooze"),
+};
+
+/** Le texte vise une alarme (« alarme 7h », « réveille-moi à 7 h », « à 14h30 », « demain 8h ») plutôt qu'un minuteur. */
+export const isAlarmText = (t: string): boolean =>
+  /^(alarme|r[ée]veil)/i.test(t.trim()) || /(^|\s)à\s*\d/i.test(t) || /\b(demain|minuit)\b/i.test(t);
+
+/** « 07:00 · en semaine », « 07:00 · demain », « 07:00 · mer. 18 ». */
+export function alarmWhen(a: Alarm, now = new Date()): string {
+  const hm = `${String(a.hour).padStart(2, "0")}:${String(a.minute).padStart(2, "0")}`;
+  if (a.days) return `${hm} · ${a.repeat}`;
+  const d = new Date(a.next_ms);
+  const day = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diff = Math.round((day(d) - day(now)) / 86_400_000);
+  const when = diff === 0 ? "aujourd'hui" : diff === 1 ? "demain" : d.toLocaleDateString("fr-FR", { weekday: "short", day: "numeric" });
+  return `${hm} · ${when}`;
+}

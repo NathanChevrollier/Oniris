@@ -79,6 +79,16 @@ pub fn purge(c: &Connection, now: i64, retention_days: u16, max_items: u16) -> R
     Ok(old + over)
 }
 
+/// (total, épinglées).
+pub fn stats(c: &Connection) -> Result<(i64, i64), CoreError> {
+    Ok(c.query_row("SELECT count(*), coalesce(sum(pinned), 0) FROM clipboard", [], |r| Ok((r.get(0)?, r.get(1)?)))?)
+}
+
+/// « Tout effacer » : supprime tout sauf les épinglées. Renvoie le nombre de lignes supprimées.
+pub fn clear_unpinned(c: &Connection) -> Result<usize, CoreError> {
+    Ok(c.execute("DELETE FROM clipboard WHERE pinned = 0", [])?)
+}
+
 /// Minuscules sans accents (« Été » -> « ete ») ; couvre le latin courant, pas toute la table Unicode.
 fn fold(s: &str) -> String {
     s.to_lowercase().chars().fold(String::with_capacity(s.len()), |mut o, ch| {
@@ -182,6 +192,30 @@ mod tests {
         assert_eq!(left[0], "vieux épinglé");
         assert!(left.contains(&"n24".to_string()) && left.contains(&"n5".to_string()));
         assert!(!left.contains(&"n4".to_string()) && !left.contains(&"vieux".to_string()));
+    }
+
+    #[test]
+    fn purge_compte_les_images_et_ne_touche_jamais_aux_epinglees() {
+        let c = db();
+        let pin = record_image(&c, b"p0", b"t", 0).unwrap();
+        set_pinned(&c, pin, true).unwrap();
+        for i in 0..25 { record_image(&c, format!("p{}", i + 1).as_bytes(), b"t", 10 + i).unwrap(); }
+        assert_eq!(purge(&c, 100, 90, 20).unwrap(), 5);
+        assert_eq!(stats(&c).unwrap(), (21, 1));
+        assert_eq!(purge(&c, 100 * DAY_MS, 1, 20).unwrap(), 20, "tout expire sauf l'épinglée");
+        assert_eq!(stats(&c).unwrap(), (1, 1));
+    }
+
+    #[test]
+    fn tout_effacer_garde_les_epinglees() {
+        let c = db();
+        let a = record_text(&c, "a", 1).unwrap();
+        record_text(&c, "b", 2).unwrap();
+        record_image(&c, b"i", b"t", 3).unwrap();
+        set_pinned(&c, a, true).unwrap();
+        assert_eq!(stats(&c).unwrap(), (3, 1));
+        assert_eq!(clear_unpinned(&c).unwrap(), 2);
+        assert_eq!(texts(&c, ""), vec!["a"]);
     }
 
     #[test]

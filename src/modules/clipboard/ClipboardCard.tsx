@@ -3,6 +3,8 @@ import { ClipboardList, Pin, Search, SearchX, Trash2 } from "lucide-react";
 import { Empty } from "../../ui/Empty";
 import { Card } from "../../ui/Card";
 import { useTopic } from "../../lib/data";
+import { ipc } from "../../lib/ipc";
+import { useSettings } from "../../lib/settings";
 import { useNow } from "../../lib/time";
 import { useFocusCard } from "../../lib/focusCard";
 import { usePanelStore } from "../../panel/store";
@@ -35,6 +37,8 @@ export function ClipboardCard() {
 
   const { data } = useTopic<ClipItem[]>("clipboard", () => clipboardIpc.list(applied), NONE, applied);
 
+  const { clipboard_enabled: enabled } = useSettings();
+  const enable = () => ipc.getSettings().then((s) => ipc.saveSettings({ ...s, clipboard_enabled: true })).then(() => setError(null), () => setError(UNAVAILABLE));
   const run = (p: Promise<void>) => p.then(() => setError(null), () => setError(UNAVAILABLE));
 
   return (
@@ -58,7 +62,9 @@ export function ClipboardCard() {
           </li>
         ))}
       </ul>
-      {data.length === 0 && (applied.trim()
+      {data.length === 0 && (!enabled
+        ? <Empty icon={ClipboardList} tint="#64d2ff" role="status">Historique désactivé · <button type="button" className="clip-enable" onClick={() => void enable()}>Activer</button></Empty>
+        : applied.trim()
         ? <Empty icon={SearchX} tint="#64d2ff" role="status">Rien ne correspond dans tes copies.</Empty>
         : <Empty icon={ClipboardList} tint="#64d2ff">Copie un texte ou une image : tout atterrit ici.</Empty>)}
     </Card>

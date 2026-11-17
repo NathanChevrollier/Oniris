@@ -58,3 +58,15 @@ it("affiche l'erreur quand le collage échoue", async () => {
   await userEvent.click(await screen.findByRole("button", { name: "Coller Adresse du client" }));
   expect(await screen.findByRole("alert")).toHaveTextContent("Presse-papiers indisponible");
 });
+
+it("historique désactivé : état vide clair avec « Activer »", async () => {
+  vi.spyOn(clipboardIpc, "list").mockResolvedValue([]);
+  const { ipc } = await import("../../lib/ipc");
+  const { DEFAULT_SETTINGS } = await import("../../lib/settings");
+  vi.spyOn(ipc, "getSettings").mockResolvedValue({ ...DEFAULT_SETTINGS, clipboard_enabled: false });
+  const save = vi.spyOn(ipc, "saveSettings").mockResolvedValue();
+  render(<ClipboardCard />);
+  await screen.findByText(/Historique désactivé/);
+  await userEvent.click(screen.getByRole("button", { name: "Activer" }));
+  expect(save).toHaveBeenCalledWith(expect.objectContaining({ clipboard_enabled: true }));
+});

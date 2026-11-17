@@ -27,6 +27,7 @@ use chrono::Local;
 use image::{imageops, ImageFormat, RgbaImage};
 use oniris_core::clipboard::{self, should_record, ClipContent, ClipEntry, ClipFlags, MAX_TEXT_BYTES};
 use oniris_core::events::Topic;
+use oniris_core::Settings;
 use serde::Serialize;
 use std::sync::atomic::{AtomicIsize, Ordering};
 use std::sync::mpsc::{channel, Receiver, Sender};
@@ -184,6 +185,25 @@ pub fn clipboard_delete(state: State<AppState>, id: i64) -> Result<(), String> {
     Ok(())
 }
 
+#[derive(Serialize)]
+pub struct ClipStats { total: i64, pinned: i64 }
+
+/// Éléments gardés et, parmi eux, épinglés.
+#[tauri::command(async)]
+pub fn clipboard_stats(state: State<AppState>) -> Result<ClipStats, String> {
+    let (total, pinned) = clipboard::stats(&state.db.lock()).map_err(|e| e.to_string())?;
+    Ok(ClipStats { total, pinned })
+}
+
+/// Efface tout sauf les épinglées ; renvoie le nombre d'éléments supprimés.
+#[tauri::command(async)]
+pub fn clipboard_clear(state: State<AppState>) -> Result<usize, String> {
+    let n = clipboard::clear_unpinned(&state.db.lock()).map_err(|e| e.to_string())?;
+    tracing::info!("presse-papiers : {n} entrées effacées");
+    state.events.changed(Topic::Clipboard);
+    Ok(n)
+}
+
 /// Remet l'entrée dans le presse-papiers (marquée `Oniris.Self`), ferme le panneau, puis après 80 ms rend le
 /// premier plan à la fenêtre d'avant l'ouverture et y colle. Hors du thread principal (ouverture du presse-papiers).
 #[tauri::command(async)]
@@ -222,10 +242,25 @@ fn purge_now(state: &AppState) {
     }
 }
 
+/// Une nouvelle durée ou un nouveau maximum doit s'appliquer tout de suite, pas à la prochaine copie.
+fn purge_needed(old: &Settings, new: &Settings) -> bool {
+    (old.clipboard_retention_days, old.clipboard_max_items) != (new.clipboard_retention_days, new.clipboard_max_items)
+}
+
+/// Appelé par `apply_settings` après la mise à jour de l'état (hors fil principal : verrouille la base).
+pub fn settings_changed(app: &AppHandle, old: &Settings, new: &Settings) {
+    if purge_needed(old, new) {
+        let state = app.state::<AppState>();
+        purge_now(&state);
+        state.events.changed(Topic::Clipboard);
+    }
+}
+
 fn record_loop(app: AppHandle, rx: Receiver<Captured>) {
     purge_now(&app.state::<AppState>()); // ici plutôt que dans `setup` : ne retarde pas le démarrage
     for cap in rx {
         let state = app.state::<AppState>();
+        if !state.settings.read().clipboard_enabled { continue; } // copie déjà en file au moment de la désactivation
         let now = Local::now().timestamp_millis();
         let res = match cap {
             Captured::Text(t) if t.trim().is_empty() => continue,
@@ -308,13 +343,18 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
 /// Réglage relu à chaque copie : désactivé, rien n'est lu.
 fn on_update(hwnd: HWND) {
     let Some(app) = APP.get() else { return };
-    if !app.state::<AppState>().settings.read().clipboard_enabled {
-        return;
-    }
+    let (sensitive, images) = {
+        let state = app.state::<AppState>();
+        let s = state.settings.read();
+        if !s.clipboard_enabled {
+            return;
+        }
+        (s.clipboard_ignore_sensitive, s.clipboard_keep_images)
+    };
     if !open_clipboard(hwnd) {
         return tracing::warn!("presse-papiers : verrouillé par une autre application, copie ignorée");
     }
-    let cap = unsafe { read_open_clipboard() };
+    let cap = unsafe { read_open_clipboard(sensitive, images) };
     let _ = unsafe { CloseClipboard() };
     if let (Some(cap), Some(tx)) = (cap, TX.get()) {
         let _ = tx.send(cap);
@@ -343,7 +383,7 @@ unsafe fn with_data<T>(fmt: u32, f: impl FnOnce(&[u8]) -> Option<T>) -> Option<T
 }
 
 /// Presse-papiers déjà ouvert. Exclusions d'abord : un format présent mais illisible vaut « ne pas garder ».
-unsafe fn read_open_clipboard() -> Option<Captured> {
+unsafe fn read_open_clipboard(ignore_sensitive: bool, keep_images: bool) -> Option<Captured> {
     let f = formats()?;
     let has = |fmt: u32| unsafe { IsClipboardFormatAvailable(fmt) }.is_ok();
     if has(f.own) {
@@ -353,12 +393,15 @@ unsafe fn read_open_clipboard() -> Option<Captured> {
         with_data(fmt, |b| b.get(..4).map(|d| u32::from_le_bytes([d[0], d[1], d[2], d[3]]))).unwrap_or(0)
     });
     let flags = ClipFlags { exclude_monitor: has(f.exclude), viewer_ignore: has(f.viewer_ignore), history_allowed: dword(f.history), cloud_allowed: dword(f.cloud) };
-    if !should_record(&flags) {
+    if ignore_sensitive && !should_record(&flags) {
         tracing::info!("presse-papiers : copie exclue par sa source");
         return None;
     }
     if has(CF_UNICODETEXT.0.into()) {
         return unsafe { with_data(CF_UNICODETEXT.0.into(), |b| Some(Captured::Text(utf16_text(b)))) };
+    }
+    if !keep_images {
+        return None;
     }
     let fmt = [CF_DIBV5, CF_DIB].into_iter().map(|c| u32::from(c.0)).find(|&c| has(c))?;
     unsafe {
@@ -572,6 +615,14 @@ mod tests {
         assert!(d.len() > 20 * 1024 * 1024 && d.len() <= MAX_IMAGE_BYTES);
         let (_, thumb) = dib_to_png(&d).unwrap();
         assert_eq!((pixels(&thumb).0, pixels(&thumb).1), (160, 90));
+    }
+
+    #[test]
+    fn purge_declenchee_par_duree_ou_maximum_seulement() {
+        let old = Settings::default();
+        assert!(!purge_needed(&old, &Settings { clipboard_enabled: false, ..old.clone() }));
+        assert!(purge_needed(&old, &Settings { clipboard_retention_days: 1, ..old.clone() }));
+        assert!(purge_needed(&old, &Settings { clipboard_max_items: 20, ..old.clone() }));
     }
 
     #[test]

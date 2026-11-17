@@ -37,3 +37,11 @@ export const clipboardIpc = {
   pin: (id: number, pinned: boolean): Promise<void> => isTauri ? invoke("clipboard_pin", { id, pinned }) : Promise.resolve(),
   remove: (id: number): Promise<void> => isTauri ? invoke("clipboard_delete", { id }) : Promise.resolve(),
 };
+
+export type ClipStats = { total: number; pinned: number };
+
+export const clipboardAdmin = {
+  stats: (): Promise<ClipStats> => (isTauri ? invoke("clipboard_stats") : Promise.resolve({ total: 4, pinned: 1 })),
+  /** Efface tout sauf les épinglées ; renvoie le nombre supprimé. */
+  clear: (): Promise<number> => (isTauri ? invoke("clipboard_clear") : Promise.resolve(3)),
+};

@@ -116,13 +116,22 @@ async fn image(url: &Url, budget: &AtomicU32) -> Option<String> {
     tokio::task::spawn_blocking(move || to_data_url(&bytes)).await.ok()?
 }
 
-/// GET sans cookie ni proxy, 5 s, 256 Ko, type de contenu imposé, 3 redirections au plus. Chaque requête attend
-/// 1 s avant de partir et consomme le budget du favori. Une page HTML trop longue est tronquée, pas rejetée.
-async fn get(start: &Url, content_type: &str, budget: &AtomicU32) -> Option<(Url, Vec<u8>)> {
+/// Bornes d'un téléchargement : taille, délai total, https imposé à chaque saut.
+pub(crate) struct Limits { pub max_bytes: usize, pub timeout: Duration, pub https_only: bool }
+const ICON_LIMITS: Limits = Limits { max_bytes: MAX_BYTES, timeout: Duration::from_secs(5), https_only: false };
+
+async fn get(start: &Url, content_type: &str, budget: &AtomicU32) -> Option<(Url, Vec<u8>)> { fetch(start, content_type, budget, &ICON_LIMITS).await }
+
+/// GET sans cookie ni proxy, bornes `lim`, type de contenu imposé (préfixe ; vide : tout), 3 redirections au plus. Chaque
+/// requête attend 1 s avant de partir et consomme le budget. Une page HTML trop longue est tronquée, pas rejetée.
+pub(crate) async fn fetch(start: &Url, content_type: &str, budget: &AtomicU32, lim: &Limits) -> Option<(Url, Vec<u8>)> {
     let mut cur = start.clone();
     for _ in 0..=MAX_REDIRECTS {
+        if lim.https_only && cur.scheme() != "https" {
+            return None;
+        }
         let port = cur.port_or_known_default()?;
-        let mut builder = reqwest::Client::builder().timeout(Duration::from_secs(5)).redirect(reqwest::redirect::Policy::none()).no_proxy().user_agent("Oniris/0.1");
+        let mut builder = reqwest::Client::builder().timeout(lim.timeout).redirect(reqwest::redirect::Policy::none()).no_proxy().user_agent("Oniris/0.1");
         match cur.host()? {
             Host::Ipv4(ip) if is_public_ip(IpAddr::V4(ip)) => {}
             Host::Ipv6(ip) if is_public_ip(IpAddr::V6(ip)) => {}
@@ -147,15 +156,15 @@ async fn get(start: &Url, content_type: &str, budget: &AtomicU32) -> Option<(Url
         }
         let ct = resp.headers().get(reqwest::header::CONTENT_TYPE).and_then(|v| v.to_str().ok()).unwrap_or("").to_ascii_lowercase();
         let html = content_type == "text/html";
-        if !resp.status().is_success() || !ct.starts_with(content_type) || (!html && resp.content_length().is_some_and(|n| n > MAX_BYTES as u64)) {
+        if !resp.status().is_success() || !ct.starts_with(content_type) || (!html && resp.content_length().is_some_and(|n| n > lim.max_bytes as u64)) {
             return None;
         }
         let mut body = Vec::new();
         while let Some(chunk) = resp.chunk().await.ok()? {
             body.extend_from_slice(&chunk);
-            if body.len() > MAX_BYTES {
+            if body.len() > lim.max_bytes {
                 if html {
-                    body.truncate(MAX_BYTES);
+                    body.truncate(lim.max_bytes);
                     break;
                 }
                 return None;

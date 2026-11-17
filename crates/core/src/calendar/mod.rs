@@ -77,7 +77,9 @@ async fn fetch(client: &Client, token: &str, cal: &str, stored: Option<String>, 
 }
 
 async fn sync(db: &Db, client: &Client, token: &str, account_id: i64, now: i64) -> Result<bool, SyncError> {
-    let cals = client.list_calendars(token).await.map_err(map)?;
+    let all = client.list_calendars(token).await.map_err(map)?;
+    // Seuls les agendas affichés (choix de l'utilisateur, sinon défaut) sont relevés ; les autres sont oubliés.
+    let cals = crate::agenda::calendars::store_google(&db.lock(), account_id, &all).map_err(|e| SyncError::Other(e.to_string()))?;
     let mut changed = false;
     for cal in &cals {
         let key = sync_key(account_id, cal);
@@ -117,10 +119,10 @@ async fn sync(db: &Db, client: &Client, token: &str, account_id: i64, now: i64) 
         }
         for e in &page.items {
             n += tx.execute(
-                "INSERT INTO external_events(account_id, id, calendar_id, title, start_ms, end_ms, all_day, location) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+                "INSERT INTO external_events(account_id, id, calendar_id, title, start_ms, end_ms, all_day, location, ical_uid) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
                  ON CONFLICT(account_id, calendar_id, id) DO UPDATE SET title = excluded.title, start_ms = excluded.start_ms,
-                 end_ms = excluded.end_ms, all_day = excluded.all_day, location = excluded.location",
-                params![account_id, e.id, cal, e.title, e.start_ms, e.end_ms, e.all_day, e.location],
+                 end_ms = excluded.end_ms, all_day = excluded.all_day, location = excluded.location, ical_uid = excluded.ical_uid",
+                params![account_id, e.id, cal, e.title, e.start_ms, e.end_ms, e.all_day, e.location, e.ical_uid],
             )?;
         }
         match &page.next_sync_token {
@@ -262,6 +264,12 @@ mod tests {
         assert_eq!(rows[1], ("moi@gmail.com".into(), "e2".into(), d(2026, 11, 14), d(2026, 11, 16), true), "journée entière : minuit local, fin exclue");
         assert_eq!(rows[2], ("moi@gmail.com".into(), "e3".into(), ny, ny + 3_600_000, false), "fuseau de l'événement");
         assert_eq!(rows[3].1, "t1");
+        let uid: Option<String> = e.db.lock().query_row("SELECT ical_uid FROM external_events WHERE id = 't1'", [], |r| r.get(0)).unwrap();
+        assert_eq!(uid.as_deref(), Some("t1@google.com"));
+        // Liste des agendas gardée : nom (surnom d'abord), couleur, principal ; le décoché est connu mais masqué.
+        let cals = crate::agenda::calendars::list(&e.db.lock()).unwrap();
+        assert_eq!(cals.iter().map(|k| (k.name.as_str(), k.color.as_deref(), k.primary, k.visible)).collect::<Vec<_>>(),
+            [("moi@gmail.com", None, true, true), ("Jours feries", None, false, false), ("Mon équipe", Some("#9fe1e7"), false, true)]);
         // Régression : la fenêtre bornée renvoie un nextSyncToken (S1, T1) mais il est inutilisable, donc non gardé.
         assert_eq!((e.token("moi@gmail.com"), e.token("team@group.calendar.google.com")), (None, None));
 
@@ -302,7 +310,7 @@ mod tests {
         let now = NOW;
         {
             let c = e.db.lock();
-            let ins = |cal: &str, id: &str, end: i64| c.execute("INSERT INTO external_events VALUES (?1, ?2, ?3, 't', ?4, ?4, 0, NULL)", params![e.id, id, cal, end]).unwrap();
+            let ins = |cal: &str, id: &str, end: i64| c.execute("INSERT INTO external_events VALUES (?1, ?2, ?3, 't', ?4, ?4, 0, NULL, NULL)", params![e.id, id, cal, end]).unwrap();
             ins("ancien@x", "a", now);
             ins("moi@gmail.com", "vieux", now - 8 * DAY_MS);
             ins("moi@gmail.com", "recent", now - DAY_MS);
@@ -331,7 +339,7 @@ mod tests {
         let e = env(&server, true);
         {
             let c = e.db.lock();
-            c.execute("INSERT INTO external_events VALUES (?1, 'vieux', 'moi@gmail.com', 't', ?2, ?2, 0, NULL)", params![e.id, NOW]).unwrap();
+            c.execute("INSERT INTO external_events VALUES (?1, 'vieux', 'moi@gmail.com', 't', ?2, ?2, 0, NULL, NULL)", params![e.id, NOW]).unwrap();
             kv::set(&c, &sync_key(e.id, "moi@gmail.com"), "S0", NOW).unwrap();
             kv::set(&c, &full_key(e.id, "moi@gmail.com"), "1", NOW - DAY_MS - 1).unwrap();
             kv::set(&c, &sync_key(e.id, "team@group.calendar.google.com"), "T0", NOW).unwrap();
@@ -348,7 +356,7 @@ mod tests {
         calendars(&server).await;
         Mock::given(method("GET")).and(path(EVENTS)).respond_with(ResponseTemplate::new(410)).mount(&server).await;
         let e = env(&server, true);
-        e.db.lock().execute("INSERT INTO external_events VALUES (?1, 'x', 'moi@gmail.com', 't', ?2, ?2, 0, NULL)", params![e.id, NOW]).unwrap();
+        e.db.lock().execute("INSERT INTO external_events VALUES (?1, 'x', 'moi@gmail.com', 't', ?2, ?2, 0, NULL, NULL)", params![e.id, NOW]).unwrap();
         assert!(matches!(e.run().await, Err(SyncError::Other(m)) if m.contains("410")));
         assert_eq!(e.rows().len(), 1);
     }
@@ -364,7 +372,7 @@ mod tests {
         {
             let c = e.db.lock();
             for (cal, id) in [("moi@gmail.com", "e1"), ("moi@gmail.com", "e2"), ("team@group.calendar.google.com", "t1")] {
-                c.execute("INSERT INTO external_events VALUES (?1, ?2, ?3, 't', ?4, ?4, 0, NULL)", params![e.id, id, cal, NOW]).unwrap();
+                c.execute("INSERT INTO external_events VALUES (?1, ?2, ?3, 't', ?4, ?4, 0, NULL, NULL)", params![e.id, id, cal, NOW]).unwrap();
             }
             for (cal, t) in [("moi@gmail.com", "S1"), ("team@group.calendar.google.com", "T1")] {
                 kv::set(&c, &sync_key(e.id, cal), t, NOW).unwrap();
@@ -401,7 +409,7 @@ mod tests {
         let db: Db = Arc::new(parking_lot::Mutex::new(crate::test_util::db()));
         let acct = accounts::add(&db.lock(), Provider::Google, "moi@gmail.com", 1).unwrap();
         crate::agenda::insert(&db.lock(), &crate::agenda::NewEvent { title: "local".into(), start_ms: 2000, ..Default::default() }).unwrap();
-        db.lock().execute("INSERT INTO external_events VALUES (?1, 'g', 'c', 'ext', 1000, 3000, 0, NULL)", [acct]).unwrap();
+        db.lock().execute("INSERT INTO external_events VALUES (?1, 'g', 'c', 'ext', 1000, 3000, 0, NULL, NULL)", [acct]).unwrap();
         let ev: Arc<dyn crate::events::Events> = Arc::new(NoEvents);
         let mut tools = all(&db);
         tools.extend(crate::agenda::tools::all(&db, &ev));

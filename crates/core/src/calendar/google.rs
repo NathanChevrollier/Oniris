@@ -1,4 +1,5 @@
 //! Client de l'API Google Calendar v3 (lecture seule). Erreurs sans URL ni contenu : seulement le statut HTTP.
+use crate::agenda::calendars::GoogleCal;
 use crate::time_util::local_day_bounds;
 use chrono::{DateTime, Local, NaiveDate, NaiveDateTime, TimeZone};
 use serde::Deserialize;
@@ -34,6 +35,8 @@ pub struct ExtEvent {
     pub end_ms: i64,
     pub all_day: bool,
     pub location: Option<String>,
+    /// Identique d'un agenda à l'autre pour le même événement : sert à fusionner les doublons.
+    pub ical_uid: Option<String>,
 }
 
 impl std::fmt::Debug for ExtEvent {
@@ -64,14 +67,19 @@ pub enum Query<'a> {
 struct CalList { items: Vec<CalItem>, next_page_token: Option<String> }
 #[derive(Deserialize, Default)]
 #[serde(default)]
-struct CalItem { id: String, selected: bool }
+#[serde(rename_all = "camelCase")]
+struct CalItem { id: String, selected: bool, primary: bool, summary: Option<String>, summary_override: Option<String>, background_color: Option<String> }
 
 #[derive(Deserialize, Default)]
 #[serde(default, rename_all = "camelCase")]
 struct EventList { items: Vec<RawEvent>, next_page_token: Option<String>, next_sync_token: Option<String> }
 #[derive(Deserialize, Default)]
 #[serde(default)]
-struct RawEvent { id: String, status: String, summary: Option<String>, location: Option<String>, start: When, end: When }
+struct RawEvent {
+    id: String, status: String, summary: Option<String>, location: Option<String>, start: When, end: When,
+    #[serde(rename = "iCalUID")]
+    ical_uid: Option<String>,
+}
 #[derive(Deserialize, Default)]
 #[serde(default, rename_all = "camelCase")]
 struct When { date: Option<String>, date_time: Option<String>, time_zone: Option<String> }
@@ -109,6 +117,7 @@ fn convert(r: RawEvent) -> Option<ExtEvent> {
         id: r.id,
         title: r.summary.filter(|t| !t.trim().is_empty()).unwrap_or_else(|| "(Sans titre)".into()),
         location: r.location.filter(|l| !l.trim().is_empty()),
+        ical_uid: r.ical_uid.filter(|u| !u.is_empty() && u.len() <= 1024),
         start_ms, end_ms, all_day,
     })
 }
@@ -137,8 +146,8 @@ impl Client {
         resp.json().await.map(Some).map_err(|_| GcalError::Parse)
     }
 
-    /// Ids des agendas cochés (`selected`), toutes pages lues.
-    pub async fn list_calendars(&self, token: &str) -> Result<Vec<String>, GcalError> {
+    /// Tous les agendas du compte (nom, couleur, principal, coché chez Google), toutes pages lues.
+    pub async fn list_calendars(&self, token: &str) -> Result<Vec<GoogleCal>, GcalError> {
         let (mut ids, mut page) = (vec![], None::<String>);
         loop {
             let mut q = vec![("maxResults", "250")];
@@ -146,7 +155,11 @@ impl Client {
                 q.push(("pageToken", p));
             }
             let l: CalList = self.get(token, &["users", "me", "calendarList"], &q).await?.ok_or(GcalError::Status(410))?;
-            ids.extend(l.items.into_iter().filter(|c| c.selected).map(|c| c.id));
+            ids.extend(l.items.into_iter().filter(|c| !c.id.is_empty()).map(|c| GoogleCal {
+                name: c.summary_override.or(c.summary).filter(|s| !s.trim().is_empty()).unwrap_or_else(|| c.id.clone()).chars().take(120).collect(),
+                color: c.background_color.filter(|c| c.len() == 7 && c.starts_with('#')),
+                id: c.id, primary: c.primary, selected: c.selected,
+            }));
             match l.next_page_token {
                 Some(p) => page = Some(p),
                 None => return Ok(ids),

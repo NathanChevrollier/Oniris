@@ -4,7 +4,8 @@ import { it, expect, vi, afterEach, beforeEach } from "vitest";
 import { MonthGrid } from "./MonthGrid";
 import { DayList } from "./DayList";
 import { AgendaCard } from "./AgendaCard";
-import { agendaIpc } from "./api";
+import { agendaIpc, calendarsIpc } from "./api";
+import { CalendarsManager } from "./Calendars";
 import { usePanelStore } from "../../panel/store";
 import { Timeline } from "../../panel/Timeline";
 
@@ -94,4 +95,61 @@ it("événement Google : sans bouton de suppression dans la liste, bloc coloré 
   expect(ev.style.getPropertyValue("--c")).toBe("#0a84ff");
   expect(ev).toHaveAttribute("data-readonly", "true");
   expect(ev.querySelector("button")).toBeNull();
+});
+
+it("DayList : doublons fusionnés, une pastille par calendrier d'origine et le nom du calendrier", () => {
+  const sources = [1, 2, 3].map((i) => ({ calendar: "Jours fériés", account: `c${i}@gmail.com`, color: `#00000${i}` }));
+  const e = { id: 0, key: "g:1:h:x", source: "google" as const, readonly: true, title: "Armistice", start_ms: 1, end_ms: 2, all_day: true, color: "#000001", notes: null, calendar: "Jours fériés", sources };
+  const { container } = render(<DayList events={[e]} onDelete={() => {}} />);
+  expect(screen.getAllByText("Armistice")).toHaveLength(1);
+  expect(container.querySelectorAll(".dl-src .dot")).toHaveLength(3);
+  expect(screen.getByRole("img", { name: /Dans 3 calendriers : Jours fériés \(c1@gmail.com\)/ })).toBeInTheDocument();
+  expect(screen.getByText("Jours fériés")).toBeInTheDocument();
+});
+
+it("DayList : état de chargement distinct de la journée libre", () => {
+  render(<DayList events={[]} onDelete={() => {}} loading />);
+  expect(screen.getByRole("status")).toHaveTextContent("Chargement");
+  expect(screen.queryByText("Rien de prévu, journée libre.")).toBeNull();
+});
+
+it("AgendaCard : « … » ouvre les calendriers affichés ; décocher masque, Échap ferme", async () => {
+  usePanelStore.setState({ open: true });
+  mockRead();
+  const cal = (id: number, name: string, extra = {}) => ({ id, kind: "google" as const, account_id: 1, account: "moi@gmail.com", name, color: "#0a84ff", primary: false, visible: true, duplicate: false, url: null, fetched_ms: null, error: null, events: 0, ...extra });
+  vi.spyOn(calendarsIpc, "list").mockResolvedValue([cal(1, "Perso", { primary: true }), cal(2, "Jours fériés", { visible: false, duplicate: true }),
+    { ...cal(3, "Club"), kind: "file", account_id: null, account: null, events: 12 }]);
+  const setVisible = vi.spyOn(calendarsIpc, "setVisible").mockResolvedValue();
+  const remove = vi.spyOn(calendarsIpc, "remove").mockResolvedValue();
+  vi.spyOn(calendarsIpc, "refresh").mockResolvedValue();
+  render(<AgendaCard />);
+  await userEvent.click(screen.getByRole("button", { name: "Calendriers affichés" }));
+  const pop = await screen.findByRole("dialog", { name: "Calendriers affichés" });
+  expect(await screen.findByText("Déjà affiché depuis un autre compte")).toBeInTheDocument();
+  expect(screen.getByText("12 événements")).toBeInTheDocument();
+  expect(screen.getByRole("checkbox", { name: /Jours fériés/ })).not.toBeChecked();
+  expect(screen.queryByRole("button", { name: "Supprimer le calendrier Perso" })).toBeNull();
+  await userEvent.click(screen.getByRole("checkbox", { name: /Perso/ }));
+  expect(setVisible).toHaveBeenCalledWith(1, false);
+  await userEvent.click(screen.getByRole("button", { name: "Supprimer le calendrier Club" }));
+  expect(remove).toHaveBeenCalledWith(3);
+  expect(pop).toHaveTextContent("Importer un fichier .ics");
+  await userEvent.keyboard("{Escape}");
+  expect(screen.queryByRole("dialog", { name: "Calendriers affichés" })).toBeNull();
+});
+
+it("abonnement : une erreur de Rust s'affiche en ligne, un succès donne le compte rendu", async () => {
+  usePanelStore.setState({ open: true });
+  vi.spyOn(calendarsIpc, "list").mockResolvedValue([]);
+  const sub = vi.spyOn(calendarsIpc, "subscribe").mockRejectedValueOnce("adresse invalide : colle un lien https:// ou webcal:// vers un calendrier .ics")
+    .mockResolvedValueOnce({ name: "École", events: 42, truncated: false });
+  render(<CalendarsManager />);
+  const input = screen.getByRole("textbox", { name: "Adresse d'un calendrier en ligne" });
+  await userEvent.type(input, "http://x{Enter}");
+  expect(await screen.findByRole("alert")).toHaveTextContent("adresse invalide");
+  await userEvent.clear(input);
+  await userEvent.type(input, "webcal://ecole.fr/a.ics{Enter}");
+  expect(await screen.findByText("École : 42 événements")).toBeInTheDocument();
+  expect(sub).toHaveBeenLastCalledWith("webcal://ecole.fr/a.ics");
+  expect(input).toHaveValue("");
 });

@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, type CSSProperties, type ReactNode } from "react";
+import { Fragment, type CSSProperties, type ReactNode } from "react";
 import { CalendarDays, ClipboardList, Cpu, FolderGit2, Mail, Music, Server, StickyNote, Timer, type LucideIcon } from "lucide-react";
 import { Card } from "../ui/Card";
 
@@ -31,22 +31,10 @@ export function SoonCard({ id, delay }: { id: SlotId; delay?: number }) {
   );
 }
 
-/** Grille de 12 colonnes ; un emplacement sans carte affiche « Bientôt ». */
+/** Grille de 12 colonnes en trois rangées (panel.css) ; un emplacement sans carte affiche « Bientôt ». */
 export function CardGrid({ slots = {} }: { slots?: Partial<Record<SlotId, ReactNode>> }) {
-  const ref = useRef<HTMLDivElement>(null);
-  // Classe `more` tant qu'il reste du contenu sous le bord visible (fondu CSS) ; aucun minuteur.
-  useEffect(() => {
-    const el = ref.current!;
-    const check = () => el.classList.toggle("more", el.scrollTop + el.clientHeight < el.scrollHeight - 2);
-    const ro = new ResizeObserver(check);
-    ro.observe(el);
-    for (const c of el.children) ro.observe(c);
-    el.addEventListener("scroll", check, { passive: true });
-    el.addEventListener("animationend", check); // la montée `rise` des cartes déborde de 10 px jusqu'à sa fin
-    return () => { ro.disconnect(); el.removeEventListener("scroll", check); el.removeEventListener("animationend", check); };
-  }, []);
   return (
-    <div className="grid" ref={ref}>
+    <div className="grid">
       {ORDER.map((id, i) => <Fragment key={id}>{slots[id] ?? <SoonCard id={id} delay={0.05 * (i + 1)} />}</Fragment>)}
     </div>
   );

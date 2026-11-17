@@ -78,7 +78,7 @@ fn num(s: &str) -> Option<u32> {
     s.parse().ok()
 }
 
-fn at<Tz: TimeZone>(tz: &Tz, d: NaiveDate, (h, m): Hm) -> Option<DateTime<Tz>> {
+pub(crate) fn at<Tz: TimeZone>(tz: &Tz, d: NaiveDate, (h, m): Hm) -> Option<DateTime<Tz>> {
     let mut n = d.and_hms_opt(h, m, 0)?;
     // Trou de changement d'heure : on avance jusqu'au prochain instant valide ; ambigu : le plus tôt.
     for _ in 0..3 {

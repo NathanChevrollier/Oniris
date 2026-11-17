@@ -11,8 +11,6 @@ export function badge(name: string): string {
   return (b ? [...a][0] + [...b][0] : [...a].slice(0, 2).join("")).replace(/^./, (c) => c.toUpperCase());
 }
 
-const C = 94.2; // 2π × 15 : circonférence de l'anneau
-
 export function ProjectTile({ p, now, busy, onResume, onPin, onHide, onOpenDir }: {
   p: Project; now: number; busy: boolean;
   onResume: (mode: ResumeMode) => void; onPin: () => void; onHide: () => void; onOpenDir: () => void;
@@ -31,6 +29,7 @@ export function ProjectTile({ p, now, busy, onResume, onPin, onHide, onOpenDir }
 
   const h = hueOf(p.name);
   const style = { "--g1": hsl(h, LIGHT), "--g2": hsl((h + 40) % 360, DARK), "--ring": `hsl(${h} 75% 62%)` } as CSSProperties;
+  // Cases cochées / cases du dernier plan de docs/superpowers/plans ; masqué sans case à cocher.
   const plan = p.plan && p.plan.total > 0 ? p.plan : null;
   const days = p.activity_14d.filter((c) => c > 0).length;
   const max = Math.max(1, ...p.activity_14d);
@@ -40,14 +39,13 @@ export function ProjectTile({ p, now, busy, onResume, onPin, onHide, onOpenDir }
     <article ref={root} className="proj" style={style} aria-label={`Projet ${p.name}`}>
       <div className="proj-h">
         <div className="proj-ico" aria-hidden>{badge(p.name)}</div>
-        <div className="proj-name"><b title={p.name}>{p.name}</b><small>{ago(p.last_activity_ms, now)}</small></div>
-        <div className="proj-ring">
-          {plan ? (
-            <>
-              <svg width="38" height="38" aria-hidden><circle cx="19" cy="19" r="15" className="bg" /><circle cx="19" cy="19" r="15" className="fg" strokeDasharray={C} strokeDashoffset={C * (1 - Math.min(plan.done / plan.total, 1))} /></svg>
-              <span role="img" aria-label={`étape ${plan.done} sur ${plan.total}`}>{plan.done}/{plan.total}</span>
-            </>
-          ) : <span>—</span>}
+        <div className="proj-name">
+          <b title={p.name}>{p.name}</b>
+          <small>
+            {ago(p.last_activity_ms, now)}
+            {p.branch && <span className="proj-br" title={`Branche ${p.branch}`}> · ⑂ {p.branch}</span>}
+            <span className={p.dirty > 0 ? "proj-dirty" : undefined}> · {p.dirty > 0 ? `${p.dirty} modifs` : "propre"}</span>
+          </small>
         </div>
         <button type="button" className="proj-more" aria-label={`Options de ${p.name}`} aria-expanded={menu} onClick={() => setMenu(!menu)}><MoreHorizontal size={14} /></button>
         {menu && (
@@ -58,19 +56,24 @@ export function ProjectTile({ p, now, busy, onResume, onPin, onHide, onOpenDir }
           </div>
         )}
       </div>
-      <div className="proj-last">
+      <div className="proj-last" title={plan?.current ? `Tu en étais à : ${plan.current}` : p.last_session ? `Dernière session : ${p.last_session.title}` : undefined}>
         {plan?.current ? <>Tu en étais à : <em>{plan.current}</em></>
           : p.last_session ? <>Dernière session : <em>{p.last_session.title}</em></>
           : "Rien de récent"}
       </div>
+      {plan && (
+        <div className="proj-plan" title={`Cases cochées dans le plan ${plan.file} (docs/superpowers/plans) : ${plan.done} sur ${plan.total}`}>
+          <span>Plan : {plan.done}/{plan.total} tâches</span>
+          <i role="progressbar" aria-label={`Plan ${plan.file}`} aria-valuemin={0} aria-valuemax={plan.total} aria-valuenow={plan.done}
+            aria-valuetext={`${plan.done} tâches cochées sur ${plan.total}`}>
+            <b style={{ transform: `scaleX(${Math.min(plan.done / plan.total, 1)})` }} />
+          </i>
+        </div>
+      )}
       <div className="proj-heat" aria-hidden>
         {p.activity_14d.map((c, i) => <i key={i} style={c > 0 ? { opacity: 0.3 + 0.7 * (c / max), background: "var(--ring)" } : undefined} />)}
       </div>
       <span className="sr-only">activité : {days} jours sur 14</span>
-      <div className="proj-chips">
-        {p.branch && <span className="chip">⑂ {p.branch}</span>}
-        <span className="chip">{p.dirty > 0 ? `${p.dirty} modifs` : "propre"}</span>
-      </div>
       <div className="proj-split">
         <button type="button" className="n" disabled={busy} onClick={() => onResume("normal")}>Reprendre</button>
         <button type="button" className="o" disabled={busy} onClick={() => onResume("orchestrator")}>⧉ Orchestr.</button>

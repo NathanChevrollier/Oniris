@@ -1,65 +1,76 @@
-/* carte « En lecture » : dégradés de la maquette, sans animation de fond */
-.card:has(>.mu){overflow:hidden;display:flex;flex-direction:column}
-.card:has(>.mu)::before{content:"";position:absolute;inset:0;z-index:-1;border-radius:24px;pointer-events:none;
+/* carte « En lecture » : dégradés de la maquette, sans animation de fond. Lecteur compact en haut, playlists dans la
+   place restante (elles défilent), appareil et « … » en pied. */
+.card:has(>.card-body>.mu){overflow:hidden;display:flex;flex-direction:column}
+.card:has(>.card-body>.mu)::before{content:"";position:absolute;inset:0;z-index:-1;border-radius:24px;pointer-events:none;
   background:radial-gradient(80% 90% at 0% 0%,rgba(255,116,72,.3),transparent 60%),radial-gradient(70% 80% at 100% 100%,rgba(191,90,242,.22),transparent 60%)}
-.mu{flex:1;display:flex;flex-direction:column;gap:0}
+.mu{min-height:100%;display:flex;flex-direction:column}
+.grid .mu{height:100%}
 .mu-src{display:inline-flex;align-items:center;gap:6px;color:var(--txt3)}
 .mu-src i{width:8px;height:8px;border-radius:50%;background:var(--txt3)}
 .mu-src i.sp{background:#1ed760}
-.mu-top{display:flex;gap:14px}
-.mu-cover{flex:none;position:relative;width:64px;height:64px;border-radius:14px;overflow:hidden;
+.mu-top{display:flex;gap:12px}
+.mu-cover{flex:none;position:relative;width:56px;height:56px;border-radius:13px;overflow:hidden;
   background:linear-gradient(160deg,var(--c1),var(--c2));box-shadow:0 12px 30px color-mix(in srgb,var(--c1) 40%,transparent)}
 .mu-cover img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .mu-meta{display:flex;flex-direction:column;justify-content:space-between;min-width:0;flex:1}
-.mu-title{display:block;font-size:17px;font-weight:600;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mu-title{display:block;font-size:16px;font-weight:600;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .mu-artist{color:var(--txt2);font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.mu-wave{display:flex;align-items:flex-end;gap:3px;height:26px}
+.mu-wave{display:flex;align-items:flex-end;gap:3px;height:18px}
 .mu-wave i{flex:1;height:100%;border-radius:2px;background:linear-gradient(180deg,#fff,rgba(255,255,255,.35));
   transform-origin:bottom;transform:scaleY(var(--h,.5));animation:mu-eq .9s ease-in-out infinite alternate;will-change:transform}
 .mu-wave.paused i{animation-play-state:paused}
 .reduce-motion .mu-wave i{animation:none}
 @keyframes mu-eq{from{transform:scaleY(.18)}to{transform:scaleY(1)}}
-.mu-scrub{position:relative;margin-top:10px;height:4px;border-radius:2px;background:rgba(255,255,255,.14);cursor:pointer;touch-action:none}
+.mu-scrub{position:relative;margin-top:9px;height:4px;border-radius:2px;background:rgba(255,255,255,.14);cursor:pointer;touch-action:none}
 .mu-scrub::before{content:"";position:absolute;inset:-9px 0}
 .mu-scrub[aria-disabled=true]{cursor:default;opacity:.6}
 .mu-scrub:focus-visible{outline:2px solid rgba(255,255,255,.7);outline-offset:6px}
 .mu-scrub i{position:absolute;left:0;top:0;bottom:0;border-radius:2px;background:#fff;transition:width .25s linear}
 .mu-scrub i.drag{transition:none}
 .mu-scrub i::after{content:"";position:absolute;right:-6px;top:-4px;width:12px;height:12px;border-radius:50%;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.4)}
-.mu-times{display:flex;justify-content:space-between;font-size:11px;color:var(--txt3);margin-top:6px;font-variant-numeric:tabular-nums}
-.mu-ctrls{display:flex;justify-content:center;align-items:center;gap:26px;margin:2px 0 8px}
+.mu-times{display:flex;justify-content:space-between;font-size:11px;color:var(--txt3);margin-top:4px;font-variant-numeric:tabular-nums}
+.mu-ctrls{display:flex;justify-content:center;align-items:center;gap:26px;margin:-6px 0 0}
 .card .mu-ctrls button{margin:0;padding:0;height:auto;border:0;background:none;color:#fff;opacity:.85;transition:transform .2s var(--ease),opacity .2s}
 .card .mu-ctrls button:hover:enabled{opacity:1;transform:scale(1.12);background:none}
-.card .mu-ctrls button.pp{width:44px;height:44px;border-radius:50%;justify-content:center;background:#fff;color:#111;opacity:1;box-shadow:0 8px 24px rgba(255,255,255,.2)}
+.card .mu-ctrls button.pp{width:40px;height:40px;border-radius:50%;justify-content:center;background:#fff;color:#111;opacity:1;box-shadow:0 8px 24px rgba(255,255,255,.2)}
 .card .mu-ctrls button.pp:hover:enabled{background:#fff}
 .mu-err{margin:6px 0 0;font-size:12.5px;color:#ff9f8f}
 .mu-note{margin:6px 0 0;font-size:12.5px;color:var(--txt3)}
 .card .mu-connect{margin:8px 0 0;align-self:flex-start;color:var(--txt2)}
-.mu-lists{list-style:none;margin:12px 0 0;padding:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px 10px}
-.card .mu-pl{display:flex;flex-direction:column;align-items:stretch;gap:6px;font:inherit;width:100%;height:auto;margin:0;padding:0;border:0;background:none;border-radius:12px;text-align:left;color:var(--txt2)}
-.card .mu-pl:hover:enabled{background:none;color:var(--txt)}
+.mu-lists{list-style:none;flex:1 1 auto;min-height:46px;margin:10px -4px 0;padding:2px 4px;display:grid;grid-template-columns:repeat(auto-fill,minmax(128px,1fr));grid-auto-rows:min-content;gap:6px;align-content:start}
+.card .mu-pl{display:flex;align-items:center;gap:9px;width:100%;height:40px;margin:0;padding:4px 8px 4px 4px;border:0;border-radius:11px;font:inherit;text-align:left;
+  background:rgba(255,255,255,.05);color:var(--txt2);transition:background .2s,color .2s}
+.card .mu-pl:hover:enabled{background:rgba(255,255,255,.11);color:var(--txt)}
 .card .mu-pl:disabled{opacity:1;cursor:default}
 .card .mu-pl:disabled:not([aria-busy=true]) .mu-pl-cover{opacity:.55}
-.mu-pl-cover{position:relative;display:block;aspect-ratio:16/10;border-radius:12px;overflow:hidden;
-  box-shadow:0 6px 18px rgba(0,0,0,.28),inset 0 0 0 1px rgba(255,255,255,.08);transition:transform .25s var(--ease),opacity .2s}
+.mu-pl-cover{position:relative;flex:none;display:block;width:32px;height:32px;border-radius:8px;overflow:hidden;box-shadow:inset 0 0 0 1px rgba(255,255,255,.08);transition:opacity .2s}
 .mu-pl-cover img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
-.mu-pl:hover:enabled .mu-pl-cover{transform:scale(1.035)}
-.mu-pl-play{position:absolute;right:6px;bottom:6px;display:grid;place-items:center;width:26px;height:26px;border-radius:50%;
-  background:#1ed760;color:#08130b;box-shadow:0 4px 12px rgba(0,0,0,.35);opacity:0;transform:translateY(4px);transition:opacity .2s,transform .2s var(--ease)}
-.mu-pl:hover .mu-pl-play,.mu-pl:focus-visible .mu-pl-play,.mu-pl[aria-busy=true] .mu-pl-play{opacity:1;transform:none}
-.mu-pl:focus-visible{outline:2px solid var(--acc);outline-offset:3px}
-.mu-pl-name{display:block;font-size:11.5px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mu-pl-play{position:absolute;inset:0;display:grid;place-items:center;background:rgba(0,0,0,.45);color:#1ed760;opacity:0;transition:opacity .2s}
+.mu-pl:hover .mu-pl-play,.mu-pl:focus-visible .mu-pl-play,.mu-pl[aria-busy=true] .mu-pl-play{opacity:1}
+.mu-pl:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+.mu-pl-name{min-width:0;font-size:12px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .mu-spin{width:12px;height:12px;border-radius:50%;border:2px solid currentColor;border-right-color:transparent;animation:spin .8s linear infinite}
-.mu-idle{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:16px;
+.mu-idle{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:16px;
   background:linear-gradient(100deg,rgba(255,116,72,.14),rgba(255,255,255,.03) 70%);border:1px solid rgba(255,255,255,.08)}
 .mu-idle-ico{flex:none;width:40px;height:40px;border-radius:12px;display:grid;place-items:center;color:#ff7448;
   background:rgba(255,116,72,.16);box-shadow:inset 0 1px 0 rgba(255,255,255,.1)}
 .mu-idle b{display:block;font-size:14px;font-weight:600}
 .mu-idle small{display:block;margin-top:2px;font-size:12px;line-height:1.35;color:var(--txt2)}
 .mu-foot{display:flex;align-items:center;justify-content:space-between;gap:8px}
-.mu-bottom{margin-top:auto;padding-top:10px}
+.mu-bottom{flex:none;margin-top:auto;padding-top:8px}
 .mu-foot select{min-width:0;max-width:70%;height:26px;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.07);color:var(--txt2);font:12px var(--font);padding:0 8px}
 .mu-foot select option{background:#1d1c24;color:#fff}
 .card .mu-more{margin:0;width:28px;height:26px;padding:0;justify-content:center;margin-left:auto}
 .mu-menu{list-style:none;margin:6px 0 0;padding:8px 10px;max-height:130px;overflow:auto;border-radius:12px;background:rgba(0,0,0,.28);font-size:12.5px}
 .mu-menu label{display:flex;gap:8px;align-items:center;padding:3px 0;cursor:pointer;color:var(--txt2)}
+/* Carte haute (grand écran) : plus grande pochette et playlists en vignettes, plutôt qu'un grand vide. */
+.grid>.card>.card-body:has(>.mu){container:mu/size}
+@container mu (min-height:360px){
+  .mu-cover{width:76px;height:76px;border-radius:16px}
+  .mu-title{font-size:18px}
+  .mu-wave{height:24px}
+  .mu-lists{grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+  .card .mu-pl{flex-direction:column;align-items:stretch;height:auto;padding:5px 5px 6px;gap:5px}
+  .mu-pl-cover{width:auto;height:auto;aspect-ratio:5/2}
+  .mu-pl-name{padding:0 3px}
+}

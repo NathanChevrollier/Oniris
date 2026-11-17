@@ -68,6 +68,7 @@ pub fn apply_settings(app: &AppHandle, mut settings: Settings) -> Result<(), Str
     if old.projects_roots != settings.projects_roots {
         crate::modules::projects::refresh(app); // carte Projets remplie dès la fin de l'accueil ou des Paramètres
     }
+    crate::modules::clipboard::settings_changed(app, &old, &settings);
     app.emit("oniris://settings", settings).map_err(|e| e.to_string())
 }
 

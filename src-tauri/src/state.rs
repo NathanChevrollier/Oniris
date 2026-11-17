@@ -177,6 +177,7 @@ pub fn tools(d: ToolDeps) -> Vec<Arc<dyn Tool>> {
     tools.extend(oniris_core::reminders::tools::all(&db, &events));
     tools.extend(oniris_core::notes::tools::all(&db, &events));
     tools.extend(oniris_core::timers::tools::all(&db, &events));
+    tools.extend(oniris_core::alarms::tools::all(&db, &events));
     tools.extend(oniris_core::clipboard::tools::all(&db));
     let snapshot: oniris_core::system::tools::Snapshot = Arc::new(crate::modules::system::snapshot);
     tools.extend(oniris_core::system::tools::all(&snapshot));

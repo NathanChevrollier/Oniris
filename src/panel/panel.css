@@ -14,7 +14,7 @@ body.closed .scrim{opacity:0;transition-duration:.18s}
 body.closed .panel{transform:translateX(-50%) translateY(calc(var(--pull,0px) - 36px)) scale(.98);opacity:0;transition-duration:.19s,.17s}
 /* Hauteur choisie à la poignée (% de la hauteur utile) ; la grille prend la place libre. Pas de transition pendant le glissé. */
 .panel[data-sized]{height:max(420px,calc((100vh - 28px) * var(--panel-pct) / 100))}
-.panel[data-sized] .inner>.grid{flex:1 1 0;align-content:start}
+.panel[data-sized] .inner>.grid{flex:1 1 0}
 .panel[data-drag]{transition:none}
 body.closed *,body.closed *::before,body.closed *::after{animation-play-state:paused !important}
 /* `held` (en pause) garde les cartes visibles pendant la remontée ; repasser à `rise` à l'ouverture la rejoue. */
@@ -35,18 +35,20 @@ body.closed .card{animation:held 1s both}
 @keyframes ambient-in{from{opacity:0}}
 
 .inner{position:relative;z-index:1;padding:18px 26px 4px;display:flex;flex-direction:column;gap:10px;
-  flex:1 1 auto;min-height:0;overflow:auto;scrollbar-width:none}
+  flex:1 1 auto;min-height:0;overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.18) transparent}
 .inner>*{flex-shrink:0}
-/* Écran trop court : seule la grille défile, en-tête, frise et barre de commande restent visibles. */
-.inner>.grid{flex-shrink:1;min-height:220px;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.18) transparent}
-.inner>.grid:hover{scrollbar-color:rgba(255,255,255,.4) transparent}
-/* Écran de 1080 px ou moins : espacements réduits, texte inchangé ; la grille défile au besoin (fondu `.more`), aucune carte masquée. */
+/* Grille : trois rangées qui tiennent dans le panneau. Une rangée prend au plus la hauteur de son contenu ; quand la place
+   manque, elles rétrécissent ensemble jusqu'à leur plancher (en px, ou une part de la grille si elle est plus petite ;
+   la première, la plus riche, garde le plus) et le corps des cartes défile. Sous 420 px de grille, le panneau défile. */
+.inner>.grid{--r1:clamp(230px,25.5vh,340px);--r2:clamp(170px,19vh,210px);--r3:clamp(135px,13vh,180px);flex-shrink:1;min-height:420px;
+  grid-template-rows:minmax(min(var(--r1),44%),auto) minmax(min(var(--r2),33%),auto) minmax(min(var(--r3),22%),auto);grid-auto-rows:minmax(var(--r3),auto)}
+/* Écran de 1080 px ou moins : espacements réduits, texte inchangé. */
 @media (max-height:1100px){
   .inner{padding:14px 22px 2px;gap:8px}
-  .inner>.grid{gap:10px}
+  .inner>.grid{--gap:10px}
+  .inner>.grid>.card{padding:12px 16px}
+  .inner>.grid>.card>h3{margin-bottom:7px}
 }
-/* Encore du contenu plus bas (classe posée par CardGrid) : fondu doux du bord inférieur. */
-.inner>.grid.more{-webkit-mask-image:linear-gradient(to bottom,#000 calc(100% - 56px),transparent);mask-image:linear-gradient(to bottom,#000 calc(100% - 56px),transparent)}
 
 /* en-tête */
 .hdr{display:grid;grid-template-columns:1fr auto 1fr;align-items:center}
@@ -91,7 +93,7 @@ button.orb-status:hover{color:var(--txt);background:rgba(255,116,72,.12)}
 
 /* emplacements « Bientôt » : compacts, en haut de leur rangée ; les cartes vivantes gardent leur hauteur */
 .card{isolation:isolate}
-.card:has(>.slot-soon){align-self:start}
+.card:has(>.card-body>.slot-soon){align-self:start}
 .slot-soon{min-height:52px;display:grid;grid-template-columns:auto 1fr;grid-template-rows:auto auto;column-gap:14px;row-gap:3px;align-content:center;align-items:center;font-size:13px;color:var(--txt3)}
 .slot-soon::before{content:"";position:absolute;inset:0;z-index:-1;border-radius:24px;pointer-events:none;
   background:radial-gradient(80% 90% at 0% 0%,color-mix(in srgb,var(--tint) 16%,transparent),transparent 60%),

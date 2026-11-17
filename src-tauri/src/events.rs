@@ -1,18 +1,20 @@
-use crate::modules::{reminders, timers};
+use crate::modules::{alarms, reminders, timers};
 use crate::scheduler::{reschedule, NextFn};
 use oniris_core::events::{Events, Topic};
 use tauri::{AppHandle, Emitter};
 
 /// Sujets dont l'échéance vit dans l'ordonnanceur. Les outils du cœur ne le voient pas : tout changement
 /// (outil, UI ou undo) reprogramme ici, en un seul endroit.
-const RESCHEDULE: [(Topic, &str, NextFn); 2] = [
+const RESCHEDULE: [(Topic, &str, NextFn); 3] = [
     (Topic::Reminders, reminders::KEY, oniris_core::reminders::next_due),
     (Topic::Timers, timers::KEY, oniris_core::timers::next_end),
+    // Les alarmes partagent le sujet des minuteurs (même carte, même pilule).
+    (Topic::Timers, alarms::KEY, oniris_core::alarms::next_due),
 ];
 
-/// Fenêtres qui écoutent un sujet : la pilule affiche les minuteurs, le titre en cours et le compte des mails.
+/// Fenêtres qui écoutent un sujet : la pilule affiche les minuteurs et le titre en cours.
 fn windows_for(topic: Topic) -> &'static [&'static str] {
-    if matches!(topic, Topic::Timers | Topic::Music | Topic::Mail) { &["panel", "pill"] } else { &["panel"] }
+    if matches!(topic, Topic::Timers | Topic::Music) { &["panel", "pill"] } else { &["panel"] }
 }
 
 /// Émet `oniris://changed` vers les fenêtres concernées (`windows_for`) et reprogramme les échéances.
@@ -48,11 +50,11 @@ impl Events for TauriEvents {
 mod tests {
     use super::*;
     #[test]
-    fn la_pilule_n_ecoute_que_minuteurs_musique_et_mails() {
-        for t in [Topic::Timers, Topic::Music, Topic::Mail] {
+    fn la_pilule_n_ecoute_que_minuteurs_et_musique() {
+        for t in [Topic::Timers, Topic::Music] {
             assert_eq!(windows_for(t), ["panel", "pill"], "{t:?}");
         }
-        for t in [Topic::Agenda, Topic::Reminders, Topic::Notes, Topic::Clipboard, Topic::Weather, Topic::Favorites, Topic::Projects, Topic::Accounts, Topic::Sites, Topic::Iris] {
+        for t in [Topic::Mail, Topic::Agenda, Topic::Reminders, Topic::Notes, Topic::Clipboard, Topic::Weather, Topic::Favorites, Topic::Projects, Topic::Accounts, Topic::Sites, Topic::Iris] {
             assert_eq!(windows_for(t), ["panel"], "{t:?}");
         }
     }

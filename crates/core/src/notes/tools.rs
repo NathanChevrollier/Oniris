@@ -1,6 +1,6 @@
 //! Outils des notes. `to_reminder` réutilise l'analyse de date et l'insertion des rappels et signale `Topic::Reminders`
 //! (la reprogrammation de l'échéance se fait côté Tauri). Le verrou de la base n'est jamais tenu au-delà d'un bloc synchrone.
-use super::{get, insert, search, set_deleted, set_pinned, Note};
+use super::{get, insert, search, set_deleted, set_pinned, update, Note};
 use crate::events::{Events, Topic};
 use crate::reminders;
 use crate::tools::helpers::{bad, failed, low, parse, spec, IdArgs};
@@ -13,6 +13,7 @@ use std::sync::Arc;
 use crate::Db;
 
 pub struct Create { pub db: Db, pub events: Arc<dyn Events> }
+pub struct Update { pub db: Db, pub events: Arc<dyn Events> }
 pub struct Search { pub db: Db }
 pub struct Delete { pub db: Db, pub events: Arc<dyn Events> }
 pub struct Pin { pub db: Db, pub events: Arc<dyn Events> }
@@ -20,6 +21,8 @@ pub struct ToReminder { pub db: Db, pub events: Arc<dyn Events> }
 
 #[derive(Deserialize)]
 struct CreateArgs { text: String }
+#[derive(Deserialize)]
+struct UpdateArgs { id: i64, text: String }
 #[derive(Deserialize)]
 struct SearchArgs { query: String }
 #[derive(Deserialize)]
@@ -44,6 +47,34 @@ impl Tool for Create {
     }
     async fn undo(&self, undo: &Value) -> Result<(), ToolError> {
         set_deleted(&self.db.lock(), parse::<IdArgs>(undo)?.id, true).map_err(failed)?;
+        self.events.changed(Topic::Notes);
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl Tool for Update {
+    fn spec(&self) -> ToolSpec {
+        spec("notes.update", "Remplace le texte d'une note : { id, text } (annulable).",
+            json!({"type":"object","required":["id","text"],"properties":{"id":{"type":"integer"},"text":{"type":"string"}}}), Permission::Free)
+    }
+    fn describe(&self, _: &Value) -> ConfirmationText { low("Modifier une note") }
+    async fn run(&self, args: &Value) -> Result<ToolResult, ToolError> {
+        let a: UpdateArgs = parse(args)?;
+        let body = a.text.trim();
+        if body.is_empty() { return Err(bad("texte manquant")); }
+        let before = {
+            let c = self.db.lock();
+            let before = get(&c, a.id).map_err(failed)?.ok_or_else(|| failed("note introuvable"))?;
+            update(&c, a.id, body).map_err(failed)?;
+            before
+        };
+        self.events.changed(Topic::Notes);
+        Ok(ToolResult { output: json!({ "id": a.id }), undo: Some(json!({ "id": a.id, "text": before.body })) })
+    }
+    async fn undo(&self, undo: &Value) -> Result<(), ToolError> {
+        let a: UpdateArgs = parse(undo)?;
+        update(&self.db.lock(), a.id, &a.text).map_err(failed)?;
         self.events.changed(Topic::Notes);
         Ok(())
     }
@@ -138,10 +169,11 @@ impl Tool for ToReminder {
     }
 }
 
-/// Les cinq outils des notes, pour `AppState::open`.
+/// Les six outils des notes, pour `AppState::open`.
 pub fn all(db: &Db, events: &Arc<dyn Events>) -> Vec<Arc<dyn Tool>> {
     vec![
         Arc::new(Create { db: db.clone(), events: events.clone() }),
+        Arc::new(Update { db: db.clone(), events: events.clone() }),
         Arc::new(Search { db: db.clone() }),
         Arc::new(Delete { db: db.clone(), events: events.clone() }),
         Arc::new(Pin { db: db.clone(), events: events.clone() }),
@@ -184,6 +216,19 @@ mod tests {
         assert!(recent(&db.lock(), 50).unwrap().is_empty());
         assert_eq!(*log.0.lock().unwrap(), vec![Topic::Notes, Topic::Notes]);
         assert!(matches!(broker.call(call("notes.create", json!({"text": "  "}))).await, ToolOutcome::Failed { .. }));
+    }
+
+    #[tokio::test]
+    async fn update_puis_undo() {
+        let (db, log, broker) = setup();
+        let id = insert(&db.lock(), "avant").unwrap();
+        let ToolOutcome::Done { action_id, .. } = broker.call(call("notes.update", json!({"id": id, "text": " après "}))).await else { panic!() };
+        assert_eq!(recent(&db.lock(), 50).unwrap()[0].body, "après");
+        broker.undo(action_id).await.unwrap();
+        assert_eq!(recent(&db.lock(), 50).unwrap()[0].body, "avant");
+        assert_eq!(*log.0.lock().unwrap(), vec![Topic::Notes, Topic::Notes]);
+        assert!(matches!(broker.call(call("notes.update", json!({"id": id, "text": " "}))).await, ToolOutcome::Failed { .. }));
+        assert!(matches!(broker.call(call("notes.update", json!({"id": 99, "text": "x"}))).await, ToolOutcome::Failed { .. }));
     }
 
     #[tokio::test]

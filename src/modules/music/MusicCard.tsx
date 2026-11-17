@@ -242,14 +242,14 @@ export function MusicCard({ onAccounts, onColors }: { onAccounts?: () => void; o
             {view.favorites.length === 0
               ? <p className="mu-note" role="status">{view.all.length === 0 ? "Playlists en cours de chargement…" : "Épingle des playlists avec « … »."}</p>
               : (
-                <ul className="mu-lists">
+                <ul className="mu-lists scroll-area" aria-label="Playlists">
                   {view.favorites.map((p) => (
                     <li key={p.id}>
                       <button type="button" className="mu-pl" aria-label={p.name} aria-busy={starting === p.id} disabled={starting !== null}
                         onClick={() => void playList(p.id)}>
                         <span className="mu-pl-cover" style={{ background: gradient(p.id) }}>
                           {p.image?.startsWith("https://") && <img src={p.image} alt="" loading="lazy" referrerPolicy="no-referrer" />}
-                          <i className="mu-pl-play">{starting === p.id ? <span className="mu-spin" /> : <Play size={14} fill="currentColor" />}</i>
+                          <i className="mu-pl-play">{starting === p.id ? <span className="mu-spin" /> : <Play size={13} fill="currentColor" />}</i>
                         </span>
                         <span className="mu-pl-name">{p.name}</span>
                       </button>

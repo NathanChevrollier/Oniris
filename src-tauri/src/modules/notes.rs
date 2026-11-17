@@ -20,6 +20,11 @@ pub async fn notes_create(app: AppHandle, text: String) -> ToolOutcome {
 }
 
 #[tauri::command]
+pub async fn notes_update(app: AppHandle, id: i64, text: String) -> ToolOutcome {
+    dispatch_as_user(&app, "notes.update", json!({ "id": id, "text": text })).await
+}
+
+#[tauri::command]
 pub async fn notes_pin(app: AppHandle, id: i64, pinned: bool) -> ToolOutcome {
     dispatch_as_user(&app, "notes.pin", json!({ "id": id, "pinned": pinned })).await
 }

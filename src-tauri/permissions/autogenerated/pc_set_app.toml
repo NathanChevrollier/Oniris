@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-pc-set-app"
+description = "Enables the pc_set_app command without any pre-configured scope."
+commands.allow = ["pc_set_app"]
+
+[[permission]]
+identifier = "deny-pc-set-app"
+description = "Denies the pc_set_app command without any pre-configured scope."
+commands.deny = ["pc_set_app"]

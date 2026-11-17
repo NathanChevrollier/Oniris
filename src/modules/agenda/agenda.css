@@ -1,3 +1,8 @@
+/* Dans la grille : calendrier fixe, journée et rappels dans la place restante (défilante). */
+.ag{min-height:100%;display:flex;flex-direction:column}
+.grid .ag{height:100%}
+.ag>.cal{flex:none}
+.ag-day{flex:1 1 auto;min-height:64px;margin:6px -8px 0;padding:0 8px 4px;border-top:1px solid var(--line)}
 .cal{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;text-align:center;font-size:12px}
 .cal .d{color:var(--txt3);font-size:10.5px;padding-bottom:2px}
 .card .cal button{position:relative;display:block;height:auto;margin:0;padding:3px 0;border:0;border-radius:8px;background:none;font:inherit;color:var(--txt2);cursor:pointer}
@@ -10,7 +15,7 @@
 .card h3 .nav{display:inline-flex;gap:2px}
 .card .nav button{height:22px;width:22px;padding:0;margin:0;justify-content:center;background:none;border:0;color:var(--txt3)}
 .card .nav button:hover:enabled{background:rgba(255,255,255,.1);color:var(--txt)}
-.dl{list-style:none;margin:6px 0 0;padding:0;display:flex;flex-direction:column;gap:2px;font-size:12.5px}
+.dl{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-direction:column;gap:2px;font-size:12.5px}
 .dl li{display:flex;align-items:center;gap:8px;padding:2px 6px;margin:0 -6px;border-radius:8px;transition:background .2s}
 .dl li:hover{background:rgba(255,255,255,.05)}
 .dl time{flex:none;width:44px;color:var(--txt3);font-variant-numeric:tabular-nums}

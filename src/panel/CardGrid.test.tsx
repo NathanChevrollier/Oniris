@@ -1,4 +1,4 @@
-import { render, screen, cleanup, fireEvent } from "@testing-library/react";
+import { render, screen, cleanup } from "@testing-library/react";
 import { it, expect, afterEach } from "vitest";
 import { CardGrid } from "./CardGrid";
 
@@ -17,26 +17,10 @@ it("affiche l'emplacement fourni, « Bientôt » pour les autres, dans l'ordre",
   expect([...found].sort((a, b) => a - b)).toEqual(found);
 });
 
-it("fondu « more » seulement quand du contenu dépasse sous le bord visible", () => {
+it("chaque carte a un en-tête fixe et un corps défilant", () => {
   const { container } = render(<CardGrid slots={{}} />);
-  const grid = container.querySelector(".grid") as HTMLElement;
-  const size = (scrollTop: number, clientHeight: number, scrollHeight: number) =>
-    Object.defineProperties(grid, { scrollTop: { value: scrollTop, configurable: true }, clientHeight: { value: clientHeight, configurable: true }, scrollHeight: { value: scrollHeight, configurable: true } });
-  size(0, 500, 900);
-  fireEvent.scroll(grid);
-  expect(grid).toHaveClass("more");
-  size(400, 500, 900);
-  fireEvent.scroll(grid);
-  expect(grid).not.toHaveClass("more");
-});
-
-it("le fondu se recalcule à la fin de la montée des cartes (animationend)", () => {
-  const { container } = render(<CardGrid slots={{}} />);
-  const grid = container.querySelector(".grid") as HTMLElement;
-  Object.defineProperties(grid, { scrollTop: { value: 0 }, clientHeight: { value: 500 }, scrollHeight: { value: 900, configurable: true } });
-  fireEvent.animationEnd(grid.firstElementChild!);
-  expect(grid).toHaveClass("more");
-  Object.defineProperty(grid, "scrollHeight", { value: 500 });
-  fireEvent.animationEnd(grid.firstElementChild!);
-  expect(grid).not.toHaveClass("more");
+  for (const card of container.querySelectorAll(".grid>.card")) {
+    expect(card.firstElementChild?.tagName).toBe("H3");
+    expect(card.lastElementChild).toHaveClass("card-body", "scroll-area");
+  }
 });

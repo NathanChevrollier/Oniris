@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-alarms-set"
+description = "Enables the alarms_set command without any pre-configured scope."
+commands.allow = ["alarms_set"]
+
+[[permission]]
+identifier = "deny-alarms-set"
+description = "Denies the alarms_set command without any pre-configured scope."
+commands.deny = ["alarms_set"]

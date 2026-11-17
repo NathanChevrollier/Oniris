@@ -1,7 +1,9 @@
 // Les modules locaux (rappels, notes…) s'ajoutent ici, sur le modèle d'agenda.
 pub mod accounts;
 pub mod agenda;
+pub mod alarms;
 pub mod apps;
+pub mod audio;
 pub mod clipboard;
 pub mod favicons;
 pub mod favorites;

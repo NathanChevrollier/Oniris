@@ -112,7 +112,7 @@ pub struct Settings {
     pub pill_sleep: bool,
     /// Le panneau reste ouvert quand on clique ou travaille sur un autre écran que le sien.
     pub panel_keep_on_other_screen: bool,
-    /// La pilule affiche le titre en cours et le nombre de mails à traiter.
+    /// La pilule affiche le titre en cours.
     pub pill_extras: bool,
     /// Moteur de « Rechercher sur le web » de la palette : `google`, `duckduckgo` ou `bing`.
     pub web_search_engine: String,
@@ -124,6 +124,10 @@ pub struct Settings {
     pub clipboard_enabled: bool,
     pub clipboard_retention_days: u16,
     pub clipboard_max_items: u16,
+    /// Garder aussi les images copiées (sinon seulement le texte).
+    pub clipboard_keep_images: bool,
+    /// Ignorer les copies que leur source marque sensibles (gestionnaires de mots de passe).
+    pub clipboard_ignore_sensitive: bool,
     /// Ville de la météo : vide = météo désactivée (aucune requête). 80 caractères au plus.
     pub weather_city: String,
     /// Dossiers indexés par la recherche : vide = dossier utilisateur. 20 chemins absolus au plus (260 caractères).
@@ -223,6 +227,8 @@ impl Default for Settings {
             clipboard_enabled: true,
             clipboard_retention_days: 7,
             clipboard_max_items: 200,
+            clipboard_keep_images: true,
+            clipboard_ignore_sensitive: true,
             weather_city: String::new(),
             search_roots: Vec::new(),
             projects_roots: Vec::new(),
@@ -588,6 +594,7 @@ mod tests {
         assert_eq!(s.timeline_end_hour, 23);
         assert_eq!((s.focus_minutes, s.break_minutes), (25, 5));
         assert_eq!((s.clipboard_enabled, s.clipboard_retention_days, s.clipboard_max_items), (true, 7, 200));
+        assert!(s.clipboard_keep_images && s.clipboard_ignore_sensitive);
     }
     #[test] fn liste_blanche_shell_validee() {
         let with = |l: &[&str]| Settings { iris_shell_allowlist: l.iter().map(|x| x.to_string()).collect(), ..Settings::default() }.validate();

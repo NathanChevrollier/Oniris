@@ -7,6 +7,7 @@ import { IrisBrains, IrisHistory, IrisMemories, IrisPersonality, IrisSecurity } 
 import { RoutinesSection } from "../routines/RoutinesSection";
 import { VisionSection } from "../screen/VisionSection";
 import { ListChecks } from "lucide-react";
+import { ClipboardSettings } from "../clipboard/ClipboardSettings";
 import { VoiceSection } from "../voice/VoiceSection";
 import { Area, Field, Group, Row, SetCtx, Toggle, useDraft, useSaver, useSet } from "./controls";
 import { onUpdate, restartText, updateIpc, type UpdateStatus } from "./update";
@@ -125,7 +126,7 @@ const CATS: { id: SettingsCat; icon: LucideIcon; title: string; intro: string; p
       <Toggle k="hide_pill_in_fullscreen" label="Masquer en plein écran" desc="Pendant un jeu ou une vidéo en plein écran." />
       <Toggle k="panel_keep_on_other_screen" label="Rester ouvert sur les autres écrans" desc="Le panneau ne se replie pas quand tu cliques ou travailles sur un autre écran. Un clic à côté sur son écran le ferme toujours." />
       <Toggle k="pill_sleep" label="Pilule en veille" desc="Cachée, elle réapparaît quand le curseur touche le haut de l'écran, au milieu." />
-      <Toggle k="pill_extras" label="Afficher la musique et les mails dans la pilule" desc="Le titre en cours pendant la lecture et le nombre de mails à traiter. Un clic ouvre le panneau." />
+      <Toggle k="pill_extras" label="Afficher la musique en cours dans la pilule" desc="Le titre en cours pendant la lecture. Un clic ouvre le panneau." />
     </Group>
   </> },
   { id: "day", icon: Sun, title: "Journée", intro: "La frise du jour, le minuteur, la météo et la relève des mails.", pane: () => <>
@@ -146,13 +147,7 @@ const CATS: { id: SettingsCat; icon: LucideIcon; title: string; intro: string; p
   { id: "routines", icon: ListChecks, title: "Routines", intro: "Une phrase, plusieurs actions : « lance le mode jeu » règle le son, coupe le Bluetooth et ouvre Steam.", pane: () => <RoutinesSection /> },
   { id: "voice", icon: Mic, title: "Voix", intro: "Parler à IRIS et l'entendre répondre, avec ou sans la voix naturelle d'Azure.", pane: () => <VoiceSection /> },
   { id: "memory", icon: Brain, title: "Mémoire et historique", intro: "Ce qu'IRIS retient de toi et vos derniers échanges.", pane: () => <><IrisMemories /><IrisHistory /></> },
-  { id: "clipboard", icon: ClipboardList, title: "Presse-papiers", intro: "L'historique de ce que tu copies, dans la carte Presse-papiers.", pane: () => (
-    <Group>
-      <Toggle k="clipboard_enabled" label="Garder l'historique" desc="Oniris retient ce que tu copies pour te le reproposer." />
-      <Field k="clipboard_retention_days" label="Conservation" unit="jours" min={1} max={90} />
-      <Field k="clipboard_max_items" label="Éléments au plus" min={20} max={1000} />
-    </Group>
-  ) },
+  { id: "clipboard", icon: ClipboardList, title: "Presse-papiers", intro: "L'historique de ce que tu copies, dans la carte Presse-papiers.", pane: () => <ClipboardSettings /> },
   { id: "search", icon: FolderSearch, title: "Recherche et projets", intro: "Les dossiers que la recherche parcourt, tes projets et la reprise avec Claude Code.", pane: () => <>
     <Group title="Dossiers">
       <FolderRow k="search_roots" label="Dossiers de recherche" desc="Vide : ton dossier utilisateur." />

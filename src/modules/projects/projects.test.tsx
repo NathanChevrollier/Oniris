@@ -126,16 +126,25 @@ it("« Tu en étais à » : plan, sinon session, sinon rien de récent", async (
   expect(c.textContent).toContain("Rien de récent");
 });
 
-it("anneau, carte d'activité et puces accessibles", async () => {
-  vi.spyOn(projectsIpc, "list").mockResolvedValue([proj("Alpha", { plan, dirty: 4, branch: "feat/x", activity_14d: [1, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3] }), proj("Beta")]);
+it("plan explicite (libellé, barre, info-bulle), activité et état git accessibles", async () => {
+  vi.spyOn(projectsIpc, "list").mockResolvedValue([
+    proj("Alpha", { plan, dirty: 4, branch: "feat/x", activity_14d: [1, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3] }),
+    proj("Beta"), proj("Gamma", { plan: { file: "vide.md", done: 0, total: 0, current: null } }),
+  ]);
   render(<ProjectsCard />);
-  const [a, b] = await screen.findAllByRole("article");
-  expect(within(a).getByRole("img", { name: "étape 7 sur 12" }).textContent).toBe("7/12");
+  const [a, b, c] = await screen.findAllByRole("article");
+  expect(within(a).getByText("Plan : 7/12 tâches").parentElement!.title).toContain("PLAN.md");
+  const bar = within(a).getByRole("progressbar");
+  expect(bar).toHaveAttribute("aria-valuenow", "7");
+  expect(bar).toHaveAttribute("aria-valuemax", "12");
   expect(a.textContent).toContain("⑂ feat/x");
   expect(a.textContent).toContain("4 modifs");
   expect(a.textContent).toContain("activité : 3 jours sur 14");
   expect(b.textContent).toContain("propre");
-  expect(within(b).getByText("—")).toBeTruthy();
+  // Sans plan, ou un plan sans case à cocher : rien n'est affiché.
+  expect(within(b).queryByRole("progressbar")).toBeNull();
+  expect(within(c).queryByRole("progressbar")).toBeNull();
+  expect(c.textContent).not.toContain("Plan");
 });
 
 it("menu : épingler, masquer", async () => {

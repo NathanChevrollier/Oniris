@@ -4,6 +4,7 @@ import { it, expect, vi, afterEach, beforeEach } from "vitest";
 import { NotesCard } from "./NotesCard";
 import { notesIpc, type Note } from "./api";
 import { usePanelStore } from "../../panel/store";
+import { toolIpc } from "../../lib/ipc";
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.useRealTimers(); });
 beforeEach(() => usePanelStore.setState({ open: true }));
@@ -73,4 +74,54 @@ it("les libellés des boutons coupent le texte de la note à 80 caractères", as
   expect(await screen.findByRole("button", { name: `Supprimer ${"x".repeat(80)}` })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: `Épingler ${"x".repeat(80)}` })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: `En rappel : ${"x".repeat(80)}` })).toBeInTheDocument();
+});
+
+it("titre et aperçu : la 1re ligne est le titre, la suite l'aperçu", async () => {
+  vi.spyOn(notesIpc, "list").mockResolvedValue([{ id: 4, body: "Courses\nlait, pain", pinned: false, created_ms: 1, updated_ms: Date.now() }]);
+  const { container } = render(<NotesCard />);
+  await screen.findByText("Courses");
+  expect(container.querySelector(".ntitle")).toHaveTextContent("Courses");
+  expect(container.querySelector(".nprev")).toHaveTextContent("lait, pain");
+});
+
+it("édition en place : Entrée enregistre, Maj+Entrée va à la ligne, Échap annule", async () => {
+  vi.spyOn(notesIpc, "list").mockResolvedValue(notes);
+  const update = vi.spyOn(notesIpc, "update").mockResolvedValue(done);
+  render(<NotesCard />);
+  await userEvent.click(await screen.findByRole("button", { name: "Modifier Penser au pain" }));
+  const box = screen.getByRole("textbox", { name: "Modifier Penser au pain" });
+  expect(box).toHaveFocus();
+  await userEvent.type(box, "{Shift>}{Enter}{/Shift}complet{Enter}");
+  expect(update).toHaveBeenCalledOnce();
+  expect(update).toHaveBeenCalledWith(2, "Penser au pain\ncomplet");
+  await vi.waitFor(() => expect(screen.getByRole("button", { name: "Modifier Penser au pain" })).toHaveFocus());
+
+  await userEvent.click(screen.getByRole("button", { name: "Modifier Réunion client" }));
+  await userEvent.type(screen.getByRole("textbox", { name: "Modifier Réunion client" }), " x{Escape}");
+  expect(update).toHaveBeenCalledOnce();
+  expect(screen.queryByRole("textbox", { name: "Modifier Réunion client" })).toBeNull();
+});
+
+it("supprimer propose « Annuler », qui annule l'action dans le journal", async () => {
+  vi.spyOn(notesIpc, "list").mockResolvedValue(notes);
+  vi.spyOn(notesIpc, "remove").mockResolvedValue({ Done: { action_id: 42, output: {} } });
+  const undo = vi.spyOn(toolIpc, "undo").mockResolvedValue();
+  render(<NotesCard />);
+  await userEvent.click(await screen.findByRole("button", { name: "Supprimer Penser au pain" }));
+  expect(await screen.findByText("Note supprimée.")).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "Annuler" }));
+  expect(undo).toHaveBeenCalledWith(42);
+  expect(screen.queryByText("Note supprimée.")).toBeNull();
+});
+
+it("le champ grandit avec le texte, bordures comprises, sans barre de défilement", async () => {
+  vi.spyOn(notesIpc, "list").mockResolvedValue([]);
+  render(<NotesCard />);
+  const box = screen.getByRole("textbox", { name: "Nouvelle note" }) as HTMLTextAreaElement;
+  // jsdom ne mesure rien : 1 px de bordure en haut et en bas, contenu (padding compris) de 50 px.
+  const client = () => (box.style.height && box.style.height !== "auto" ? parseFloat(box.style.height) - 2 : 34);
+  Object.defineProperties(box, { scrollHeight: { value: 50, configurable: true }, clientHeight: { get: client, configurable: true }, offsetHeight: { get: () => client() + 2, configurable: true } });
+  await userEvent.type(box, "a");
+  expect(box.style.height).toBe("52px");
+  expect(box.style.overflowY).toBe("hidden");
 });

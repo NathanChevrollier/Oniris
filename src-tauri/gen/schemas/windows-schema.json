@@ -255,6 +255,42 @@
           "markdownDescription": "Enables the agenda_month_days command without any pre-configured scope."
         },
         {
+          "description": "Enables the alarms_cancel command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-alarms-cancel",
+          "markdownDescription": "Enables the alarms_cancel command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the alarms_set command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-alarms-set",
+          "markdownDescription": "Enables the alarms_set command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the alarms_snooze command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-alarms-snooze",
+          "markdownDescription": "Enables the alarms_snooze command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the alarms_state command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-alarms-state",
+          "markdownDescription": "Enables the alarms_state command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the alarms_stop command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-alarms-stop",
+          "markdownDescription": "Enables the alarms_stop command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the clipboard_clear command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-clipboard-clear",
+          "markdownDescription": "Enables the clipboard_clear command without any pre-configured scope."
+        },
+        {
           "description": "Enables the clipboard_delete command without any pre-configured scope.",
           "type": "string",
           "const": "allow-clipboard-delete",
@@ -277,6 +313,12 @@
           "type": "string",
           "const": "allow-clipboard-pin",
           "markdownDescription": "Enables the clipboard_pin command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the clipboard_stats command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-clipboard-stats",
+          "markdownDescription": "Enables the clipboard_stats command without any pre-configured scope."
         },
         {
           "description": "Enables the favorites_add command without any pre-configured scope.",
@@ -483,12 +525,6 @@
           "markdownDescription": "Enables the mail_status command without any pre-configured scope."
         },
         {
-          "description": "Enables the mail_todo_count command without any pre-configured scope.",
-          "type": "string",
-          "const": "allow-mail-todo-count",
-          "markdownDescription": "Enables the mail_todo_count command without any pre-configured scope."
-        },
-        {
           "description": "Enables the music_devices command without any pre-configured scope.",
           "type": "string",
           "const": "allow-music-devices",
@@ -597,6 +633,12 @@
           "markdownDescription": "Enables the notes_to_reminder command without any pre-configured scope."
         },
         {
+          "description": "Enables the notes_update command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-notes-update",
+          "markdownDescription": "Enables the notes_update command without any pre-configured scope."
+        },
+        {
           "description": "Enables the onboarding_get command without any pre-configured scope.",
           "type": "string",
           "const": "allow-onboarding-get",
@@ -639,10 +681,28 @@
           "markdownDescription": "Enables the panel_toggle command without any pre-configured scope."
         },
         {
+          "description": "Enables the pc_apps command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-pc-apps",
+          "markdownDescription": "Enables the pc_apps command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the pc_outputs command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-pc-outputs",
+          "markdownDescription": "Enables the pc_outputs command without any pre-configured scope."
+        },
+        {
           "description": "Enables the pc_power command without any pre-configured scope.",
           "type": "string",
           "const": "allow-pc-power",
           "markdownDescription": "Enables the pc_power command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the pc_set_app command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-pc-set-app",
+          "markdownDescription": "Enables the pc_set_app command without any pre-configured scope."
         },
         {
           "description": "Enables the pc_set_bluetooth command without any pre-configured scope.",
@@ -657,10 +717,22 @@
           "markdownDescription": "Enables the pc_set_mute command without any pre-configured scope."
         },
         {
+          "description": "Enables the pc_set_output command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-pc-set-output",
+          "markdownDescription": "Enables the pc_set_output command without any pre-configured scope."
+        },
+        {
           "description": "Enables the pc_set_volume command without any pre-configured scope.",
           "type": "string",
           "const": "allow-pc-set-volume",
           "markdownDescription": "Enables the pc_set_volume command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the pc_sound command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-pc-sound",
+          "markdownDescription": "Enables the pc_sound command without any pre-configured scope."
         },
         {
           "description": "Enables the pc_state command without any pre-configured scope.",
@@ -1053,6 +1125,42 @@
           "markdownDescription": "Denies the agenda_month_days command without any pre-configured scope."
         },
         {
+          "description": "Denies the alarms_cancel command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-alarms-cancel",
+          "markdownDescription": "Denies the alarms_cancel command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the alarms_set command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-alarms-set",
+          "markdownDescription": "Denies the alarms_set command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the alarms_snooze command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-alarms-snooze",
+          "markdownDescription": "Denies the alarms_snooze command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the alarms_state command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-alarms-state",
+          "markdownDescription": "Denies the alarms_state command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the alarms_stop command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-alarms-stop",
+          "markdownDescription": "Denies the alarms_stop command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the clipboard_clear command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-clipboard-clear",
+          "markdownDescription": "Denies the clipboard_clear command without any pre-configured scope."
+        },
+        {
           "description": "Denies the clipboard_delete command without any pre-configured scope.",
           "type": "string",
           "const": "deny-clipboard-delete",
@@ -1075,6 +1183,12 @@
           "type": "string",
           "const": "deny-clipboard-pin",
           "markdownDescription": "Denies the clipboard_pin command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the clipboard_stats command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-clipboard-stats",
+          "markdownDescription": "Denies the clipboard_stats command without any pre-configured scope."
         },
         {
           "description": "Denies the favorites_add command without any pre-configured scope.",
@@ -1281,12 +1395,6 @@
           "markdownDescription": "Denies the mail_status command without any pre-configured scope."
         },
         {
-          "description": "Denies the mail_todo_count command without any pre-configured scope.",
-          "type": "string",
-          "const": "deny-mail-todo-count",
-          "markdownDescription": "Denies the mail_todo_count command without any pre-configured scope."
-        },
-        {
           "description": "Denies the music_devices command without any pre-configured scope.",
           "type": "string",
           "const": "deny-music-devices",
@@ -1395,6 +1503,12 @@
           "markdownDescription": "Denies the notes_to_reminder command without any pre-configured scope."
         },
         {
+          "description": "Denies the notes_update command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-notes-update",
+          "markdownDescription": "Denies the notes_update command without any pre-configured scope."
+        },
+        {
           "description": "Denies the onboarding_get command without any pre-configured scope.",
           "type": "string",
           "const": "deny-onboarding-get",
@@ -1437,10 +1551,28 @@
           "markdownDescription": "Denies the panel_toggle command without any pre-configured scope."
         },
         {
+          "description": "Denies the pc_apps command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-pc-apps",
+          "markdownDescription": "Denies the pc_apps command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the pc_outputs command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-pc-outputs",
+          "markdownDescription": "Denies the pc_outputs command without any pre-configured scope."
+        },
+        {
           "description": "Denies the pc_power command without any pre-configured scope.",
           "type": "string",
           "const": "deny-pc-power",
           "markdownDescription": "Denies the pc_power command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the pc_set_app command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-pc-set-app",
+          "markdownDescription": "Denies the pc_set_app command without any pre-configured scope."
         },
         {
           "description": "Denies the pc_set_bluetooth command without any pre-configured scope.",
@@ -1455,10 +1587,22 @@
           "markdownDescription": "Denies the pc_set_mute command without any pre-configured scope."
         },
         {
+          "description": "Denies the pc_set_output command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-pc-set-output",
+          "markdownDescription": "Denies the pc_set_output command without any pre-configured scope."
+        },
+        {
           "description": "Denies the pc_set_volume command without any pre-configured scope.",
           "type": "string",
           "const": "deny-pc-set-volume",
           "markdownDescription": "Denies the pc_set_volume command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the pc_sound command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-pc-sound",
+          "markdownDescription": "Denies the pc_sound command without any pre-configured scope."
         },
         {
           "description": "Denies the pc_state command without any pre-configured scope.",

@@ -52,15 +52,20 @@ export function AgendaCard() {
         <button type="button" aria-label="Mois précédent" onClick={() => go(-1)}><ChevronLeft size={15} /></button>
         <button type="button" aria-label="Mois suivant" onClick={() => go(1)}><ChevronRight size={15} /></button>
       </span>}>
-      <MonthGrid year={year} month={month} today={isNow ? now.getDate() : null} selected={sel.getDate()}
-        withEvents={data.days} onSelect={(day) => setPicked(new Date(year, month - 1, day))} />
-      <DayList events={data.events} onDelete={remove} />
-      <form className="add" onSubmit={submit}>
-        <input value={text} onChange={(e) => { setText(e.target.value); clear(); }} placeholder="Ajouter…"
-          aria-label="Ajouter un événement" autoComplete="off" spellCheck={false} />
-        {error && <p className="err" role="alert">{error}</p>}
-      </form>
-      <ReminderList />
+      {/* Le mois reste en place ; la journée et les rappels défilent dessous. */}
+      <div className="ag">
+        <MonthGrid year={year} month={month} today={isNow ? now.getDate() : null} selected={sel.getDate()}
+          withEvents={data.days} onSelect={(day) => setPicked(new Date(year, month - 1, day))} />
+        <div className="ag-day scroll-area">
+          <DayList events={data.events} onDelete={remove} />
+          <form className="add" onSubmit={submit}>
+            <input value={text} onChange={(e) => { setText(e.target.value); clear(); }} placeholder="Ajouter…"
+              aria-label="Ajouter un événement" autoComplete="off" spellCheck={false} />
+            {error && <p className="err" role="alert">{error}</p>}
+          </form>
+          <ReminderList />
+        </div>
+      </div>
     </Card>
   );
 }

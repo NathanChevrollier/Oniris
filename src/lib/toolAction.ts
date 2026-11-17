@@ -12,6 +12,8 @@ const KNOWN: Record<string, string> = {
   "rappel introuvable": "Ce rappel n'existe plus.",
   "note introuvable": "Cette note n'existe plus.",
   "minuteur introuvable": "Ce minuteur est déjà terminé.",
+  "heure introuvable": "Heure introuvable — essaie « alarme 7h » ou « réveille-moi demain à 6h30 ».",
+  "alarme introuvable": "Cette alarme n'existe plus.",
   "texte trop long": "Ce texte est trop long.",
   "demande expirée": "Demande expirée, recommence.",
   "favori déjà présent": "Ce site est déjà dans tes favoris.",

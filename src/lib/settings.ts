@@ -30,7 +30,7 @@ export type Settings = {
   hide_pill_in_fullscreen: boolean;
   pill_sleep: boolean;
   panel_keep_on_other_screen: boolean;
-  /** La pilule affiche le titre en cours et le nombre de mails à traiter. */
+  /** La pilule affiche le titre en cours. */
   pill_extras: boolean;
   /** Moteur de « Rechercher sur le web » de la palette. */
   web_search_engine: "google" | "duckduckgo" | "bing";
@@ -44,6 +44,8 @@ export type Settings = {
   clipboard_retention_days: number;
   /** 20..=1000 */
   clipboard_max_items: number;
+  clipboard_keep_images: boolean;
+  clipboard_ignore_sensitive: boolean;
   /** Ville de la météo, 80 caractères au plus ; vide = météo désactivée. */
   weather_city: string;
   /** Dossiers indexés par la recherche (vide = dossier utilisateur) ; 20 chemins absolus au plus, 260 caractères. */
@@ -133,6 +135,8 @@ export const DEFAULT_SETTINGS: Settings = {
   clipboard_enabled: true,
   clipboard_retention_days: 7,
   clipboard_max_items: 200,
+  clipboard_keep_images: true,
+  clipboard_ignore_sensitive: true,
   weather_city: "",
   search_roots: [],
   projects_roots: [],

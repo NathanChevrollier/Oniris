@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-pc-sound"
+description = "Enables the pc_sound command without any pre-configured scope."
+commands.allow = ["pc_sound"]
+
+[[permission]]
+identifier = "deny-pc-sound"
+description = "Denies the pc_sound command without any pre-configured scope."
+commands.deny = ["pc_sound"]

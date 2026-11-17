@@ -255,7 +255,7 @@ mod tests {
             "music.queue", "music.seek", "music.toggle", "music.transfer", "music.volume", "notes.create", "notes.delete",
             "notes.pin", "notes.search", "notes.to_reminder", "pc.bluetooth", "pc.power", "pc.task_manager", "pc.volume", "projects.list", "projects.resume", "projects.status",
             "reminders.complete", "reminders.create", "reminders.delete", "sites.status", "system.status", "timer.cancel",
-            "timer.start", "vps.status", "weather.today",
+            "timer.start", "vps.status", "weather.today", "alarm.set", "alarm.list", "alarm.cancel", "pc.app_volume",
         ];
         for n in names {
             assert!(!n.contains("__") && !n.contains("_.") && !n.contains("._"), "{n}");

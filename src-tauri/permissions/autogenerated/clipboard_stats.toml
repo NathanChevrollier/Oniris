@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-clipboard-stats"
+description = "Enables the clipboard_stats command without any pre-configured scope."
+commands.allow = ["clipboard_stats"]
+
+[[permission]]
+identifier = "deny-clipboard-stats"
+description = "Denies the clipboard_stats command without any pre-configured scope."
+commands.deny = ["clipboard_stats"]

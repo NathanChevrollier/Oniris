@@ -62,6 +62,7 @@ pub fn run() {
             modules::reminders::reminders_delete,
             modules::notes::notes_list,
             modules::notes::notes_create,
+            modules::notes::notes_update,
             modules::notes::notes_pin,
             modules::notes::notes_delete,
             modules::notes::notes_to_reminder,
@@ -69,10 +70,17 @@ pub fn run() {
             modules::timers::timers_start,
             modules::timers::focus_start,
             modules::timers::timers_cancel,
+            modules::alarms::alarms_state,
+            modules::alarms::alarms_set,
+            modules::alarms::alarms_cancel,
+            modules::alarms::alarms_stop,
+            modules::alarms::alarms_snooze,
             modules::clipboard::clipboard_list,
             modules::clipboard::clipboard_pin,
             modules::clipboard::clipboard_delete,
             modules::clipboard::clipboard_paste,
+            modules::clipboard::clipboard_stats,
+            modules::clipboard::clipboard_clear,
             modules::favorites::favorites_list,
             modules::favorites::favorites_reorder,
             modules::favorites::favorites_rename,
@@ -138,6 +146,11 @@ pub fn run() {
             modules::pc::pc_state,
             modules::pc::pc_set_volume,
             modules::pc::pc_set_mute,
+            modules::pc::pc_sound,
+            modules::pc::pc_apps,
+            modules::pc::pc_set_app,
+            modules::pc::pc_outputs,
+            modules::pc::pc_set_output,
             modules::pc::pc_set_bluetooth,
             modules::pc::pc_task_manager,
             modules::pc::pc_windows_settings,
@@ -145,7 +158,6 @@ pub fn run() {
             modules::mail::mail_open_web,
             modules::mail::mail_open_link,
             modules::mail::mail_status,
-            modules::mail::mail_todo_count,
             modules::palette::palette_rates,
             modules::palette::palette_web_search,
             modules::icons::search_icon,
@@ -212,6 +224,7 @@ pub fn run() {
             }
             modules::reminders::start(app.handle());
             modules::timers::start(app.handle());
+            modules::alarms::start(app.handle());
             modules::clipboard::start(app.handle());
             modules::weather::load(app.handle());
             tauri::async_runtime::spawn(modules::iris::ensure_ollama()); // tri des mails et briefing en ont besoin

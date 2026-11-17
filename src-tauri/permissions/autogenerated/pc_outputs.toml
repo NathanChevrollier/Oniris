@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-pc-outputs"
+description = "Enables the pc_outputs command without any pre-configured scope."
+commands.allow = ["pc_outputs"]
+
+[[permission]]
+identifier = "deny-pc-outputs"
+description = "Denies the pc_outputs command without any pre-configured scope."
+commands.deny = ["pc_outputs"]

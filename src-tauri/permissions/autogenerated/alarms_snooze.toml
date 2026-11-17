@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-alarms-snooze"
+description = "Enables the alarms_snooze command without any pre-configured scope."
+commands.allow = ["alarms_snooze"]
+
+[[permission]]
+identifier = "deny-alarms-snooze"
+description = "Denies the alarms_snooze command without any pre-configured scope."
+commands.deny = ["alarms_snooze"]

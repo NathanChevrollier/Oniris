@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-alarms-stop"
+description = "Enables the alarms_stop command without any pre-configured scope."
+commands.allow = ["alarms_stop"]
+
+[[permission]]
+identifier = "deny-alarms-stop"
+description = "Denies the alarms_stop command without any pre-configured scope."
+commands.deny = ["alarms_stop"]

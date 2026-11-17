@@ -1,5 +1,6 @@
 pub mod accounts;
 pub mod agenda;
+pub mod alarms;
 pub mod apps;
 pub mod calendar;
 pub mod launch;

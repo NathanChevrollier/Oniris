@@ -24,6 +24,7 @@ export const notesIpc = {
     return Promise.resolve(fakeNotes().filter((n) => words.every((w) => fold(n.body).split(/\W+/).some((t) => t.startsWith(w)))));
   },
   create: (text: string): Promise<ToolOutcome> => isTauri ? invoke("notes_create", { text }) : Promise.resolve(fakeDone),
+  update: (id: number, text: string): Promise<ToolOutcome> => isTauri ? invoke("notes_update", { id, text }) : Promise.resolve(fakeDone),
   pin: (id: number, pinned: boolean): Promise<ToolOutcome> => isTauri ? invoke("notes_pin", { id, pinned }) : Promise.resolve(fakeDone),
   toReminder: (id: number): Promise<ToolOutcome> => isTauri ? invoke("notes_to_reminder", { id }) : Promise.resolve(fakeDone),
   remove: (id: number): Promise<ToolOutcome> => isTauri ? invoke("notes_delete", { id }) : Promise.resolve(fakeDone),

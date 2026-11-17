@@ -1,36 +1,34 @@
 .proj-all{height:auto;margin:0;padding:0;border:0;background:none;color:var(--txt3);font:inherit;cursor:pointer}
 .proj-all:hover,.proj-all:focus-visible{color:var(--txt);outline:0;text-decoration:underline}
 .projs{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
-.proj{position:relative;min-width:0;border-radius:18px;padding:10px 12px;background:rgba(255,255,255,.045);border:1px solid var(--line);display:flex;flex-direction:column;gap:6px;transition:.3s var(--ease)}
+.proj{position:relative;min-width:0;border-radius:16px;padding:8px 11px;background:rgba(255,255,255,.045);border:1px solid var(--line);display:flex;flex-direction:column;gap:5px;transition:background .3s var(--ease),transform .3s var(--ease)}
 .proj:hover{background:rgba(255,255,255,.08);transform:translateY(-2px)}
-.proj-h{display:flex;align-items:center;gap:8px}
-.proj-ico{flex:none;width:34px;height:34px;border-radius:10px;display:grid;place-items:center;font:700 14px var(--font);color:#fff;background:linear-gradient(135deg,var(--g1),var(--g2));box-shadow:inset 0 0 0 1px rgba(255,255,255,.14)}
+.proj-h{display:flex;align-items:center;gap:9px;padding-right:14px}
+.proj-ico{flex:none;width:28px;height:28px;border-radius:9px;display:grid;place-items:center;font:700 13px var(--font);color:#fff;background:linear-gradient(135deg,var(--g1),var(--g2));box-shadow:inset 0 0 0 1px rgba(255,255,255,.14)}
 .proj-name{min-width:0}
 .proj-name b{display:block;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.proj-name small{display:block;font-size:11px;letter-spacing:normal;text-transform:none;color:var(--txt3);white-space:nowrap}
-.proj-ring{margin-left:auto;flex:none;width:38px;height:38px;position:relative}
-.proj-ring svg{transform:rotate(-90deg)}
-.proj-ring circle{fill:none;stroke-width:4}
-.proj-ring .bg{stroke:rgba(255,255,255,.1)}
-.proj-ring .fg{stroke:var(--ring);stroke-linecap:round}
-.proj-ring span{position:absolute;inset:0;display:grid;place-items:center;font-size:10px;font-weight:600;color:var(--txt)}
+.proj-name small{display:block;font-size:11px;letter-spacing:normal;text-transform:none;color:var(--txt3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.proj-dirty{color:#ffb38f}
 .card .proj-more{position:absolute;top:3px;right:3px;width:18px;height:18px;margin:0;padding:0;display:grid;place-items:center;border:0;border-radius:999px;background:none;color:var(--txt3);cursor:pointer}
 .card .proj-more:hover,.card .proj-more:focus-visible{background:rgba(255,255,255,.1);color:var(--txt);outline:0}
-.proj-menu{position:absolute;z-index:5;top:42px;right:10px;display:flex;flex-direction:column;min-width:130px;padding:4px;border-radius:12px;background:rgba(34,34,40,.96);border:1px solid var(--line2)}
+.proj-menu{position:absolute;z-index:5;top:26px;right:6px;display:flex;flex-direction:column;min-width:130px;padding:4px;border-radius:12px;background:rgba(34,34,40,.96);border:1px solid var(--line2)}
 .card .proj-menu button{height:26px;margin:0;padding:0 10px;border:0;border-radius:8px;background:none;justify-content:flex-start;text-align:left;font:12px var(--font);color:var(--txt);cursor:pointer}
 .card .proj-menu button:hover,.card .proj-menu button:focus-visible{background:rgba(255,255,255,.1);outline:0}
-.proj-last{font-size:12px;color:var(--txt2);line-height:1.35;min-height:32px}
+.proj-last{font-size:12px;color:var(--txt2);line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .proj-last em{font-style:normal;color:var(--txt)}
-.proj-heat{display:grid;grid-template-columns:repeat(14,1fr);gap:3px}
-.proj-heat i{aspect-ratio:1;border-radius:3px;background:rgba(255,255,255,.07)}
-.proj-chips{display:flex;gap:6px;flex-wrap:wrap}
-.proj .chip{font-size:11px;padding:2px 8px;border-radius:7px;background:rgba(255,255,255,.08);color:var(--txt2);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.proj-split{display:flex;border-radius:11px;overflow:hidden;margin-top:auto}
-.card .proj-split button{display:flex;justify-content:center;align-items:center;margin:0;height:auto;border:0;border-radius:0;padding:6px 0;text-align:center;font:600 12px var(--font);cursor:pointer;transition:filter .2s}
+/* Avancement du plan : libellé explicite et barre fine (transform seul). */
+.proj-plan{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--txt2);cursor:help}
+.proj-plan span{flex:none;font-variant-numeric:tabular-nums}
+.proj-plan i{flex:1;height:4px;border-radius:2px;background:rgba(255,255,255,.1);overflow:hidden}
+.proj-plan b{display:block;height:100%;background:var(--ring);transform-origin:left}
+.proj-heat{display:grid;grid-template-columns:repeat(14,1fr);gap:3px;margin-top:auto}
+.proj-heat i{height:5px;border-radius:2px;background:rgba(255,255,255,.07)}
+.proj-split{display:flex;border-radius:10px;overflow:hidden}
+.card .proj-split button{display:flex;justify-content:center;align-items:center;margin:0;height:auto;border:0;border-radius:0;padding:5px 0;text-align:center;font:600 12px var(--font);cursor:pointer;transition:filter .2s}
 .card .proj-split button:hover:enabled{filter:brightness(1.15)}
 .card .proj-split button:disabled{opacity:.5;cursor:default}
 .card .proj-split .n{flex:1;background:var(--acc);color:#fff}
-.card .proj-split .o{flex:none;padding:6px 10px;background:rgba(255,116,72,.22);color:#ffc2ad;border-left:1px solid rgba(0,0,0,.25)}
+.card .proj-split .o{flex:none;padding:5px 10px;background:rgba(255,116,72,.22);color:#ffc2ad;border-left:1px solid rgba(0,0,0,.25)}
 .card .proj-split button:focus-visible{outline:2px solid var(--txt);outline-offset:-2px}
 .proj-roots{display:flex;gap:8px;margin-top:10px}
 .proj-roots input{flex:1;min-width:0;padding:6px 10px;border-radius:12px;border:1px solid var(--line);background:rgba(255,255,255,.06);color:var(--txt);font:12.5px var(--font);outline:0}

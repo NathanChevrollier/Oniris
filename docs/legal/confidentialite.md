@@ -26,7 +26,9 @@ Supprimer le dossier `%APPDATA%\Oniris` efface tout ce qu'Oniris sait de toi.
 
 ## Notifications
 
-Le texte de tes rappels et le nom de tes minuteurs s'affichent dans les notifications de Windows. Windows les garde ensuite dans le centre de notifications jusqu'à ce que tu les effaces : toute personne qui a accès à ta session peut donc les lire.
+Le **mélangeur de son** lit, sur ton PC seulement, les applications qui jouent du son (nom et icône de leur programme) et le nom de tes sorties audio : rien n'est enregistré, journalisé ni envoyé. Les **alarmes** (heure, jours, libellé) sont gardées dans `oniris.db`.
+
+Le texte de tes rappels, le nom de tes minuteurs et le libellé de tes alarmes s'affichent dans les notifications de Windows. Windows les garde ensuite dans le centre de notifications jusqu'à ce que tu les effaces : toute personne qui a accès à ta session peut donc les lire.
 
 ## Pas de télémétrie
 

@@ -1,6 +1,6 @@
 import { render, screen, cleanup, act, fireEvent } from "@testing-library/react";
 import { it, expect, vi, afterEach, beforeEach } from "vitest";
-import { Pill, pillIpc } from "./Pill";
+import { Pill } from "./Pill";
 import { musicIpc, type NowPlaying } from "../modules/music/api";
 import { ipc, type PanelState } from "../lib/ipc";
 import type { VoiceEvent } from "../modules/voice/api";
@@ -279,14 +279,13 @@ const track = (playing: boolean): NowPlaying => ({
   position_ms: 0, duration_ms: 1000, updated_ms: 0, source: "spotify",
 });
 
-it("musique et mails : affichés quand ça joue et qu'il y a des mails, masqués sinon", async () => {
+it("musique : affichée quand ça joue, masquée sinon ; aucun badge de mails", async () => {
   const now = vi.spyOn(musicIpc, "now").mockResolvedValue(track(true));
-  const count = vi.spyOn(pillIpc, "todoCount").mockResolvedValue(4);
   const { container } = render(<Pill />);
   await act(async () => {});
   expect(screen.getByText("Nuit Blanche")).toBeInTheDocument();
   expect(screen.getByText("· Polo & Pan")).toBeInTheDocument();
-  expect(screen.getByTitle("4 mails à traiter")).toHaveTextContent("4");
+  expect(container.querySelector(".pill-mail")).toBeNull();
   expect(screen.getAllByRole("button")).toHaveLength(1); // tout reste dans l'îlot : un clic ouvre le panneau
   fireEvent.click(screen.getByText("Nuit Blanche"));
   expect(spies.panelToggle).toHaveBeenCalledOnce();
@@ -294,21 +293,17 @@ it("musique et mails : affichés quand ça joue et qu'il y a des mails, masqués
   await act(async () => changedCb({ topic: "music" }));
   expect(screen.getByText("Nuit Blanche")).toBeInTheDocument();
   now.mockResolvedValue(track(false));
-  count.mockResolvedValue(0);
   await act(async () => changedCb({ topic: "music" }));
-  await act(async () => changedCb({ topic: "mail" }));
   expect(container.querySelector(".pill-music")).toBeNull();
-  expect(container.querySelector(".pill-mail")).toBeNull();
   expect(vi.getTimerCount()).toBe(1); // seule l'horloge : aucune minuterie ajoutée
 });
 
-it("réglage « musique et mails » coupé : rien n'est lu ni affiché", async () => {
+it("réglage « musique » coupé : rien n'est lu ni affiché", async () => {
   vi.spyOn(ipc, "getSettings").mockResolvedValue({ ...DEFAULT_SETTINGS, pill_extras: false });
-  vi.spyOn(pillIpc, "todoCount").mockResolvedValue(4);
+  vi.spyOn(musicIpc, "now").mockResolvedValue(track(true));
   const { container } = render(<Pill />);
   await act(async () => {});
   expect(container.querySelector(".pill-music")).toBeNull();
-  expect(container.querySelector(".pill-mail")).toBeNull();
-  await act(async () => changedCb({ topic: "mail" }));
-  expect(container.querySelector(".pill-mail")).toBeNull();
+  await act(async () => changedCb({ topic: "music" }));
+  expect(container.querySelector(".pill-music")).toBeNull();
 });

@@ -49,6 +49,21 @@ pub async fn search_icon(state: State<'_, AppState>, kind: String, key: String) 
     Ok(icon)
 }
 
+/// Icône de l'exe d'un processus qui joue du son (chemin donné par Windows, jamais par l'interface).
+/// À appeler hors du fil principal : extraction Shell bloquante, mise en cache.
+pub(crate) fn exe_icon(path: &str) -> Option<String> {
+    let key = format!("exe:{}", path.to_lowercase());
+    if let Some(i) = CACHE.lock().get(&key) {
+        return i.png.clone();
+    }
+    let icon = extract(&Target::App(path.to_string()));
+    let mut c = CACHE.lock();
+    if c.len() < CACHE_MAX {
+        c.insert(key, icon.clone());
+    }
+    icon.png
+}
+
 enum Target { App(String), Ext(String) }
 
 fn extract(t: &Target) -> Icon {

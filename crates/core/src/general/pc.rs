@@ -23,6 +23,33 @@ pub struct Volume {
     pub muted: bool,
 }
 
+/// Son d'une application (toutes ses sessions audio, sur toutes les sorties). `key` : nom de l'exe en minuscules.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AppAudio {
+    pub key: String,
+    pub name: String,
+    pub percent: u8,
+    pub muted: bool,
+    /// Joue du son en ce moment.
+    pub active: bool,
+}
+
+/// Application visée par un nom libre (« discord ») : nom exact d'abord, sinon un seul nom qui le contient.
+pub fn pick_app<'a>(apps: &'a [AppAudio], query: &str) -> Result<&'a AppAudio, String> {
+    let q = crate::when::norm(query);
+    let q = q.trim_end_matches(".exe");
+    let names = |l: &[&AppAudio]| l.iter().map(|a| a.name.as_str()).collect::<Vec<_>>().join(", ");
+    if let Some(a) = apps.iter().find(|a| a.key == q || crate::when::norm(&a.name) == q) {
+        return Ok(a);
+    }
+    let hits: Vec<&AppAudio> = apps.iter().filter(|a| !q.is_empty() && (a.key.contains(q) || crate::when::norm(&a.name).contains(q))).collect();
+    match hits.as_slice() {
+        [a] => Ok(a),
+        [] => Err(format!("aucune application « {query} » n'a de son ouvert (en cours : {})", names(&apps.iter().collect::<Vec<_>>()))),
+        _ => Err(format!("plusieurs applications correspondent : {}", names(&hits))),
+    }
+}
+
 pub trait PcControl: Send + Sync {
     fn volume(&self) -> Result<Volume, String>;
     fn set_volume(&self, percent: u8) -> Result<(), String>;
@@ -32,6 +59,9 @@ pub trait PcControl: Send + Sync {
     fn set_bluetooth(&self, on: bool) -> Result<(), String>;
     fn task_manager(&self) -> Result<(), String>;
     fn power(&self, action: Power) -> Result<(), String>;
+    /// Applications qui ont une session audio ouverte.
+    fn apps(&self) -> Result<Vec<AppAudio>, String> { Err("mélangeur indisponible".into()) }
+    fn set_app(&self, _key: &str, _percent: Option<u8>, _muted: Option<bool>) -> Result<(), String> { Err("mélangeur indisponible".into()) }
 }
 
 type Pc = Arc<dyn PcControl>;
@@ -46,6 +76,7 @@ pub struct VolumeTool(pub Pc);
 pub struct BluetoothTool(pub Pc);
 pub struct TaskManagerTool(pub Pc);
 pub struct PowerTool(pub Pc);
+pub struct AppVolumeTool(pub Pc);
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -156,12 +187,48 @@ impl Tool for PowerTool {
     }
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AppVolumeArgs {
+    app: String,
+    percent: Option<i64>,
+    muted: Option<bool>,
+}
+
+#[async_trait]
+impl Tool for AppVolumeTool {
+    fn spec(&self) -> ToolSpec {
+        spec("pc.app_volume", "Son d'une application (« baisse Discord à 30 % ») : `app` (nom), `percent` (0 à 100) et/ou `muted`. Régler un niveau rétablit son son.",
+            json!({"type":"object","required":["app"],"properties":{"app":{"type":"string"},"percent":{"type":"integer","minimum":0,"maximum":100},"muted":{"type":"boolean"}}}), Permission::Free)
+    }
+    fn check(&self, a: &Value) -> Result<(), ToolError> {
+        let v: AppVolumeArgs = parse(a)?;
+        match v.percent {
+            Some(p) if !(0..=100).contains(&p) => Err(bad("`percent` : 0 à 100")),
+            None if v.muted.is_none() => Err(bad("donne `percent` et/ou `muted`")),
+            _ => Ok(()),
+        }
+    }
+    fn describe(&self, _: &Value) -> ConfirmationText { low("Régler le son d'une application") }
+    async fn run(&self, a: &Value) -> Result<ToolResult, ToolError> {
+        let AppVolumeArgs { app, percent, muted } = parse(a)?;
+        let out = blocking(&self.0, move |pc| {
+            let key = pick_app(&pc.apps()?, &app)?.key.clone();
+            let percent = percent.map(|p| p.clamp(0, 100) as u8);
+            pc.set_app(&key, percent, muted.or(percent.map(|_| false)))?;
+            pc.apps()?.into_iter().find(|a| a.key == key).ok_or_else(|| "application disparue".to_string())
+        }).await?;
+        Ok(ToolResult { output: json!(out), undo: None })
+    }
+}
+
 pub fn all(pc: &Pc) -> Vec<Arc<dyn Tool>> {
     vec![
         Arc::new(VolumeTool(pc.clone())),
         Arc::new(BluetoothTool(pc.clone())),
         Arc::new(TaskManagerTool(pc.clone())),
         Arc::new(PowerTool(pc.clone())),
+        Arc::new(AppVolumeTool(pc.clone())),
     ]
 }
 
@@ -177,6 +244,7 @@ mod tests {
         vol: Mutex<Volume>,
         bt: Mutex<bool>,
         log: Mutex<Vec<String>>,
+        apps: Mutex<Vec<AppAudio>>,
     }
     impl PcControl for Fake {
         fn volume(&self) -> Result<Volume, String> { Ok(*self.vol.lock()) }
@@ -186,10 +254,21 @@ mod tests {
         fn set_bluetooth(&self, on: bool) -> Result<(), String> { *self.bt.lock() = on; Ok(()) }
         fn task_manager(&self) -> Result<(), String> { self.log.lock().push("taskmgr".into()); Ok(()) }
         fn power(&self, a: Power) -> Result<(), String> { self.log.lock().push(format!("{a:?}")); Ok(()) }
+        fn apps(&self) -> Result<Vec<AppAudio>, String> { Ok(self.apps.lock().clone()) }
+        fn set_app(&self, key: &str, p: Option<u8>, m: Option<bool>) -> Result<(), String> {
+            let mut l = self.apps.lock();
+            let a = l.iter_mut().find(|a| a.key == key).ok_or("inconnue")?;
+            a.percent = p.unwrap_or(a.percent);
+            a.muted = m.unwrap_or(a.muted);
+            Ok(())
+        }
     }
 
+    fn app(key: &str, name: &str) -> AppAudio { AppAudio { key: key.into(), name: name.into(), percent: 100, muted: false, active: true } }
+
     fn setup() -> (Arc<Fake>, ToolBroker) {
-        let fake = Arc::new(Fake { vol: Mutex::new(Volume { percent: 50, muted: true }), bt: Mutex::new(false), log: Mutex::default() });
+        let fake = Arc::new(Fake { vol: Mutex::new(Volume { percent: 50, muted: true }), bt: Mutex::new(false), log: Mutex::default(),
+            apps: Mutex::new(vec![app("discord", "Discord"), app("chrome", "Chrome"), app("msedge", "Msedge"), app("system", "Sons système")]) });
         let pc: Pc = fake.clone();
         (fake, ToolBroker::new(Arc::new(Mutex::new(db())), Arc::new(|| 1_000), all(&pc)).unwrap())
     }
@@ -214,6 +293,22 @@ mod tests {
         assert!(*fake.bt.lock());
         assert!(matches!(b.call(call("pc.task_manager", json!({}))).await, ToolOutcome::Done { .. }));
         assert_eq!(*fake.log.lock(), ["taskmgr"]);
+    }
+
+    #[tokio::test]
+    async fn volume_par_application() {
+        let (fake, b) = setup();
+        let ToolOutcome::Done { output, .. } = b.call(call("pc.app_volume", json!({"app": "discord", "percent": 30}))).await else { panic!() };
+        assert_eq!((output["key"].as_str(), output["percent"].as_u64()), (Some("discord"), Some(30)));
+        b.call(call("pc.app_volume", json!({"app": "Chrome.exe", "muted": true}))).await;
+        assert!(fake.apps.lock()[1].muted);
+        for bad in [json!({"app": "discord"}), json!({"app": "discord", "percent": 101}), json!({"app": "spotify", "percent": 5}), json!({"app": "c", "percent": 5})] {
+            assert!(matches!(b.call(call("pc.app_volume", bad.clone())).await, ToolOutcome::Failed { .. }), "{bad}");
+        }
+        let l = fake.apps.lock().clone();
+        assert_eq!(pick_app(&l, "sons").unwrap().key, "system");
+        assert!(pick_app(&l, "e").unwrap_err().contains("plusieurs"));
+        assert!(pick_app(&l, "spotify").unwrap_err().contains("Discord, Chrome"));
     }
 
     #[tokio::test]

@@ -5,7 +5,7 @@ use chrono::{DateTime, Local};
 use serde_json::{json, Value};
 
 /// Outils appelés par le raccourci ; `src-tauri` vérifie qu'ils sont bien enregistrés.
-pub const TOOLS: &[&str] = &["music.toggle", "music.next", "music.previous", "music.volume", "timer.start", "reminders.create", "notes.create"];
+pub const TOOLS: &[&str] = &["music.toggle", "music.next", "music.previous", "music.volume", "timer.start", "reminders.create", "notes.create", "alarm.set"];
 const VOLUME_STEP: i32 = 10;
 
 /// `now` est réservé : `reminders.create` et `timer.start` analysent eux-mêmes date et durée.
@@ -34,6 +34,7 @@ pub fn parse(text: &str, _now: DateTime<Local>) -> Option<(&'static str, Value)>
             Some(("timer.start", json!({ "text": text.trim() })))
         }
         "rappelle-moi" if !rest.is_empty() => Some(("reminders.create", json!({ "text": rest }))),
+        "reveille-moi" | "alarme" if !rest.is_empty() => Some(("alarm.set", json!({ "text": text.trim() }))),
         "note" if !rest.is_empty() => Some(("notes.create", json!({ "text": rest }))),
         _ => None,
     }
@@ -58,13 +59,15 @@ mod tests {
         assert_eq!(p("Minuteur 25 minutes thé"), Some(("timer.start", json!({"text": "Minuteur 25 minutes thé"}))));
         assert_eq!(p("timer 30 s"), Some(("timer.start", json!({"text": "timer 30 s"}))));
         assert_eq!(p("Rappelle-moi d'appeler la banque demain à 10 h"), Some(("reminders.create", json!({"text": "d'appeler la banque demain à 10 h"}))));
+        assert_eq!(p("Réveille-moi à 7 h"), Some(("alarm.set", json!({"text": "Réveille-moi à 7 h"}))));
+        assert_eq!(p("alarme demain 6h30"), Some(("alarm.set", json!({"text": "alarme demain 6h30"}))));
         assert_eq!(p("note acheter du Pain"), Some(("notes.create", json!({"text": "acheter du Pain"}))));
     }
 
     #[test]
     fn le_reste_va_au_modele() {
         for t in ["", "suivant le mail de Paul", "volume 101", "volume fort", "minuteur", "minuteur 0 min", "timer 5 heures",
-            "rappelle-moi", "note", "quels mails importants ?", "pause café demain"] {
+            "rappelle-moi", "note", "alarme", "quels mails importants ?", "pause café demain"] {
             assert_eq!(p(t), None, "{t}");
         }
     }
